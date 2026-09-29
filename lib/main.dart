@@ -32,6 +32,7 @@ import 'package:spotube/provider/audio_player/audio_player_streams.dart';
 import 'package:spotube/provider/database/database.dart';
 import 'package:spotube/provider/glance/glance.dart';
 import 'package:spotube/provider/metadata_plugin/metadata_plugin_provider.dart';
+import 'package:spotube/provider/metadata_plugin/library/playlists.dart';
 import 'package:spotube/provider/metadata_plugin/updater/update_checker.dart';
 import 'package:spotube/provider/server/bonsoir.dart';
 import 'package:spotube/provider/server/server.dart';
@@ -114,7 +115,7 @@ Future<void> main(List<String> rawArgs) async {
     final database = AppDatabase();
 
     if (kIsDesktop) {
-      await localNotifier.setup(appName: "Spotube");
+      await localNotifier.setup(appName: "EvanTube");
       await WindowManagerTools.initialize();
     }
 
@@ -160,6 +161,18 @@ class Spotube extends HookConsumerWidget {
     ref.listen(metadataPluginUpdateCheckerProvider, (_, __) {});
     ref.listen(audioSourcePluginUpdateCheckerProvider, (_, __) {});
 
+    // EvanTube shared-playlist refresh:
+    // Android Spotube and iOS EvanTube both use the same Metadata Plugin
+    // playlist backend. Periodic invalidation keeps the online list fresh
+    // while the app stays open; normal provider CRUD remains authoritative.
+    useEffect(() {
+      if (!kIsMobile) return null;
+      final timer = Timer.periodic(const Duration(seconds: 45), (_) {
+        ref.invalidate(metadataPluginSavedPlaylistsProvider);
+      });
+      return timer.cancel;
+    }, []);
+
     useFixWindowStretching();
     useDisableBatteryOptimizations();
     useDeepLinking(ref, router);
@@ -191,7 +204,7 @@ class Spotube extends HookConsumerWidget {
       ],
       routerConfig: router.config(),
       debugShowCheckedModeBanner: false,
-      title: 'Spotube',
+      title: 'EvanTube',
       builder: (context, child) {
         child = ScrollConfiguration(
           behavior: ScrollConfiguration.of(context).copyWith(
@@ -226,13 +239,13 @@ class Spotube extends HookConsumerWidget {
         surfaceBlur: 10,
       ),
       darkTheme: ThemeData(
-        radius: .5,
+        radius: .7,
         iconTheme: const IconThemeProperties(),
         colorScheme:
-            colorSchemeMap[accentMaterialColor.name]?.call(ThemeMode.dark) ??
+            colorSchemeMap["violet"]?.call(ThemeMode.dark) ??
                 LegacyColorSchemes.darkSlate(),
-        surfaceOpacity: .8,
-        surfaceBlur: 10,
+        surfaceOpacity: .78,
+        surfaceBlur: 18,
       ),
       materialTheme: material.ThemeData(
         brightness: switch (themeMode) {
@@ -248,7 +261,7 @@ class Spotube extends HookConsumerWidget {
           elevation: 0,
         ),
       ),
-      themeMode: themeMode,
+      themeMode: ThemeMode.dark,
       shortcuts: {
         ...WidgetsApp.defaultShortcuts.map((key, value) {
           return MapEntry(

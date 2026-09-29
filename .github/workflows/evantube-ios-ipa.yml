@@ -1,0 +1,55 @@
+name: EvanTube iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "lib/**"
+      - "ios/**"
+      - "pubspec.yaml"
+      - ".github/workflows/evantube-ios-ipa.yml"
+
+jobs:
+  build-ios:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.2"
+          channel: stable
+          cache: true
+
+      - name: Flutter version
+        run: flutter --version
+
+       - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign --flavor stable
+
+      - name: Package EvanTube IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="build/ios/iphoneos/stable.app"
+          test -d "$APP"
+          rm -rf Payload EvanTube-iOS.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          /usr/bin/zip -qry EvanTube-iOS.ipa Payload
+          shasum -a 256 EvanTube-iOS.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-iOS
+          path: EvanTube-iOS.ipa
+          if-no-files-found: error
+          retention-days: 14

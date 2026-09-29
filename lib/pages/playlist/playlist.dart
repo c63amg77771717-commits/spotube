@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter/material.dart' as material;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart' hide Page;
@@ -50,6 +52,14 @@ class PlaylistPage extends HookConsumerWidget {
         ref.watch(metadataPluginSavedPlaylistsProvider.notifier);
 
     final isUserPlaylist = useIsUserPlaylist(ref, playlist.id);
+
+    useEffect(() {
+      final timer = Timer.periodic(const Duration(seconds: 45), (_) {
+        ref.invalidate(metadataPluginPlaylistTracksProvider(playlist.id));
+        ref.invalidate(metadataPluginSavedPlaylistsProvider);
+      });
+      return timer.cancel;
+    }, [playlist.id]);
 
     return material.RefreshIndicator.adaptive(
       onRefresh: () async {

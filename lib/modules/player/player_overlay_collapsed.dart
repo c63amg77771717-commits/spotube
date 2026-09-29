@@ -40,8 +40,8 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
           ? Padding(
               padding: const EdgeInsets.all(5),
               child: SurfaceCard(
-                surfaceBlur: theme.surfaceBlur,
-                surfaceOpacity: theme.surfaceOpacity,
+                surfaceBlur: 18,
+                surfaceOpacity: .92,
                 padding: EdgeInsets.zero,
                 borderRadius: theme.borderRadiusLg,
                 child: Column(

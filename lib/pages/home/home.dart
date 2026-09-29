@@ -48,9 +48,9 @@ class HomePage extends HookConsumerWidget {
                       letterSpacing: 1.8,
                       color: theme.colorScheme.foreground,
                     ),
-                    child: const Text("Spotube"),
+                    child: const Text("EvanTube"),
                   ),
-                  backgroundColor: theme.colorScheme.background,
+                  backgroundColor: const Color(0xFF070A12),
                   foregroundColor: theme.colorScheme.foreground,
                   actions: [
                     const ConnectDeviceButton(),
@@ -67,6 +67,33 @@ class HomePage extends HookConsumerWidget {
               else if (kIsMacOS)
                 const SliverGap(10),
               const SliverGap(10),
+              const SliverPadding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 14),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "晚安，音樂總在對的時候出現。",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFF4F7FF),
+                        ),
+                      ),
+                      SizedBox(height: 5),
+                      Text(
+                        "EvanTube · More Than Music",
+                        style: TextStyle(
+                          fontSize: 12,
+                          letterSpacing: .8,
+                          color: Color(0xFF9BA8C7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               SliverList.builder(
                 itemCount: 3,
                 itemBuilder: (context, index) {

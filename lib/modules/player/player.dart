@@ -93,7 +93,7 @@ class PlayerView extends HookConsumerWidget {
         surfaceOpacity: 0.9,
         padding: EdgeInsets.zero,
         child: Scaffold(
-          backgroundColor: Colors.transparent,
+          backgroundColor: const Color(0xFF070A12),
           headers: [
             SafeArea(
               bottom: false,
@@ -146,11 +146,21 @@ class PlayerView extends HookConsumerWidget {
                         const BoxConstraints(maxHeight: 300, maxWidth: 300),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF8C63FF).withAlpha(180),
+                        width: 1.2,
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withAlpha(100),
+                          color: const Color(0xFF6A5CFF).withAlpha(90),
                           spreadRadius: 2,
-                          blurRadius: 10,
+                          blurRadius: 28,
+                          offset: Offset.zero,
+                        ),
+                        BoxShadow(
+                          color: const Color(0xFF38A6FF).withAlpha(55),
+                          spreadRadius: 1,
+                          blurRadius: 42,
                           offset: Offset.zero,
                         ),
                       ],
