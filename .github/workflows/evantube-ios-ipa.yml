@@ -14,7 +14,11 @@ env:
   FLUTTER_VERSION: "3.35.2"
   FLUTTER_CHANNEL: master
   CHANNEL: stable
-  DOTENV: ""
+  DOTENV: |
+    LASTFM_API_KEY=evantube
+    LASTFM_API_SECRET=evantube
+    HIDE_DONATIONS=1
+    ENABLE_UPDATE_CHECK=0
 
 jobs:
   build-ios:
