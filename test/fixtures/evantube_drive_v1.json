@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "events": [
+    {"id":"00000000-0000-0000-0000-000000000001","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":1,"kind":"create","playlistId":"p1","title":"First"},
+    {"id":"00000000-0000-0000-0000-000000000002","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":2,"kind":"create","playlistId":"p2","title":"Second"},
+    {"id":"00000000-0000-0000-0000-000000000003","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":3,"kind":"create","playlistId":"gone","title":"Deleted"},
+    {"id":"00000000-0000-0000-0000-000000000004","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":10,"kind":"putSong","playlistId":"p1","song":{"youtubeId":"aaaaaaaaaaa","title":"Song A","artist":"Artist A","duration":120,"thumbnailURL":null}},
+    {"id":"00000000-0000-0000-0000-000000000005","deviceId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","clock":10,"kind":"putSong","playlistId":"p1","song":{"youtubeId":"bbbbbbbbbbb","title":"Song B","artist":"Artist B","duration":180,"thumbnailURL":null}},
+    {"id":"00000000-0000-0000-0000-000000000006","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":11,"kind":"putSong","playlistId":"p1","song":{"youtubeId":"ccccccccccc","title":"Song C","artist":"Artist C","duration":0,"thumbnailURL":null}},
+    {"id":"00000000-0000-0000-0000-000000000007","deviceId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","clock":12,"kind":"removeSong","playlistId":"p1","songId":"ccccccccccc"},
+    {"id":"00000000-0000-0000-0000-000000000008","deviceId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","clock":20,"kind":"orderSongs","playlistId":"p1","order":["bbbbbbbbbbb"]},
+    {"id":"00000000-0000-0000-0000-000000000009","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":21,"kind":"orderPlaylists","playlistId":"","order":["p2"]},
+    {"id":"00000000-0000-0000-0000-000000000010","deviceId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","clock":22,"kind":"delete","playlistId":"gone"},
+    {"id":"00000000-0000-0000-0000-000000000011","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":23,"kind":"create","playlistId":"gone","title":"Cannot resurrect"},
+    {"id":"00000000-0000-0000-0000-000000000012","deviceId":"bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb","clock":24,"kind":"rename","playlistId":"p1","title":"Renamed"},
+    {"id":"00000000-0000-0000-0000-000000000004","deviceId":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","clock":10,"kind":"putSong","playlistId":"p1","song":{"youtubeId":"aaaaaaaaaaa","title":"Song A","artist":"Artist A","duration":120,"thumbnailURL":null}}
+  ]
+}

@@ -1,4 +1,5 @@
 import AVFoundation
+import GoogleSignIn
 import Nuke
 import SwiftUI
 
@@ -167,6 +168,7 @@ struct LovelyMusicApp: App {
                 )
             }
             .task {
+                GoogleDrivePlaylistSync.shared.startForeground()
                 // Single-owner CMS fetch (C3). Replaces the previous
                 // `ContentView.task { fetchFlags }` site, which couldn't run
                 // before onboarding completed and discarded the Bool return.
@@ -178,6 +180,7 @@ struct LovelyMusicApp: App {
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .background {
+                    GoogleDrivePlaylistSync.shared.stopForeground()
                     // Silently no-op if DI hasn't built yet (rare first-install
                     // backgrounding within the 5s gate).
                     diContainer?.audioEngine.savePlaybackState()
@@ -191,6 +194,7 @@ struct LovelyMusicApp: App {
                         di.audioCacheManager.removeOrphans(knownDownloadIds: downloadIds)
                     }
                 } else if newPhase == .active {
+                    GoogleDrivePlaylistSync.shared.startForeground()
                     // polish-B4: invalidate home cache when returning from a
                     // long background pause (>15 min) so users see fresh
                     // recommendations. On first launch the cache is not stale
@@ -204,6 +208,12 @@ struct LovelyMusicApp: App {
                         await diContainer.touchForegroundCache()
                     }
                 }
+            }
+            .onOpenURL { url in
+                _ = GIDSignIn.sharedInstance.handle(url)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .playlistsChanged)) { _ in
+                GoogleDrivePlaylistSync.shared.scheduleSync()
             }
         }
     }

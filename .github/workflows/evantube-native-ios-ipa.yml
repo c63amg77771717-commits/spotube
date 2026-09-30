@@ -36,7 +36,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
             CODE_SIGNING_ALLOWED=NO \
             build
-      - name: Test MB3 import and local playlists
+      - name: Test MB3 import and playlist sync
         working-directory: native-ios
         run: |
           xcodebuild \
@@ -44,7 +44,7 @@ jobs:
             -scheme EvanTubeTests \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-            -only-testing:EvanTubeTests/MB3ImportTests \
+            -only-testing:EvanTubeTests \
             CODE_SIGNING_ALLOWED=NO \
             test
       - name: Package IPA

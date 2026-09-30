@@ -15,6 +15,7 @@ struct LibraryView: View {
     @State private var libraryScrollPosition = ScrollPosition(idType: String.self)
     @State private var showBulkDeleteConfirmation = false
     @State private var showMB3Import = false
+    @State private var showDriveSync = false
 
     init(viewModel: LibraryViewModel) {
         self.viewModel = viewModel
@@ -34,6 +35,18 @@ struct LibraryView: View {
                 // Inline search
                 InlineSearchBar(text: $searchText, placeholder: "Search library")
                     .padding(.horizontal, Theme.Spacing.lg)
+
+                Button {
+                    showDriveSync = true
+                } label: {
+                    Label("Google Drive 歌單同步", systemImage: "arrow.triangle.2.circlepath.icloud")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(Theme.Colors.surfaceCard)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
+                }
+                .foregroundStyle(Theme.Colors.brandGradientStart)
+                .padding(.horizontal, Theme.Spacing.lg)
 
                 // Premium upsell banner
                 libraryPremiumBanner
@@ -70,6 +83,9 @@ struct LibraryView: View {
         .navigationTitle("媒體庫")
         .sheet(isPresented: $showMB3Import) {
             MB3ImportView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showDriveSync) {
+            GoogleDriveSyncView()
         }
         .toolbar {
             if !viewModel.playlists.isEmpty {
