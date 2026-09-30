@@ -35,9 +35,15 @@ struct DockTabBar: View {
                                 usesBrandGradient: isSelected
                             )
 
-                            Text(tab.label)
-                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
-                                .foregroundStyle(isSelected ? Theme.Colors.brandGradientStart : Theme.Colors.textSecondary)
+                            if isSelected {
+                                Text(tab.label)
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(Theme.Colors.brandGradient)
+                            } else {
+                                Text(tab.label)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Theme.Colors.textSecondary)
+                            }
 
                             // Dot indicator
                             Circle()

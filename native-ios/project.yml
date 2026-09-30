@@ -183,6 +183,7 @@ targets:
       - path: LovelyMusicTests
     dependencies:
       - target: LovelyMusic
+      - package: ZIPFoundation
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lovelymusic.tests

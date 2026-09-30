@@ -89,7 +89,7 @@ struct EvanTubeHomeView: View {
                 onlineSection(title: "最近熱門", subtitle: "Apple Music · \(region.label) 即時榜", items: Array((feeds.chart?.items ?? []).prefix(6)), source: feeds.chart)
                 chartSection
                 onlineSection(title: "本週精選", subtitle: "ListenBrainz 社群週榜", items: feeds.weekly?.items ?? [], source: feeds.weekly)
-                onlineSection(title: "最新發行", subtitle: "ListenBrainz · MusicBrainz · 最近 7 天", items: feeds.releases?.items ?? [], source: feeds.releases)
+                onlineSection(title: "最新發行", subtitle: "ListenBrainz · MusicBrainz · 最近 7 天", items: Array((feeds.releases?.items ?? []).prefix(20)), source: feeds.releases)
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)

@@ -1,4 +1,5 @@
 import XCTest
+import ZIPFoundation
 @testable import LovelyMusic
 
 final class MB3ImportTests: XCTestCase {
@@ -26,6 +27,25 @@ final class MB3ImportTests: XCTestCase {
         XCTAssertEqual(result.playlists[0].skipped, 1)
         XCTAssertEqual(result.playlists[1].skipped, 1)
         XCTAssertEqual(result.rowCount, 4)
+    }
+
+    func testZIPFilePickerInputReadsCombinedJSON() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let jsonURL = directory.appendingPathComponent("MB3_All_Playlists.json")
+        let zipURL = directory.appendingPathComponent("MB3_Playlists_Complete.zip")
+        let export: [String: Any] = [
+            "playlists": [["category": "own", "playlist_id": "7", "playlist_name": "Player"]],
+            "songs": [["category": "own", "playlist_id": "7", "playlist_name": "Player",
+                       "youtube_id": "abcdefghijk", "title": "Song", "order": 1]],
+        ]
+        try JSONSerialization.data(withJSONObject: export).write(to: jsonURL)
+        try FileManager.default.zipItem(at: jsonURL, to: zipURL, shouldKeepParent: false)
+
+        let parsed = try MB3PlaylistImporter.parse(zipURL: zipURL)
+        XCTAssertEqual(parsed.playlists.count, 1)
+        XCTAssertEqual(parsed.playlists[0].songs.map(\.id), ["abcdefghijk"])
     }
 
     func testLocalPlaylistBulkImportAndOrderingSurviveReload() async throws {
