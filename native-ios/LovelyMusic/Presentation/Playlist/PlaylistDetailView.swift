@@ -199,6 +199,9 @@ struct PlaylistDetailView: View {
                             },
                             onPlayNext: { playerVM.playNext(song) },
                             onAddToQueue: { playerVM.addToQueue(song) },
+                            canMove: playlist.isLocal && searchText.isEmpty,
+                            onMoveUp: { Task { await viewModel.moveSong(song, direction: -1) } },
+                            onMoveDown: { Task { await viewModel.moveSong(song, direction: 1) } },
                             onDownloadTap: {
                                 if downloadManager.isDownloaded(songId: song.id) {
                                     downloadManager.removeDownload(songId: song.id)
@@ -373,6 +376,9 @@ private struct PlaylistSongRowView: View {
     let onTap: () -> Void
     let onPlayNext: () -> Void
     let onAddToQueue: () -> Void
+    let canMove: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
     let onDownloadTap: () -> Void
 
     var body: some View {
@@ -408,6 +414,16 @@ private struct PlaylistSongRowView: View {
 
                     if editMode == .inactive {
                         Menu {
+                            if canMove {
+                                Button(action: onMoveUp) {
+                                    Label("上移歌曲", systemImage: "arrow.up")
+                                }
+                                .disabled(index == 0)
+                                Button(action: onMoveDown) {
+                                    Label("下移歌曲", systemImage: "arrow.down")
+                                }
+                                .disabled(index == totalCount - 1)
+                            }
                             Button {
                                 onPlayNext()
                             } label: {

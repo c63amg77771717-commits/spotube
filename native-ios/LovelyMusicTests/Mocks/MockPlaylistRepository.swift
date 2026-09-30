@@ -29,6 +29,13 @@ final class MockPlaylistRepository: PlaylistRepositoryProtocol {
         playlists[idx].title = name
     }
 
+    func movePlaylist(id: String, direction: Int) async throws {
+        if shouldThrow { throw NSError(domain: "test", code: -1) }
+        guard let index = playlists.firstIndex(where: { $0.id == id }),
+              playlists.indices.contains(index + direction) else { return }
+        playlists.swapAt(index, index + direction)
+    }
+
     func addSongToPlaylist(song: Song, playlistId: String) async throws {
         if shouldThrow { throw NSError(domain: "test", code: -1) }
         guard let idx = playlists.firstIndex(where: { $0.id == playlistId }) else { return }
@@ -50,6 +57,14 @@ final class MockPlaylistRepository: PlaylistRepositoryProtocol {
         if shouldThrow { throw NSError(domain: "test", code: -1) }
         guard let idx = playlists.firstIndex(where: { $0.id == playlistId }) else { return }
         playlists[idx].songs.removeAll { $0.id == songId }
+    }
+
+    func moveSong(songId: String, playlistId: String, direction: Int) async throws {
+        if shouldThrow { throw NSError(domain: "test", code: -1) }
+        guard let index = playlists.firstIndex(where: { $0.id == playlistId }),
+              let songIndex = playlists[index].songs.firstIndex(where: { $0.id == songId }),
+              playlists[index].songs.indices.contains(songIndex + direction) else { return }
+        playlists[index].songs.swapAt(songIndex, songIndex + direction)
     }
 
     func getRecentlyPlayed() async throws -> [Song] {

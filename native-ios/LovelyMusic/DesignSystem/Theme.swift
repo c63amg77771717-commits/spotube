@@ -4,12 +4,17 @@ enum Theme {
     // MARK: - Colors
     enum Colors {
         // Brand Gradient (same in both modes)
-        static let brandGradientStart = Color(hex: "#8B5CF6")
-        static let brandGradientEnd = Color(hex: "#EC4899")
+        static let brandGradientStart = Color(hex: "#C174FF")
+        static let brandGradientEnd = Color(hex: "#84DFFF")
         static let brandGradient = LinearGradient(
-            colors: [brandGradientStart, brandGradientEnd],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
+            gradient: Gradient(stops: [
+                .init(color: brandGradientStart, location: 0),
+                .init(color: Color(hex: "#AC70FF"), location: 0.5),
+                .init(color: Color(hex: "#729EFF"), location: 0.82),
+                .init(color: brandGradientEnd, location: 1),
+            ]),
+            startPoint: .leading,
+            endPoint: .trailing
         )
 
         // Legacy aliases for compatibility
@@ -19,20 +24,20 @@ enum Theme {
 
         // Backgrounds — Round 2 warm-white ramp (Q1 LOCKED). Dark values frozen.
         static let backgroundPrimary = Color(
-            light: Color(hex: "#F9F8FC"), dark: Color(hex: "#0A0A0A"))
+            light: Color(hex: "#F9F8FC"), dark: Color(hex: "#080D15"))
         static let background = backgroundPrimary
         static let backgroundSecondary = Color(
-            light: Color(hex: "#F0EEF5"), dark: Color(hex: "#1A1A1A"))
+            light: Color(hex: "#F0EEF5"), dark: Color(hex: "#111B28"))
         static let secondaryBackground = backgroundSecondary
         static let backgroundTertiary = Color(
-            light: Color(hex: "#E6E3EF"), dark: Color(hex: "#2A2A2A"))
+            light: Color(hex: "#E6E3EF"), dark: Color(hex: "#172536"))
         static let tertiaryBackground = backgroundTertiary
         static let backgroundElevated = Color(
-            light: Color(hex: "#FFFFFF"), dark: Color(hex: "#1E1E1E"))
+            light: Color(hex: "#FFFFFF"), dark: Color(hex: "#111B28"))
 
         // Surfaces — Round 2: cards are pure white in light; selected uses solid brand fill.
         static let surfaceCard = Color(
-            light: Color(hex: "#FFFFFF"), dark: Color.white.opacity(0.05))
+            light: Color(hex: "#FFFFFF"), dark: Color(hex: "#111B28"))
         static let surfaceHover = Color(
             light: Color(hex: "#8B5CF6").opacity(0.10), dark: Color.white.opacity(0.08))
         /// Selected fill — solid brand purple in light. Components must pair with `onBrand` foreground.
@@ -41,9 +46,9 @@ enum Theme {
         static let surfaceOverlay = Color.black.opacity(0.60)
 
         // Text — Round 2: textTertiary opacity bumps 0.55 → 0.60 for AA-body on captions.
-        static let textPrimary = Color(light: Color(hex: "#1A1625"), dark: Color.white)
+        static let textPrimary = Color(light: Color(hex: "#1A1625"), dark: Color(hex: "#EDF3FF"))
         static let textSecondary = Color(
-            light: Color(hex: "#1A1625").opacity(0.62), dark: Color.white.opacity(0.75))
+            light: Color(hex: "#1A1625").opacity(0.62), dark: Color(hex: "#A4AFC1"))
         static let textTertiary = Color(
             light: Color(hex: "#1A1625").opacity(0.60), dark: Color.white.opacity(0.55))
         static let textDisabled = Color(
@@ -62,9 +67,9 @@ enum Theme {
         static let playerGradientBottom = Color(hex: "#0A0A0F")
         // Mini-player surface — Q3: solid white in light (depth via shadow + hairline, NOT material).
         static let miniPlayerBackground = Color(
-            light: Color(hex: "#FFFFFF"), dark: Color(hex: "#1A1A1A").opacity(0.95))
+            light: Color(hex: "#FFFFFF"), dark: Color(hex: "#111B28").opacity(0.95))
         static let miniPlayerBg = miniPlayerBackground
-        static let progressGlow = Color(hex: "#8B5CF6").opacity(0.60)
+        static let progressGlow = Color(hex: "#C174FF").opacity(0.60)
 
         // Premium Colors — Q2: paywall surfaces ONLY. Do not use elsewhere.
         static let premiumGold = Color(hex: "#FFD700")

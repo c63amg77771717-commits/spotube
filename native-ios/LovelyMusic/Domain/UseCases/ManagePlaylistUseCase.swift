@@ -23,6 +23,10 @@ final class ManagePlaylistUseCase {
         try await repository.renamePlaylist(id: id, name: name)
     }
 
+    func movePlaylist(id: String, direction: Int) async throws {
+        try await repository.movePlaylist(id: id, direction: direction)
+    }
+
     func addSong(_ song: Song, to playlistId: String) async throws {
         try await repository.addSongToPlaylist(song: song, playlistId: playlistId)
     }
@@ -33,6 +37,10 @@ final class ManagePlaylistUseCase {
 
     func removeSong(songId: String, from playlistId: String) async throws {
         try await repository.removeSongFromPlaylist(songId: songId, playlistId: playlistId)
+    }
+
+    func moveSong(songId: String, in playlistId: String, direction: Int) async throws {
+        try await repository.moveSong(songId: songId, playlistId: playlistId, direction: direction)
     }
 
     func getRecentlyPlayed() async throws -> [Song] {

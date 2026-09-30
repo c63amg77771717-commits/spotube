@@ -108,6 +108,15 @@ final class LibraryViewModel {
         renamingPlaylistId = nil
     }
 
+    func movePlaylist(_ playlist: Playlist, direction: Int) async {
+        do {
+            try await managePlaylistUseCase.movePlaylist(id: playlist.id, direction: direction)
+            await loadLibrary()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     func requestDelete(playlist: Playlist) {
         playlistToDelete = playlist
         showDeleteConfirmation = true

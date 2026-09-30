@@ -35,6 +35,10 @@ struct DockTabBar: View {
                                 usesBrandGradient: isSelected
                             )
 
+                            Text(tab.label)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                .foregroundStyle(isSelected ? Theme.Colors.brandGradientStart : Theme.Colors.textSecondary)
+
                             // Dot indicator
                             Circle()
                                 .fill(Theme.Colors.brandGradient)
@@ -46,7 +50,7 @@ struct DockTabBar: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .frame(height: 56)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

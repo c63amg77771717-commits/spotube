@@ -38,6 +38,15 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
         savePlaylists(playlists)
     }
 
+    func movePlaylist(id: String, direction: Int) async throws {
+        guard direction == -1 || direction == 1 else { return }
+        var playlists = loadPlaylists()
+        guard let index = playlists.firstIndex(where: { $0.id == id }),
+              playlists.indices.contains(index + direction) else { return }
+        playlists.swapAt(index, index + direction)
+        savePlaylists(playlists)
+    }
+
     func addSongToPlaylist(song: Song, playlistId: String) async throws {
         var playlists = loadPlaylists()
         guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return }
@@ -62,6 +71,16 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
         var playlists = loadPlaylists()
         guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return }
         playlists[index].songs.removeAll { $0.id == songId }
+        savePlaylists(playlists)
+    }
+
+    func moveSong(songId: String, playlistId: String, direction: Int) async throws {
+        guard direction == -1 || direction == 1 else { return }
+        var playlists = loadPlaylists()
+        guard let playlistIndex = playlists.firstIndex(where: { $0.id == playlistId }),
+              let songIndex = playlists[playlistIndex].songs.firstIndex(where: { $0.id == songId }),
+              playlists[playlistIndex].songs.indices.contains(songIndex + direction) else { return }
+        playlists[playlistIndex].songs.swapAt(songIndex, songIndex + direction)
         savePlaylists(playlists)
     }
 

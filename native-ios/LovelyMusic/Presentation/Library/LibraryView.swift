@@ -67,7 +67,7 @@ struct LibraryView: View {
             }
         }
         .background(Theme.Colors.backgroundPrimary)
-        .navigationTitle("Library")
+        .navigationTitle("媒體庫")
         .sheet(isPresented: $showMB3Import) {
             MB3ImportView(viewModel: viewModel)
         }
@@ -223,7 +223,7 @@ struct LibraryView: View {
     private var recentlyPlayedSection: some View {
         if viewModel.isLoading {
             VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-                Text("Recently Played")
+                Text("最近播放")
                     .font(Theme.Typography.title3.weight(.bold))
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .padding(.horizontal, Theme.Spacing.lg)
@@ -334,7 +334,7 @@ struct LibraryView: View {
                 .padding(.horizontal, Theme.Spacing.lg)
             } else {
                 HStack {
-                    Text("Playlists")
+                    Text("我的歌單")
                         .font(Theme.Typography.title3.weight(.bold))
                         .foregroundStyle(Theme.Colors.textPrimary)
                     if !viewModel.playlists.isEmpty {
@@ -378,7 +378,7 @@ struct LibraryView: View {
                             .frame(width: 48, height: 48)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
 
-                            Text("New Playlist")
+                            Text("建立歌單")
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.Colors.textPrimary)
 
@@ -410,7 +410,7 @@ struct LibraryView: View {
                             .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
 
                             VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                                Text("Liked Songs")
+                            Text("喜愛歌曲")
                                     .font(Theme.Typography.body)
                                     .foregroundStyle(Theme.Colors.textPrimary)
                                 Text("\(viewModel.favoritesCount) songs")
@@ -521,6 +521,20 @@ struct LibraryView: View {
                             .buttonStyle(.plain)
                             .padding(.horizontal, Theme.Spacing.lg)
                             .contextMenu {
+                                if searchText.isEmpty {
+                                    Button {
+                                        Task { await viewModel.movePlaylist(playlist, direction: -1) }
+                                    } label: {
+                                        Label("上移歌單", systemImage: "arrow.up")
+                                    }
+                                    .disabled(viewModel.playlists.first?.id == playlist.id)
+                                    Button {
+                                        Task { await viewModel.movePlaylist(playlist, direction: 1) }
+                                    } label: {
+                                        Label("下移歌單", systemImage: "arrow.down")
+                                    }
+                                    .disabled(viewModel.playlists.last?.id == playlist.id)
+                                }
                                 Button {
                                     viewModel.startRename(playlist: playlist)
                                 } label: {

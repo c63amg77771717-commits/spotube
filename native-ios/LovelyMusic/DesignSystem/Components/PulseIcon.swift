@@ -76,9 +76,11 @@ struct PulseIcon: View {
     private func shading(in canvasSize: CGSize) -> GraphicsContext.Shading {
         if usesBrandGradient {
             .linearGradient(
-                Gradient(colors: [
-                    Theme.Colors.brandGradientStart,
-                    Theme.Colors.brandGradientEnd,
+                Gradient(stops: [
+                    .init(color: Theme.Colors.brandGradientStart, location: 0),
+                    .init(color: Color(hex: "#AC70FF"), location: 0.5),
+                    .init(color: Color(hex: "#729EFF"), location: 0.82),
+                    .init(color: Theme.Colors.brandGradientEnd, location: 1),
                 ]),
                 startPoint: .zero,
                 endPoint: CGPoint(x: canvasSize.width, y: canvasSize.height)

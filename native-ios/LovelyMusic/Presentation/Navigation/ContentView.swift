@@ -57,7 +57,7 @@ struct ContentView: View {
             ZStack {
                 if loadedTabs.contains(.home) {
                     NavigationStack(path: $homePath) {
-                        HomeView(viewModel: container.homeViewModel)
+                        EvanTubeHomeView(viewModel: container.homeViewModel)
                             .navigationDestination(for: Route.self) { route in
                                 routeDestination(route)
                             }
@@ -162,10 +162,7 @@ struct ContentView: View {
                 }
             )
         }
-        .preferredColorScheme(
-            featureFlagManager.isAppearanceSettingsEnabled
-                ? themeManager.preferredColorScheme : .dark
-        )
+        .preferredColorScheme(.dark)
         // C3 — CMS fetch and ad preload are owned by `LovelyMusicApp` so they
         // run regardless of onboarding state and exactly once per launch. The
         // previous `.task { fetchFlags }` site here lost the Bool return value
@@ -267,9 +264,9 @@ enum AppTab: String, Hashable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .home: return String(localized: "Home")
-        case .search: return String(localized: "Search")
-        case .library: return String(localized: "Library")
+        case .home: return "首頁"
+        case .search: return "搜尋"
+        case .library: return "媒體庫"
         }
     }
 }

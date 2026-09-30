@@ -2,8 +2,6 @@ import SwiftUI
 
 struct DockMiniPlayer: View {
     @Environment(PlayerViewModel.self) private var playerVM
-    @Environment(PremiumManager.self) private var premiumManager
-    @State private var showSkipLimitPaywall = false
 
     var body: some View {
         if let song = playerVM.currentSong {
@@ -46,26 +44,7 @@ struct DockMiniPlayer: View {
 
                 Spacer(minLength: 4)
 
-                playbackControl
-
-                Button {
-                    playerVM.next()
-                    if playerVM.showSkipLimitPaywall {
-                        showSkipLimitPaywall = true
-                        playerVM.showSkipLimitPaywall = false
-                    }
-                } label: {
-                    PulseIcon(
-                        .next,
-                        size: Theme.SizeTokens.iconSmall,
-                        color: Theme.Colors.textSecondary
-                    )
-                }
-                .buttonStyle(.bouncy)
-                // Ensure minimum 44×44pt tap target (icon size unchanged)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-                .accessibilityLabel("Next track")
+                playbackControl.frame(width: 44, height: 44)
             }
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.xs)
@@ -79,10 +58,6 @@ struct DockMiniPlayer: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityHint("Double tap to open full player")
             .accessibilityIdentifier("dock_mini_player")
-            .sheet(isPresented: $showSkipLimitPaywall) {
-                PaywallView()
-                    .environment(premiumManager)
-            }
             .sensoryFeedback(.impact(weight: .medium), trigger: playerVM.isPlaying)
             .sensoryFeedback(.selection, trigger: playerVM.currentSong?.id)
         }
@@ -116,8 +91,11 @@ struct DockMiniPlayer: View {
                 PulseIcon(
                     playerVM.isPlaying ? .pause : .play,
                     size: Theme.SizeTokens.iconMedium,
-                    color: Theme.Colors.textPrimary
+                    color: Theme.Colors.textPrimary,
+                    usesBrandGradient: true
                 )
+                .frame(width: 44, height: 44)
+                .overlay(Circle().stroke(Theme.Colors.brandGradient, lineWidth: 1.5))
             }
             .buttonStyle(.bouncy)
             .frame(width: 44, height: 44)

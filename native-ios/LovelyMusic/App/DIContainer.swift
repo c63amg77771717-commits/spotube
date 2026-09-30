@@ -87,8 +87,8 @@ final class DIContainer {
 
         // Resolve locale synchronously BEFORE creating InnerTubeAPI to avoid
         // race condition where first request uses device locale instead of saved preference.
-        let savedRegion = UserDefaults.standard.string(forKey: "region") ?? "VN"
-        let savedLanguage = UserDefaults.standard.string(forKey: "language") ?? "vi"
+        let savedRegion = UserDefaults.standard.string(forKey: "region") ?? "TW"
+        let savedLanguage = UserDefaults.standard.string(forKey: "language") ?? "zh-TW"
         let initialLocale = YouTubeLocale(gl: savedRegion, hl: savedLanguage)
         self.innerTubeAPI = InnerTubeAPI(locale: initialLocale)
         self.audioEngine = AudioEngine()
@@ -96,7 +96,7 @@ final class DIContainer {
         self.telemetryManager = TelemetryManager.shared
         // Override review mode from environment (used by XCUITest snapshots).
         let reviewModeOverride = ProcessInfo.processInfo.environment["REVIEW_MODE"].map { $0 != "0" }
-        let isReviewMode = reviewModeOverride ?? flagManager.isReviewModeEnabled
+        let isReviewMode = reviewModeOverride ?? false
 
         // Repositories — toggle between demo and real based on review mode
         let contentRepo: InnerTubeRepositoryProtocol

@@ -112,6 +112,17 @@ final class PlaylistDetailViewModel {
         }
     }
 
+    func moveSong(_ song: Song, direction: Int) async {
+        guard let playlist, playlist.isLocal, let managePlaylistUseCase else { return }
+        do {
+            try await managePlaylistUseCase.moveSong(
+                songId: song.id, in: playlist.id, direction: direction)
+            loadPlaylist(playlistId: playlist.id)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func updateFilteredSongs() {
         guard let songs = playlist?.songs else {
             filteredSongs = []

@@ -51,6 +51,21 @@ final class LocalPlaylistRepositoryTests: XCTestCase {
         XCTAssertEqual(stored.first?.songs.map(\.id), [first.id, second.id])
     }
 
+    func testPlaylistAndSongReorderingPersists() async throws {
+        let first = try await repo.createPlaylist(title: "First")
+        let second = try await repo.createPlaylist(title: "Second")
+        let a = Song(id: "abcdefghijk", title: "A", artistName: "", artistId: nil,
+                     albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil)
+        let b = Song(id: "12345678901", title: "B", artistName: "", artistId: nil,
+                     albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil)
+        _ = try await repo.addSongsToPlaylist(songs: [a, b], playlistId: first.id)
+        try await repo.moveSong(songId: b.id, playlistId: first.id, direction: -1)
+        try await repo.movePlaylist(id: second.id, direction: -1)
+        let stored = try await repo.getAllPlaylists()
+        XCTAssertEqual(stored.map(\.id), [second.id, first.id])
+        XCTAssertEqual(stored[1].songs.map(\.id), [b.id, a.id])
+    }
+
     func testDeletePlaylist() async throws {
         let playlist = try await repo.createPlaylist(title: "To Delete")
         try await repo.deletePlaylist(id: playlist.id)
