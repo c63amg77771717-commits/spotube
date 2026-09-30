@@ -244,7 +244,7 @@ final class GoogleDrivePlaylistSync {
             }
             updateUser(result.user)
         } catch {
-            if (error as NSError).code != GIDSignInErrorCode.canceled.rawValue { message = error.localizedDescription }
+            message = error.localizedDescription
         }
     }
 
