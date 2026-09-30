@@ -55,7 +55,7 @@ jobs:
           ENABLE_UPDATE_CHECK=0
           RELEASE_CHANNEL=nightly
           EOF
-          dart run build_runner build --delete-conflicting-outputs --build-filter=lib/collections/env.g.dart
+          dart run build_runner build --delete-conflicting-outputs
       - name: Test journal, Drive transport, and MB3 import
         run: dart test test/evantube_drive_sync_test.dart test/evantube_drive_transport_test.dart test/playlist_import_test.dart
       - name: Analyze changed Android code
