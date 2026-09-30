@@ -44,6 +44,7 @@ import 'package:spotube/services/audio_player/audio_player.dart';
 import 'package:spotube/services/cli/cli.dart';
 import 'package:spotube/services/kv_store/encrypted_kv_store.dart';
 import 'package:spotube/services/kv_store/kv_store.dart';
+import 'package:spotube/services/evantube/drive_sync.dart';
 import 'package:spotube/services/logger/logger.dart';
 import 'package:spotube/services/wm_tools/wm_tools.dart';
 import 'package:spotube/utils/migrations/sandbox.dart';
@@ -111,6 +112,8 @@ Future<void> main(List<String> rawArgs) async {
     }
 
     await EncryptedKvStoreService.initialize();
+
+    if (kIsAndroid) unawaited(EvanDriveSync.instance.initialize());
 
     final database = AppDatabase();
 

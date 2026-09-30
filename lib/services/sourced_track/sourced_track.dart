@@ -45,6 +45,22 @@ class SourcedTrack extends BasicSourcedTrack {
       throw MetadataPluginException.noDefaultAudioSourcePlugin();
     }
 
+    if (query.id.startsWith('evantube-youtube:')) {
+      final id = query.id.substring('evantube-youtube:'.length);
+      if (!RegExp(r'^[a-zA-Z0-9_-]{11}$').hasMatch(id) ||
+          audioSourceConfig.slug != 'spotube-plugin-youtube-audio') {
+        throw StateError('EvanTube playlists require the YouTube audio source.');
+      }
+      final info = SpotubeAudioSourceMatchObject(
+        id: id, title: query.name, artists: query.artists.map((a) => a.name).toList(),
+        duration: Duration(milliseconds: query.durationMs),
+        thumbnail: query.album.images.firstOrNull?.url, externalUri: query.externalUri,
+      );
+      return SourcedTrack(ref: ref, query: query, info: info,
+        source: audioSourceConfig.slug, siblings: [],
+        sources: await audioSource.audioSource.streams(info));
+    }
+
     final database = ref.read(databaseProvider);
     final cachedSource = await (database.select(database.sourceMatchTable)
           ..where((s) =>

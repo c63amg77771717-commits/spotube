@@ -1,0 +1,68 @@
+name: EvanTube Android sync test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["codex/**"]
+    paths:
+      - "lib/**"
+      - "android/**"
+      - "pubspec.*"
+      - "test/**"
+      - ".github/workflows/evantube-android-sync-test.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.2"
+          channel: stable
+          cache: true
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Prepare optional desktop extractor assets
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.parse import unquote, urlparse
+          config = Path('.dart_tool/package_config.json').resolve()
+          package = next(p for p in json.loads(config.read_text())['packages'] if p['name'] == 'flutter_new_pipe_extractor')
+          uri = package['rootUri']
+          root = Path(unquote(urlparse(uri).path)) if uri.startswith('file:') else config.parent / uri
+          (root / 'assets').mkdir(exist_ok=True)
+          PY
+      - name: Generate public test configuration
+        run: |
+          cat > .env <<'EOF'
+          LASTFM_API_KEY=
+          LASTFM_API_SECRET=
+          HIDE_DONATIONS=1
+          ENABLE_UPDATE_CHECK=0
+          RELEASE_CHANNEL=nightly
+          EOF
+          dart run build_runner build --delete-conflicting-outputs --build-filter=lib/collections/env.g.dart
+      - name: Test journal, Drive transport, and MB3 import
+        run: dart test test/evantube_drive_sync_test.dart test/evantube_drive_transport_test.dart test/playlist_import_test.dart
+      - name: Analyze changed Android code
+        run: dart analyze --no-fatal-warnings lib/services/evantube/journal.dart lib/services/evantube/library_store.dart lib/services/evantube/drive_transport.dart lib/services/evantube/drive_sync.dart lib/pages/library/evantube_library.dart lib/pages/library/library.dart lib/services/sourced_track/sourced_track.dart
+      - name: Build separate development APK
+        run: flutter build apk --debug --flavor dev --no-pub
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-Android-dev-debug
+          path: build/app/outputs/flutter-apk/app-dev-debug.apk
+          if-no-files-found: error
