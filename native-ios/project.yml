@@ -85,6 +85,16 @@ schemes:
       targets:
         - LovelyMusicTests
 
+  EvanTubeTests:
+    build:
+      targets:
+        LovelyMusic: all
+        EvanTubeTests: [test]
+    test:
+      config: Debug
+      targets:
+        - EvanTubeTests
+
   LovelyMusicUITests:
     build:
       targets:
@@ -176,6 +186,18 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.lovelymusic.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  EvanTubeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: EvanTubeTests
+    dependencies:
+      - target: LovelyMusic
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.c63amg77771717.evantube.tests
         GENERATE_INFOPLIST_FILE: YES
 
   LovelyMusicUITests:

@@ -41,11 +41,10 @@ jobs:
         run: |
           xcodebuild \
             -project LovelyMusic.xcodeproj \
-            -scheme LovelyMusic \
+            -scheme EvanTubeTests \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-            -only-testing:LovelyMusicTests/MB3PlaylistImporterTests \
-            -only-testing:LovelyMusicTests/LocalPlaylistRepositoryTests \
+            -only-testing:EvanTubeTests/MB3ImportTests \
             CODE_SIGNING_ALLOWED=NO \
             test
       - name: Package IPA

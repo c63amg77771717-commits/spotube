@@ -1,0 +1,56 @@
+import XCTest
+@testable import LovelyMusic
+
+final class MB3ImportTests: XCTestCase {
+    func testCombinedMB3RowsPreservePlaylistAndSongOrder() throws {
+        let export: [String: Any] = [
+            "playlists": [
+                ["category": "own", "playlist_id": "7", "playlist_name": "Player"],
+                ["category": "saved", "playlist_id": "9", "playlist_name": "收藏"],
+            ],
+            "songs": [
+                ["category": "own", "playlist_id": "7", "playlist_name": "Player",
+                 "youtube_id": "abcdefghijk", "title": "Later", "order": 2],
+                ["category": "own", "playlist_id": "7", "playlist_name": "Player",
+                 "youtube_id": "12345678901", "title": "Earlier", "order": 1],
+                ["category": "own", "playlist_id": "7", "playlist_name": "Player",
+                 "youtube_id": "abcdefghijk", "title": "Repeated", "order": 3],
+                ["category": "saved", "playlist_id": "9", "playlist_name": "收藏",
+                 "youtube_id": "invalid", "title": "Skipped"],
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: export)
+        let result = try MB3PlaylistImporter.parseJSON(data)
+        XCTAssertEqual(result.playlists.map(\.name), ["Player", "收藏"])
+        XCTAssertEqual(result.playlists[0].songs.map(\.id), ["12345678901", "abcdefghijk"])
+        XCTAssertEqual(result.playlists[0].skipped, 1)
+        XCTAssertEqual(result.playlists[1].skipped, 1)
+        XCTAssertEqual(result.rowCount, 4)
+    }
+
+    func testLocalPlaylistBulkImportAndOrderingSurviveReload() async throws {
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "local_playlists")
+        defer { defaults.removeObject(forKey: "local_playlists") }
+        let repository = LocalPlaylistRepository()
+        let first = try await repository.createPlaylist(title: "First")
+        let second = try await repository.createPlaylist(title: "Second")
+        let a = song("abcdefghijk")
+        let b = song("12345678901")
+        let added = try await repository.addSongsToPlaylist(songs: [a, b, a], playlistId: first.id)
+        let retried = try await repository.addSongsToPlaylist(songs: [a, b], playlistId: first.id)
+        XCTAssertEqual(added, 2)
+        XCTAssertEqual(retried, 0)
+
+        try await repository.moveSong(songId: b.id, playlistId: first.id, direction: -1)
+        try await repository.movePlaylist(id: second.id, direction: -1)
+        let reloaded = try await repository.getAllPlaylists()
+        XCTAssertEqual(reloaded.map(\.id), [second.id, first.id])
+        XCTAssertEqual(reloaded[1].songs.map(\.id), [b.id, a.id])
+    }
+
+    private func song(_ id: String) -> Song {
+        Song(id: id, title: id, artistName: "", artistId: nil,
+             albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil)
+    }
+}

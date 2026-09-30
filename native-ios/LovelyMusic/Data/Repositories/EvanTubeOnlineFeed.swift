@@ -22,7 +22,7 @@ enum EvanTubeOnlineFeedService {
         guard region.count == 2, region.utf8.allSatisfy({ (65...90).contains($0) }) else {
             throw URLError(.badURL)
         }
-        let root = try await json("https://rss.marketingtools.apple.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json")
+        let root = try await json("https://rss.applemarketingtools.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json")
         let feed = root["feed"] as? [String: Any] ?? [:]
         let items = (feed["results"] as? [[String: Any]] ?? []).compactMap { row -> EvanTubeOnlineItem? in
             guard let id = string(row["id"]), let title = string(row["name"]) else { return nil }

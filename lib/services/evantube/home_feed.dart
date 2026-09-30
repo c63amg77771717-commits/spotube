@@ -55,7 +55,7 @@ OnlineMusicFeed parseAppleChart(Object? raw, {String region = 'tw'}) {
   return OnlineMusicFeed(
       sourceName: 'Apple Music · ${region.toUpperCase()}',
       sourceUrl:
-          'https://rss.marketingtools.apple.com/api/v2/$region/music/most-played/20/songs.json',
+          'https://rss.applemarketingtools.com/api/v2/$region/music/most-played/20/songs.json',
       updatedAt: _date(feed['updated']),
       items: items);
 }
@@ -168,7 +168,7 @@ class OnlineMusicClient {
     }
     return parseAppleChart(
         await _get(
-            'https://rss.marketingtools.apple.com/api/v2/$region/music/most-played/20/songs.json'),
+            'https://rss.applemarketingtools.com/api/v2/$region/music/most-played/20/songs.json'),
         region: region);
   }
 
