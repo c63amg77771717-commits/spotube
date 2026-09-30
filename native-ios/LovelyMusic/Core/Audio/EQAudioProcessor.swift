@@ -55,7 +55,10 @@ final class EQRenderEpoch: @unchecked Sendable {
                   let data = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
             let frames = Int(buffer.mDataByteSize) / MemoryLayout<Float>.size
             guard frames > 0 else { continue }
-            vDSP_biquad(setup, &delayBuffers[idx], data, 1, data, 1, vDSP_Length(frames))
+            delayBuffers[idx].withUnsafeMutableBufferPointer { delay in
+                guard let delayAddress = delay.baseAddress else { return }
+                vDSP_biquad(setup, delayAddress, data, 1, data, 1, vDSP_Length(frames))
+            }
         }
     }
 }
@@ -247,14 +250,14 @@ final class EQAudioProcessor: @unchecked Sendable {
             unprepare: eqTapUnprepare,
             process: eqTapProcess
         )
-        var tap: MTAudioProcessingTap?
+        var tap: Unmanaged<MTAudioProcessingTap>?
         let status = MTAudioProcessingTapCreate(kCFAllocatorDefault, &callbacks,
                                                 kMTAudioProcessingTapCreationFlag_PostEffects, &tap)
         if status != noErr {
             Unmanaged<EQTapContext>.fromOpaque(ctxPtr).release()
             return nil
         }
-        return tap
+        return tap?.takeRetainedValue()
     }
 
     // MARK: - Biquad helpers
