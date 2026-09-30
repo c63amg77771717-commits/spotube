@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:spotube/components/evantube/neo_noir.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
@@ -96,7 +97,8 @@ class PlayerControls extends HookConsumerWidget {
                           ).call,
                           child: SizedBox(
                             width: mediaQuery.xlAndUp ? 600 : 500,
-                            child: Slider(
+                            child: EvanTubeAccent(
+                                child: Slider(
                               hintValue: SliderValue.single(bufferProgress),
                               value:
                                   SliderValue.single(progress.value.toDouble()),
@@ -113,7 +115,7 @@ class PlayerControls extends HookConsumerWidget {
                                   ),
                                 );
                               },
-                            ),
+                            )),
                           ),
                         ),
                         Padding(
@@ -193,25 +195,29 @@ class PlayerControls extends HookConsumerWidget {
                             : context.l10n.resume_playback,
                       ),
                     ).call,
-                    child: IconButton.primary(
-                      size: buttonSize,
-                      shape: ButtonShape.circle,
-                      icon: isFetchingActiveTrack
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(),
-                            )
-                          : Icon(
-                              playing ? SpotubeIcons.pause : SpotubeIcons.play,
-                            ),
-                      onPressed: isFetchingActiveTrack
-                          ? null
-                          : Actions.handler<PlayPauseIntent>(
-                              context,
-                              PlayPauseIntent(ref),
-                            ),
-                    ),
+                    child: EvanTubeAccentBorder(
+                        borderRadius: BorderRadius.circular(100),
+                        child: IconButton.ghost(
+                          size: buttonSize,
+                          shape: ButtonShape.circle,
+                          icon: isFetchingActiveTrack
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(),
+                                )
+                              : Icon(
+                                  playing
+                                      ? SpotubeIcons.pause
+                                      : SpotubeIcons.play,
+                                ),
+                          onPressed: isFetchingActiveTrack
+                              ? null
+                              : Actions.handler<PlayPauseIntent>(
+                                  context,
+                                  PlayPauseIntent(ref),
+                                ),
+                        )),
                   ),
                   Tooltip(
                     tooltip:

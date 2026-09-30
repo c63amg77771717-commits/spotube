@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:spotube/components/evantube/neo_noir.dart';
 
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart' show Badge;
@@ -75,7 +76,19 @@ class SpotubeNavigationBar extends HookConsumerWidget {
                     child: Badge(
                       isLabelVisible: tile.id == "library" && downloadCount > 0,
                       label: Text(downloadCount.toString()),
-                      child: Icon(tile.icon),
+                      child: EvanTubeAccent(
+                          child:
+                              Column(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(tile.icon, size: 19),
+                        Text(
+                            switch (tile.id) {
+                              'home' => '首頁',
+                              'search' => '搜尋',
+                              'library' => '媒體庫',
+                              _ => tile.title
+                            },
+                            style: const TextStyle(fontSize: 9))
+                      ])),
                     ),
                     onPressed: () {
                       context.navigateTo(tile.route);

@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import 'package:spotube/components/evantube/neo_noir.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
@@ -54,80 +55,83 @@ class BottomPlayer extends HookConsumerWidget {
     return SurfaceCard(
       borderRadius: BorderRadius.zero,
       surfaceBlur: context.theme.surfaceBlur,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: PlayerTrackDetails(track: playlist.activeTrack),
-          ),
-          // controls
-          const Flexible(
-            flex: 3,
-            child: Padding(
-              padding: EdgeInsets.only(top: 5),
-              child: PlayerControls(),
-            ),
-          ),
-          // add to saved tracks
-          Column(
-            mainAxisSize: MainAxisSize.min,
+      child: Container(
+          color: evanCard,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              PlayerActions(
-                extraActions: [
-                  Tooltip(
-                    tooltip:
-                        TooltipContainer(child: Text(context.l10n.mini_player))
+              Expanded(
+                child: PlayerTrackDetails(track: playlist.activeTrack),
+              ),
+              // controls
+              const Flexible(
+                flex: 3,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 5),
+                  child: PlayerControls(),
+                ),
+              ),
+              // add to saved tracks
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  PlayerActions(
+                    extraActions: [
+                      Tooltip(
+                        tooltip: TooltipContainer(
+                                child: Text(context.l10n.mini_player))
                             .call,
-                    child: IconButton(
-                      variance: ButtonVariance.ghost,
-                      icon: const Icon(SpotubeIcons.miniPlayer),
-                      onPressed: () async {
-                        if (!kIsDesktop) return;
+                        child: IconButton(
+                          variance: ButtonVariance.ghost,
+                          icon: const Icon(SpotubeIcons.miniPlayer),
+                          onPressed: () async {
+                            if (!kIsDesktop) return;
 
-                        final prevSize = await windowManager.getSize();
-                        await windowManager.setMinimumSize(
-                          const Size(300, 300),
-                        );
-                        await windowManager.setAlwaysOnTop(true);
-                        if (!kIsLinux) {
-                          await windowManager.setHasShadow(false);
-                        }
-                        await windowManager.setAlignment(Alignment.topRight);
-                        await windowManager.setSize(const Size(400, 500));
-                        await Future.delayed(
-                          const Duration(milliseconds: 100),
-                          () async {
-                            if (context.mounted) {
-                              context.navigateTo(
-                                MiniLyricsRoute(prevSize: prevSize),
-                              );
+                            final prevSize = await windowManager.getSize();
+                            await windowManager.setMinimumSize(
+                              const Size(300, 300),
+                            );
+                            await windowManager.setAlwaysOnTop(true);
+                            if (!kIsLinux) {
+                              await windowManager.setHasShadow(false);
                             }
+                            await windowManager
+                                .setAlignment(Alignment.topRight);
+                            await windowManager.setSize(const Size(400, 500));
+                            await Future.delayed(
+                              const Duration(milliseconds: 100),
+                              () async {
+                                if (context.mounted) {
+                                  context.navigateTo(
+                                    MiniLyricsRoute(prevSize: prevSize),
+                                  );
+                                }
+                              },
+                            );
                           },
-                        );
-                      },
-                    ),
+                        ),
+                      ),
+                    ],
                   ),
+                  Container(
+                    height: 40,
+                    constraints: const BoxConstraints(maxWidth: 250),
+                    padding: const EdgeInsets.only(right: 10),
+                    child: Consumer(builder: (context, ref, _) {
+                      final volume = ref.watch(volumeProvider);
+                      return VolumeSlider(
+                        fullWidth: true,
+                        value: volume,
+                        onChanged: (value) {
+                          ref.read(volumeProvider.notifier).setVolume(value);
+                        },
+                      );
+                    }),
+                  )
                 ],
               ),
-              Container(
-                height: 40,
-                constraints: const BoxConstraints(maxWidth: 250),
-                padding: const EdgeInsets.only(right: 10),
-                child: Consumer(builder: (context, ref, _) {
-                  final volume = ref.watch(volumeProvider);
-                  return VolumeSlider(
-                    fullWidth: true,
-                    value: volume,
-                    onChanged: (value) {
-                      ref.read(volumeProvider.notifier).setVolume(value);
-                    },
-                  );
-                }),
-              )
             ],
-          ),
-        ],
-      ),
+          )),
     );
   }
 }

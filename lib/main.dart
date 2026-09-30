@@ -241,11 +241,15 @@ class Spotube extends HookConsumerWidget {
       darkTheme: ThemeData(
         radius: .7,
         iconTheme: const IconThemeProperties(),
-        colorScheme:
-            colorSchemeMap["violet"]?.call(ThemeMode.dark) ??
-                LegacyColorSchemes.darkSlate(),
-        surfaceOpacity: .78,
-        surfaceBlur: 18,
+        colorScheme: (colorSchemeMap["violet"]?.call(ThemeMode.dark) ??
+                LegacyColorSchemes.darkSlate())
+            .copyWith(
+                background: () => const Color(0xff080d15),
+                card: () => const Color(0xff111b28),
+                foreground: () => const Color(0xffedf3ff),
+                mutedForeground: () => const Color(0xffa4afc1)),
+        surfaceOpacity: 1,
+        surfaceBlur: 0,
       ),
       materialTheme: material.ThemeData(
         brightness: switch (themeMode) {

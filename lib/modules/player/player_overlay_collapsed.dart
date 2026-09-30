@@ -1,4 +1,5 @@
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:spotube/components/evantube/neo_noir.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shadcn_flutter/shadcn_flutter.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
@@ -40,8 +41,8 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
           ? Padding(
               padding: const EdgeInsets.all(5),
               child: SurfaceCard(
-                surfaceBlur: 18,
-                surfaceOpacity: .92,
+                surfaceBlur: 0,
+                surfaceOpacity: 1,
                 padding: EdgeInsets.zero,
                 borderRadius: theme.borderRadiusLg,
                 child: Column(
@@ -68,38 +69,31 @@ class PlayerOverlayCollapsedSection extends HookConsumerWidget {
                           ),
                           Row(
                             children: [
-                              IconButton.ghost(
-                                icon: const Icon(SpotubeIcons.skipBack),
-                                onPressed: isFetchingActiveTrack
-                                    ? null
-                                    : audioPlayer.skipToPrevious,
-                              ),
                               Consumer(
                                 builder: (context, ref, _) {
-                                  return IconButton.ghost(
-                                    icon: isFetchingActiveTrack
-                                        ? const SizedBox(
-                                            height: 20,
-                                            width: 20,
-                                            child: CircularProgressIndicator(),
-                                          )
-                                        : Icon(
-                                            playing
-                                                ? SpotubeIcons.pause
-                                                : SpotubeIcons.play,
-                                          ),
-                                    onPressed: Actions.handler<PlayPauseIntent>(
-                                      context,
-                                      PlayPauseIntent(ref),
-                                    ),
-                                  );
+                                  return EvanTubeAccentBorder(
+                                      borderRadius: BorderRadius.circular(100),
+                                      child: IconButton.ghost(
+                                        icon: isFetchingActiveTrack
+                                            ? const SizedBox(
+                                                height: 20,
+                                                width: 20,
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              )
+                                            : Icon(
+                                                playing
+                                                    ? SpotubeIcons.pause
+                                                    : SpotubeIcons.play,
+                                              ),
+                                        onPressed: isFetchingActiveTrack
+                                            ? null
+                                            : Actions.handler<PlayPauseIntent>(
+                                                context,
+                                                PlayPauseIntent(ref),
+                                              ),
+                                      ));
                                 },
-                              ),
-                              IconButton.ghost(
-                                icon: const Icon(SpotubeIcons.skipForward),
-                                onPressed: isFetchingActiveTrack
-                                    ? null
-                                    : audioPlayer.skipToNext,
                               ),
                               const Gap(5),
                             ],

@@ -55,7 +55,7 @@ class SearchPage extends HookConsumerWidget {
       controller.text = searchTerm;
 
       return null;
-    }, []);
+    }, [searchTerm]);
 
     void onSubmitted(String value) {
       ref.read(searchTermStateProvider.notifier).state = value;

@@ -1,4 +1,5 @@
 import 'package:auto_route/auto_route.dart';
+import 'package:spotube/components/evantube/neo_noir.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -90,14 +91,19 @@ class PlayerView extends HookConsumerWidget {
       },
       child: SurfaceCard(
         borderWidth: 0,
-        surfaceOpacity: 0.9,
+        surfaceOpacity: 1,
         padding: EdgeInsets.zero,
         child: Scaffold(
-          backgroundColor: const Color(0xFF070A12),
+          backgroundColor: evanBackground,
           headers: [
             SafeArea(
               bottom: false,
               child: TitleBar(
+                title: const Text('Player',
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                header: const Text('正在播放',
+                    style: TextStyle(color: evanSecondary, fontSize: 12)),
                 surfaceOpacity: 0,
                 surfaceBlur: 0,
                 leading: [
@@ -174,7 +180,7 @@ class PlayerView extends HookConsumerWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 60),
+                  const SizedBox(height: 30),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     alignment: Alignment.centerLeft,
@@ -225,23 +231,25 @@ class PlayerView extends HookConsumerWidget {
                     children: [
                       const SizedBox(width: 10),
                       Expanded(
-                        child: OutlineButton(
+                        child: EvanTubeAccentBorder(
+                            child: OutlineButton(
                           leading: const Icon(SpotubeIcons.queue),
                           child: Text(context.l10n.queue),
                           onPressed: () {
                             context.pushRoute(const PlayerQueueRoute());
                           },
-                        ),
+                        )),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: OutlineButton(
+                        child: EvanTubeAccentBorder(
+                            child: OutlineButton(
                           leading: const Icon(SpotubeIcons.music),
                           child: Text(context.l10n.lyrics),
                           onPressed: () {
                             context.pushRoute(const PlayerLyricsRoute());
                           },
-                        ),
+                        )),
                       ),
                       const SizedBox(width: 10),
                     ],
