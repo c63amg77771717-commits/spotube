@@ -329,7 +329,7 @@ struct SettingsView: View {
     private var settingsBrandedFooter: some View {
         VStack(spacing: Theme.Spacing.lg) {
             // Gradient app name
-            Text("LovelyMusic")
+            Text("EvanTube")
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(
                     LinearGradient(

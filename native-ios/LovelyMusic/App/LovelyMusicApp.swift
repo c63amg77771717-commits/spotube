@@ -34,7 +34,7 @@ struct LovelyMusicApp: App {
     /// for repository wiring to take effect). Surfaces the alert in `body`.
     @State private var pendingRelaunchPrompt = false
 
-    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @AppStorage("disableScreenshots") private var disableScreenshots = false
     @Environment(\.scenePhase) private var scenePhase
 

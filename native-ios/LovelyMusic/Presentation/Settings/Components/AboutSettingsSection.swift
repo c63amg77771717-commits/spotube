@@ -15,7 +15,7 @@ struct AboutSettingsSection: View {
                         .foregroundStyle(Theme.Colors.brandGradientStart)
                         .frame(width: 28)
                     VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                        Text("LovelyMusic")
+                        Text("EvanTube")
                             .font(Theme.Typography.headline)
                             .foregroundStyle(Theme.Colors.textPrimary)
                         Text("Version \(appVersion)")

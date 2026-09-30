@@ -23,7 +23,7 @@ struct AboutView: View {
                         .shadow(
                             color: Theme.Colors.brandGradientStart.opacity(0.3), radius: 16, y: 8)
 
-                    Text("LovelyMusic")
+                    Text("EvanTube")
                         .font(Theme.Typography.largeTitle)
                         .fontWeight(.bold)
                         .foregroundStyle(Theme.Colors.textPrimary)

@@ -36,7 +36,20 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
             CODE_SIGNING_ALLOWED=NO \
             build
+      - name: Test MB3 import and local playlists
+        working-directory: native-ios
+        run: |
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme LovelyMusic \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -only-testing:LovelyMusicTests/MB3PlaylistImporterTests \
+            -only-testing:LovelyMusicTests/LocalPlaylistRepositoryTests \
+            CODE_SIGNING_ALLOWED=NO \
+            test
       - name: Package IPA
+        if: success()
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$RUNNER_TEMP/evantube-derived/Build/Products/Release-iphoneos/LovelyMusic.app" "$RUNNER_TEMP/Payload/EvanTube.app"
