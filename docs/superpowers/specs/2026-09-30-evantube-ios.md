@@ -2,7 +2,7 @@
 
 ## User decisions
 
-Implement the approved EvanTube iOS redesign and MB3 playlist import. Work may modify source and run tests. Do not build, export, upload, or publish an IPA or other installation package yet. The user will design the desktop icon; leave app icon assets unchanged until that design arrives. Do not modify the user's existing Android checkout or its uncommitted work.
+Implement the approved EvanTube iOS redesign and MB3 playlist import. Work may modify source and run tests. Do not build, export, upload, or publish an IPA or other installation package yet. The user has now selected the musical-note/play-triangle App icon and standalone homepage logo. Integrate these selected image assets; the standalone logo replaces the symbol left of EvanTube on the homepage. Keep the approved wordmark and accent palette. Do not modify the user's existing Android checkout or its uncommitted work.
 
 The approved UI source is C:/Users/Admin/.codex/visualizations/2026/09/30/01a0f145-c9dc-7e20-8427-457c24c6692e/evantube-dark-preview.html. Static screenshots are in outputs/evantube-home-accent-final.jpg and outputs/evantube-now-playing.jpg. These are design references, not application data or code requirements.
 
@@ -32,4 +32,4 @@ Candidate matching may automatically choose only confidently compatible title/ar
 
 ## Verification and scope
 
-Tests must exercise actual parsing, matching, write batching/retry, and public feed decoding/error behavior without a live account write. Add failing focused tests before nontrivial new behavior. Use the available Flutter/Dart SDK; run formatting and targeted analyzer checks, then meaningful combined tests. Report macOS/iOS build or on-device limitations honestly; Windows test success does not prove iOS runtime success. Keep source ready for later packaging after the icon design arrives. Do not push shared branches, trigger IPA workflows, or change app icon assets.
+Tests must exercise actual parsing, matching, write batching/retry, and public feed decoding/error behavior without a live account write. Add failing focused tests before nontrivial new behavior. Use the available Flutter/Dart SDK; run formatting and targeted analyzer checks, then meaningful combined tests. Report macOS/iOS build or on-device limitations honestly; Windows test success does not prove iOS runtime success. Keep source ready for later packaging. Do not push shared branches or trigger IPA workflows; packaging remains held until the user authorizes it.
