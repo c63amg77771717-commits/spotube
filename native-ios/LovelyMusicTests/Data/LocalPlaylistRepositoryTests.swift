@@ -37,6 +37,20 @@ final class LocalPlaylistRepositoryTests: XCTestCase {
         XCTAssertEqual(all.count, 2)
     }
 
+    func testBulkAddKeepsOrderAndDeduplicatesOnRetry() async throws {
+        let playlist = try await repo.createPlaylist(title: "Imported")
+        let first = Song(id: "abcdefghijk", title: "A", artistName: "", artistId: nil,
+                         albumName: nil, albumId: nil, duration: 100, thumbnailURL: nil)
+        let second = Song(id: "12345678901", title: "B", artistName: "", artistId: nil,
+                          albumName: nil, albumId: nil, duration: 120, thumbnailURL: nil)
+        let added = try await repo.addSongsToPlaylist(songs: [first, second, first], playlistId: playlist.id)
+        let retried = try await repo.addSongsToPlaylist(songs: [first, second], playlistId: playlist.id)
+        XCTAssertEqual(added, 2)
+        XCTAssertEqual(retried, 0)
+        let stored = try await repo.getAllPlaylists()
+        XCTAssertEqual(stored.first?.songs.map(\.id), [first.id, second.id])
+    }
+
     func testDeletePlaylist() async throws {
         let playlist = try await repo.createPlaylist(title: "To Delete")
         try await repo.deletePlaylist(id: playlist.id)

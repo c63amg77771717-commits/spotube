@@ -6,6 +6,7 @@ protocol PlaylistRepositoryProtocol {
     func deletePlaylist(id: String) async throws
     func renamePlaylist(id: String, name: String) async throws
     func addSongToPlaylist(song: Song, playlistId: String) async throws
+    func addSongsToPlaylist(songs: [Song], playlistId: String) async throws -> Int
     func removeSongFromPlaylist(songId: String, playlistId: String) async throws
     func getRecentlyPlayed() async throws -> [Song]
     func addToHistory(song: Song) async throws

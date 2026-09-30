@@ -14,6 +14,7 @@ struct LibraryView: View {
     @State private var showPaywall = false
     @State private var libraryScrollPosition = ScrollPosition(idType: String.self)
     @State private var showBulkDeleteConfirmation = false
+    @State private var showMB3Import = false
 
     init(viewModel: LibraryViewModel) {
         self.viewModel = viewModel
@@ -67,6 +68,9 @@ struct LibraryView: View {
         }
         .background(Theme.Colors.backgroundPrimary)
         .navigationTitle("Library")
+        .sheet(isPresented: $showMB3Import) {
+            MB3ImportView(viewModel: viewModel)
+        }
         .toolbar {
             if !viewModel.playlists.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -349,6 +353,17 @@ struct LibraryView: View {
 
             VStack(spacing: Theme.Spacing.xxs) {
                 if editMode == .inactive {
+                    Button {
+                        showMB3Import = true
+                    } label: {
+                        Label("匯入 MB3 ZIP 歌單", systemImage: "square.and.arrow.down")
+                            .foregroundStyle(Theme.Colors.brandGradientStart)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, Theme.Spacing.sm)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, Theme.Spacing.lg)
+
                     // Create playlist button
                     Button {
                         viewModel.isCreatingPlaylist = true

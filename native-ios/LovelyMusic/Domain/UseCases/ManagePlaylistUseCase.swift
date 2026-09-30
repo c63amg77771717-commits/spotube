@@ -27,6 +27,10 @@ final class ManagePlaylistUseCase {
         try await repository.addSongToPlaylist(song: song, playlistId: playlistId)
     }
 
+    func addSongs(_ songs: [Song], to playlistId: String) async throws -> Int {
+        try await repository.addSongsToPlaylist(songs: songs, playlistId: playlistId)
+    }
+
     func removeSong(songId: String, from playlistId: String) async throws {
         try await repository.removeSongFromPlaylist(songId: songId, playlistId: playlistId)
     }

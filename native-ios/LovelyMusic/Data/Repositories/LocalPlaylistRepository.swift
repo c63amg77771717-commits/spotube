@@ -47,6 +47,17 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
         }
     }
 
+    func addSongsToPlaylist(songs: [Song], playlistId: String) async throws -> Int {
+        var playlists = loadPlaylists()
+        guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return 0 }
+        var existingIDs = Set(playlists[index].songs.map(\.id))
+        let additions = songs.filter { existingIDs.insert($0.id).inserted }
+        guard !additions.isEmpty else { return 0 }
+        playlists[index].songs.append(contentsOf: additions)
+        savePlaylists(playlists)
+        return additions.count
+    }
+
     func removeSongFromPlaylist(songId: String, playlistId: String) async throws {
         var playlists = loadPlaylists()
         guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return }

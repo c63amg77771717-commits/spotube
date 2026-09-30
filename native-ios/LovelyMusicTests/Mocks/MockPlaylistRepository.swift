@@ -37,6 +37,15 @@ final class MockPlaylistRepository: PlaylistRepositoryProtocol {
         }
     }
 
+    func addSongsToPlaylist(songs: [Song], playlistId: String) async throws -> Int {
+        if shouldThrow { throw NSError(domain: "test", code: -1) }
+        guard let idx = playlists.firstIndex(where: { $0.id == playlistId }) else { return 0 }
+        var ids = Set(playlists[idx].songs.map(\.id))
+        let additions = songs.filter { ids.insert($0.id).inserted }
+        playlists[idx].songs.append(contentsOf: additions)
+        return additions.count
+    }
+
     func removeSongFromPlaylist(songId: String, playlistId: String) async throws {
         if shouldThrow { throw NSError(domain: "test", code: -1) }
         guard let idx = playlists.firstIndex(where: { $0.id == playlistId }) else { return }

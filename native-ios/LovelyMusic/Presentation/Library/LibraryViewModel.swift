@@ -1,5 +1,12 @@
 import Foundation
 
+struct MB3ImportResult {
+    let created: Int
+    let added: Int
+    let duplicates: Int
+    let skipped: Int
+}
+
 @MainActor @Observable
 final class LibraryViewModel {
     private let managePlaylistUseCase: ManagePlaylistUseCase
@@ -53,6 +60,34 @@ final class LibraryViewModel {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    func importMB3(_ selected: [MB3ImportedPlaylist]) async throws -> MB3ImportResult {
+        var known = try await managePlaylistUseCase.getAllPlaylists()
+        var created = 0
+        var added = 0
+        var duplicates = 0
+        for source in selected where !source.songs.isEmpty {
+            try Task.checkCancellation()
+            let target: Playlist
+            if let existing = known.first(where: {
+                $0.title.localizedCaseInsensitiveCompare(source.name) == .orderedSame
+            }) {
+                target = existing
+            } else {
+                target = try await managePlaylistUseCase.createPlaylist(title: source.name)
+                known.append(target)
+                created += 1
+            }
+            let count = try await managePlaylistUseCase.addSongs(source.songs, to: target.id)
+            added += count
+            duplicates += source.songs.count - count
+        }
+        await loadLibrary()
+        return MB3ImportResult(
+            created: created, added: added, duplicates: duplicates,
+            skipped: selected.reduce(0) { $0 + $1.skipped }
+        )
     }
 
     func startRename(playlist: Playlist) {
