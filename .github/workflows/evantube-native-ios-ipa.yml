@@ -1,0 +1,49 @@
+name: EvanTube native iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/ios-neonoir-20260930
+    paths:
+      - native-ios/**
+      - .github/workflows/evantube-native-ios-ipa.yml
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate project
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Build unsigned iOS app
+        working-directory: native-ios
+        run: |
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme LovelyMusic \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+      - name: Package IPA
+        run: |
+          mkdir -p "$RUNNER_TEMP/Payload"
+          cp -R "$RUNNER_TEMP/evantube-derived/Build/Products/Release-iphoneos/LovelyMusic.app" "$RUNNER_TEMP/Payload/EvanTube.app"
+          cd "$RUNNER_TEMP"
+          ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/EvanTube-native-iOS.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-native-iOS-unsigned
+          path: EvanTube-native-iOS.ipa
+          if-no-files-found: error
