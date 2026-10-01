@@ -919,6 +919,7 @@ final class AudioEngine {
         }
 
         let song = queue[currentIndex]
+        PersonalMusicTaste.shared.begin(song)
         currentTrack = song
         currentTime = 0
         duration = 0
@@ -977,6 +978,7 @@ final class AudioEngine {
         prefetchManager.cancelPrefetch()
         guard !queue.isEmpty else { return }
         if currentTime > 3 {
+            PersonalMusicTaste.shared.begin(currentTrack)
             seek(to: 0)
             return
         }
@@ -984,6 +986,7 @@ final class AudioEngine {
         if isPlayingFromAutoplay {
             isPlayingFromAutoplay = false
             let song = queue[currentIndex]
+            PersonalMusicTaste.shared.begin(song)
             currentTrack = song
             currentTime = 0
             duration = 0
@@ -992,6 +995,7 @@ final class AudioEngine {
         }
         currentIndex = currentIndex > 0 ? currentIndex - 1 : queue.count - 1
         let song = queue[currentIndex]
+        PersonalMusicTaste.shared.begin(song)
         currentTrack = song
         currentTime = 0
         duration = 0
@@ -1123,6 +1127,7 @@ final class AudioEngine {
 
         let song = autoplayQueue.removeFirst()
         isPlayingFromAutoplay = true
+        PersonalMusicTaste.shared.begin(song)
         currentTrack = song
         currentTime = 0
         duration = 0
@@ -3943,6 +3948,7 @@ final class AudioEngine {
 
         // Update track state
         currentIndex = nextIndex
+        PersonalMusicTaste.shared.begin(nextSong)
         currentTrack = nextSong
         currentTime = 0
         isStreamingMode = false

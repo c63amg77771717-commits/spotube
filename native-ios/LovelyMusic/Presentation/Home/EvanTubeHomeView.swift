@@ -233,7 +233,7 @@ struct EvanTubeHomeView: View {
                             }
                             .accessibilityLabel("不喜歡 \(song.title)，減少這類推薦")
                         }
-                        Text(personal.reasons[song.id] ?? "依你的歌手偏好與音源推薦挑選")
+                        Text(personal.reasons[song.id] ?? "音源推薦")
                             .font(.caption2).foregroundStyle(Theme.Colors.textSecondary)
                             .lineLimit(2).padding(.horizontal, 10)
                     }

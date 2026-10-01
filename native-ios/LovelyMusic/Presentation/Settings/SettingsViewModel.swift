@@ -260,6 +260,9 @@ final class SettingsViewModel {
     func clearListenHistory() {
         isClearingListenHistory = true
         UserDefaults.standard.removeObject(forKey: "recentlyPlayed")
+        UserDefaults.standard.removeObject(forKey: "recently_played")
+        PersonalMusicTaste.shared.reset()
+        NotificationCenter.default.post(name: .recentlyPlayedChanged, object: nil)
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
         isClearingListenHistory = false
         showListenHistoryCleared = true

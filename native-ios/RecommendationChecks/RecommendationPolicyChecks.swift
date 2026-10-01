@@ -21,6 +21,11 @@ struct RecommendationPolicyChecks {
         assert(taste.seeds(favorites: []).map(\.id) == [b.id], "qualified listening must create a seed")
         let reloaded = PersonalMusicTaste(defaults: defaults)
         assert(reloaded.seeds(favorites: []).map(\.id) == [b.id], "taste must survive restart")
+        listen(a)
+        listen(a)
+        assert(taste.seeds(favorites: []).first?.id == a.id, "repeat sessions strengthen the same song")
+        taste.reset()
+        listen(b)
         taste.begin(a)
         taste.sample(position: 0, playing: true, now: 0)
         taste.sample(position: 120, playing: true, now: 1)
@@ -45,6 +50,6 @@ struct RecommendationPolicyChecks {
         assert(taste.seeds(favorites: []).isEmpty, "reset clears learned taste")
         taste.dislike(a)
         assert(taste.ranked([c, b], favorites: []).first?.id == b.id, "dislike reduces artist affinity too")
-        print("11 recommendation policy checks passed")
+        print("12 recommendation policy checks passed")
     }
 }
