@@ -1,4 +1,31 @@
 import SwiftUI
+import UIKit
+
+// A color-affecting trait also refreshes dynamic colors when switching between
+// Dark and Pure Black, which share the same system color scheme.
+private struct PureBlackTrait: UITraitDefinition {
+    static let defaultValue = false
+    static let affectsColorAppearance = true
+}
+
+struct PureBlackEnvironmentKey: UITraitBridgedEnvironmentKey {
+    static let defaultValue = false
+
+    static func read(from traitCollection: UITraitCollection) -> Bool {
+        traitCollection[PureBlackTrait.self]
+    }
+
+    static func write(to mutableTraits: inout any UIMutableTraits, value: Bool) {
+        mutableTraits[PureBlackTrait.self] = value
+    }
+}
+
+extension EnvironmentValues {
+    var isPureBlack: Bool {
+        get { self[PureBlackEnvironmentKey.self] }
+        set { self[PureBlackEnvironmentKey.self] = newValue }
+    }
+}
 
 enum Theme {
     // MARK: - Colors
@@ -23,8 +50,12 @@ enum Theme {
         static let secondaryLabel = textSecondary
 
         // Backgrounds — Round 2 warm-white ramp (Q1 LOCKED). Dark values frozen.
-        static let backgroundPrimary = Color(
-            light: Color(hex: "#F9F8FC"), dark: Color(hex: "#080D15"))
+        static let backgroundPrimary = Color(uiColor: UIColor { traits in
+            guard traits.userInterfaceStyle == .dark else {
+                return UIColor(Color(hex: "#F9F8FC"))
+            }
+            return traits[PureBlackTrait.self] ? .black : UIColor(Color(hex: "#080D15"))
+        })
         static let background = backgroundPrimary
         static let backgroundSecondary = Color(
             light: Color(hex: "#F0EEF5"), dark: Color(hex: "#111B28"))

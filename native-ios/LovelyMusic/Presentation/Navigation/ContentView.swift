@@ -144,13 +144,28 @@ struct ContentView: View {
                 }
             )
         }
-        .preferredColorScheme(.dark)
+        .environment(\.isPureBlack, themeManager.isPureBlack)
+        .preferredColorScheme(themeManager.preferredColorScheme)
         // C3 — CMS fetch and ad preload are owned by `LovelyMusicApp` so they
         // run regardless of onboarding state and exactly once per launch. The
         // previous `.task { fetchFlags }` site here lost the Bool return value
         // and ran *after* `DIContainer` had already frozen repository wiring.
         .task {
             #if DEBUG
+            if CommandLine.arguments.contains("-evantubeSearchPreview") {
+                let existing = try? await container.playlistRepository.getAllPlaylists()
+                if existing?.contains(where: { $0.title == "搜尋與點擊測試" }) != true {
+                    if let playlist = try? await container.playlistRepository.createPlaylist(
+                        title: "搜尋與點擊測試") {
+                        try? await container.playlistRepository.addSongToPlaylist(song: Song(
+                            id: "demo_song_morning_light", title: "Arcadia", artistName: "Kevin MacLeod",
+                            artistId: nil, albumName: "Peaceful Moments", albumId: nil,
+                            duration: 98, thumbnailURL: "demo_album_peaceful"
+                        ), playlistId: playlist.id)
+                    }
+                }
+                await container.libraryViewModel.loadLibrary()
+            }
             // Explicit UI-preview fixture uses bundled licensed audio.
             if CommandLine.arguments.contains("-evantubeSettingsPreview") {
                 playerVM.play(song: Song(

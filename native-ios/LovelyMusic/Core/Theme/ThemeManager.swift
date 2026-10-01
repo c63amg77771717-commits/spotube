@@ -212,7 +212,7 @@ final class ThemeManager {
     private let featureFlagManager: FeatureFlagManager?
     @ObservationIgnored private var transitionTask: Task<Void, Never>?
 
-    var appearanceMode: AppearanceMode = .system {
+    var appearanceMode: AppearanceMode = .dark {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: Self.userDefaultsKey) }
     }
 
@@ -221,7 +221,8 @@ final class ThemeManager {
 
     init(featureFlagManager: FeatureFlagManager? = nil) {
         self.featureFlagManager = featureFlagManager
-        self.appearanceMode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: Self.userDefaultsKey) ?? "system") ?? .system
+        self.appearanceMode = UserDefaults.standard.string(forKey: Self.userDefaultsKey)
+            .flatMap(AppearanceMode.init(rawValue:)) ?? .dark
         refreshCurrentSchedule()
     }
 

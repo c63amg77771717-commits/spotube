@@ -30,9 +30,22 @@ jobs:
           "$RUNNER_TEMP/recommendation-checks"
       - name: Generate project
         working-directory: native-ios
+        env:
+          YOUTUBE_DATA_API_KEY: ${{ secrets.EVANTUBE_YOUTUBE_DATA_API_KEY }}
         run: |
           brew install xcodegen
           cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          path = Path('LovelyMusic/Resources/Secrets.plist')
+          data = plistlib.loads(path.read_bytes())
+          key = os.environ.get('YOUTUBE_DATA_API_KEY', '').strip()
+          if key:
+              data['YOUTUBE_DATA_API_KEY'] = key
+              path.write_bytes(plistlib.dumps(data))
+          print('Official YouTube search configured:', bool(key))
+          PY
           xcodegen generate
       - name: Build unsigned iOS app
         working-directory: native-ios
@@ -49,6 +62,8 @@ jobs:
       - name: Test MB3 import and playlist sync
         working-directory: native-ios
         run: |
+          # Tests use fixtures and must never spend the production search quota.
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme EvanTubeTests \

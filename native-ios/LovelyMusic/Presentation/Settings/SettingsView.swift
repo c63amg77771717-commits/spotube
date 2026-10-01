@@ -66,6 +66,20 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.bouncy)
 
+                    NavigationLink {
+                        OnlineSearchSettingsView()
+                    } label: {
+                        settingsNavCard(
+                            icon: "magnifyingglass",
+                            accentColor: Theme.Colors.brandGradientEnd,
+                            title: "線上搜尋",
+                            subtitle: "YouTube API 與搜尋金鑰",
+                            badge: nil
+                        )
+                    }
+                    .buttonStyle(.bouncy)
+                    .accessibilityIdentifier("settings_online_search")
+
                     // Language & Region
                     NavigationLink {
                         LanguageRegionSettingsView(viewModel: viewModel)
@@ -581,6 +595,7 @@ struct SettingsView: View {
             HStack(spacing: Theme.Spacing.md) {
                 ForEach(AppearanceMode.allCases, id: \.self) { mode in
                     let isSelected = themeManager.appearanceMode == mode
+                    let isDarkPreview = mode.colorScheme == .dark
                     Button {
                         withAnimation(Theme.AnimationPresets.bouncy) {
                             themeManager.appearanceMode = mode
@@ -590,7 +605,11 @@ struct SettingsView: View {
                             // Mini device preview
                             ZStack {
                                 RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                                    .fill(mode == .dark ? Color.black.opacity(0.85) : mode == .light ? Color.white : Color.gray.opacity(0.2))
+                                    .fill(
+                                        mode == .pureBlack ? Color.black
+                                            : mode == .dark ? Color(hex: "#080D15")
+                                            : mode == .light ? Color.white : Color.gray.opacity(0.2)
+                                    )
                                     .frame(height: 72)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
@@ -605,17 +624,17 @@ struct SettingsView: View {
                                 // Mini content lines inside preview
                                 VStack(alignment: .leading, spacing: 4) {
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(mode == .dark ? Color.white.opacity(0.4) : Color.black.opacity(0.15))
+                                        .fill(isDarkPreview ? Color.white.opacity(0.4) : Color.black.opacity(0.15))
                                         .frame(width: 36, height: 4)
                                     RoundedRectangle(cornerRadius: 2)
-                                        .fill(mode == .dark ? Color.white.opacity(0.2) : Color.black.opacity(0.08))
+                                        .fill(isDarkPreview ? Color.white.opacity(0.2) : Color.black.opacity(0.08))
                                         .frame(width: 28, height: 3)
                                     HStack(spacing: 3) {
                                         RoundedRectangle(cornerRadius: 2)
                                             .fill(Theme.Colors.brandGradientStart.opacity(0.5))
                                             .frame(width: 12, height: 12)
                                         RoundedRectangle(cornerRadius: 2)
-                                            .fill(mode == .dark ? Color.white.opacity(0.15) : Color.black.opacity(0.06))
+                                            .fill(isDarkPreview ? Color.white.opacity(0.15) : Color.black.opacity(0.06))
                                             .frame(width: 20, height: 3)
                                     }
                                 }
@@ -640,6 +659,9 @@ struct SettingsView: View {
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("settings_appearance_\(mode.rawValue)")
+                    .accessibilityLabel(mode.displayName)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
             .padding(.horizontal, Theme.Spacing.lg)

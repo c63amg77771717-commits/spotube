@@ -159,6 +159,70 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         save(app, name: "08-歌單整列點擊")
     }
 
+    @MainActor func testLibrarySearchAndSongRowTap() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
+            "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-evantubeSearchPreview"]
+        app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launch()
+        XCTAssertTrue(app.buttons["tab_library"].waitForExistence(timeout: 30))
+        app.buttons["tab_library"].tap()
+        let playlist = app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH %@", "搜尋與點擊測試")).firstMatch
+        XCTAssertTrue(playlist.waitForExistence(timeout: 15))
+        app.buttons["tab_search"].tap()
+        XCTAssertTrue(app.buttons["search_scope_library"].waitForExistence(timeout: 15))
+        app.buttons["search_scope_library"].tap()
+        let query = app.textFields["search_query"]
+        XCTAssertTrue(query.exists)
+        query.tap()
+        query.typeText("Arcadia\n")
+        let row = app.buttons["song_row_demo_song_morning_light"]
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["尚未設定線上音源"].exists)
+        save(app, name: "09-媒體庫搜尋")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.68, dy: 0.5)).tap()
+        let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暫停'"),
+            object: app.buttons["dock_play_pause"])
+        XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 15), .completed)
+        save(app, name: "10-歌曲整列播放")
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["加入歌單"].waitForExistence(timeout: 5),
+                      "The trailing menu must remain independently tappable")
+    }
+
+    @MainActor func testAppearanceChoicesApplyAndPersist() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
+            "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW"]
+        app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launch()
+        XCTAssertTrue(app.buttons["tab_library"].waitForExistence(timeout: 30))
+        app.buttons["tab_library"].tap()
+        app.buttons["library_settings"].tap()
+        for mode in ["light", "dark", "system", "pureBlack"] {
+            let choice = app.buttons["settings_appearance_\(mode)"]
+            for _ in 0..<4 where !choice.isHittable { app.swipeUp() }
+            XCTAssertTrue(choice.isHittable)
+            choice.tap()
+            XCTAssertTrue(choice.isSelected)
+            XCTAssertTrue(app.navigationBars["設定"].exists,
+                          "Changing appearance must retain the current navigation")
+            save(app, name: "11-外觀-\(mode)")
+        }
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["tab_library"].waitForExistence(timeout: 30))
+        app.buttons["tab_library"].tap()
+        app.buttons["library_settings"].tap()
+        let black = app.buttons["settings_appearance_pureBlack"]
+        for _ in 0..<4 where !black.isHittable { app.swipeUp() }
+        XCTAssertTrue(black.isSelected)
+        app.buttons["settings_appearance_dark"].tap()
+    }
+
     @MainActor private func verifyDocumentFooter(
         _ app: XCUIApplication, above dock: XCUIElement, footerIdentifier: String = "legal_footer"
     ) {

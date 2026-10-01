@@ -8,6 +8,7 @@ struct SearchView: View {
     @Environment(DIContainer.self) private var container
     @FocusState private var isSearchFocused: Bool
     @State private var songForPlaylist: Song?
+    @State private var showSearchSettings = false
 
     init(viewModel: SearchViewModel) {
         self.viewModel = viewModel
@@ -15,12 +16,15 @@ struct SearchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            searchScopePicker
             searchBar
             if !viewModel.query.isEmpty {
                 filterChips
             }
 
-            if let errorMessage = viewModel.error {
+            if !viewModel.searchesLibrary && !viewModel.isOnlineConfigured {
+                onlineSearchSetup
+            } else if let errorMessage = viewModel.error {
                 ErrorStateView(errorMessage) {
                     Task { viewModel.search() }
                 }
@@ -36,15 +40,23 @@ struct SearchView: View {
                 searchHistorySection
             } else if !viewModel.query.isEmpty {
                 searchEmptyState
+            } else if viewModel.searchesLibrary {
+                librarySearchIntro
             } else {
                 exploreSection
             }
         }
         .task {
-            viewModel.loadExplore()
+            if !viewModel.searchesLibrary && viewModel.isOnlineConfigured {
+                viewModel.loadExplore()
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.Colors.backgroundPrimary)
         .navigationTitle("Search")
+        .sheet(isPresented: $showSearchSettings) {
+            NavigationStack { OnlineSearchSettingsView() }
+        }
         .sheet(item: $songForPlaylist) { song in
             AddToPlaylistSheet(
                 song: song,
@@ -57,6 +69,84 @@ struct SearchView: View {
     }
 
     // MARK: - Search Bar
+
+    private var searchScopePicker: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            scopeButton("線上音樂", library: false, identifier: "search_scope_online")
+            scopeButton("媒體庫", library: true, identifier: "search_scope_library")
+            Spacer()
+            Button {
+                showSearchSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .foregroundStyle(Theme.Colors.brandGradient)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("線上搜尋設定")
+            .accessibilityIdentifier("search_settings")
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+    }
+
+    private func scopeButton(_ title: String, library: Bool, identifier: String) -> some View {
+        Button {
+            viewModel.selectLibraryScope(library)
+        } label: {
+            Text(title)
+                .font(Theme.Typography.subheadline)
+                .padding(.horizontal, Theme.Spacing.md)
+                .frame(minHeight: 44)
+                .foregroundStyle(viewModel.searchesLibrary == library
+                    ? Theme.Colors.textPrimary : Theme.Colors.textSecondary)
+                .background(Theme.Colors.surfaceCard, in: Capsule())
+                .overlay(Capsule().stroke(
+                    viewModel.searchesLibrary == library
+                        ? AnyShapeStyle(Theme.Colors.brandGradient)
+                        : AnyShapeStyle(Color.clear), lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier)
+        .accessibilityAddTraits(viewModel.searchesLibrary == library ? .isSelected : [])
+    }
+
+    private var onlineSearchSetup: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "magnifyingglass")
+                .font(.largeTitle)
+                .foregroundStyle(Theme.Colors.brandGradient)
+            Text("設定 YouTube 線上搜尋")
+                .font(Theme.Typography.headline)
+            Text("加入 YouTube Data API 金鑰後即可搜尋線上歌曲。已匯入的歌曲與歌單可切換至「媒體庫」搜尋。")
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+            Button("設定搜尋金鑰") { showSearchSettings = true }
+                .buttonStyle(.borderedProminent)
+                .tint(Theme.Colors.brandGradientStart)
+                .accessibilityIdentifier("search_configure_key")
+        }
+        .padding(Theme.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .dockSafeBottom()
+    }
+
+    private var librarySearchIntro: some View {
+        VStack(spacing: Theme.Spacing.md) {
+            Image(systemName: "music.note.list")
+                .font(.largeTitle)
+                .foregroundStyle(Theme.Colors.brandGradient)
+            Text("搜尋你的媒體庫")
+                .font(Theme.Typography.headline)
+            Text("搜尋已匯入歌單、喜愛歌曲與最近播放，輸入歌曲、歌手或歌單名稱。")
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(Theme.Colors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(Theme.Spacing.xl)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .dockSafeBottom()
+    }
 
     private var searchBar: some View {
         HStack(spacing: Theme.Spacing.sm) {
@@ -74,6 +164,7 @@ struct SearchView: View {
                     .foregroundStyle(Theme.Colors.textPrimary)
                     .submitLabel(.search)
                     .accessibilityLabel("Search songs, artists, albums")
+                    .accessibilityIdentifier("search_query")
                     .onSubmit {
                         isSearchFocused = false
                         Task { viewModel.search() }
@@ -394,7 +485,7 @@ struct SearchView: View {
     private var filterChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Theme.Spacing.sm) {
-                ForEach(SearchFilter.allCases, id: \.self) { filter in
+                ForEach(viewModel.availableFilters, id: \.self) { filter in
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             viewModel.selectFilter(

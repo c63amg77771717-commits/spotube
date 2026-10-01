@@ -138,7 +138,9 @@ final class DIContainer {
         self.pushTokenRepository = pushRepo
 
         // Use Cases — browse-related use cases go through content repo
-        self.searchMusicUseCase = SearchMusicUseCase(repository: contentRepo)
+        self.searchMusicUseCase = SearchMusicUseCase(
+            repository: contentRepo, playlistRepository: playlistRepo,
+            favoritesRepository: favoritesRepo)
         self.browseHomeUseCase = BrowseHomeUseCase(repository: contentRepo)
         self.getArtistUseCase = GetArtistUseCase(repository: contentRepo)
         self.getAlbumUseCase = GetAlbumUseCase(repository: contentRepo)
@@ -264,7 +266,8 @@ final class DIContainer {
             )
         )
         self.searchViewModel = SearchViewModel(
-            searchUseCase: searchMusicUseCase, browseHomeUseCase: browseHomeUseCase)
+            searchUseCase: searchMusicUseCase, browseHomeUseCase: browseHomeUseCase,
+            searchesLibrary: !isReviewMode && !searchMusicUseCase.isOnlineConfigured)
         self.libraryViewModel = LibraryViewModel(
             managePlaylistUseCase: managePlaylistUseCase,
             manageFavoritesUseCase: manageFavoritesUseCase)

@@ -23,6 +23,12 @@ enum SecretsProvider {
 
     // MARK: - YouTube InnerTube
 
+    /// Official public metadata/search key, supplied by CI or overridden in Keychain.
+    /// This is separate from InnerTube playback/source configuration.
+    static var youtubeDataAPIKey: String {
+        nonEmpty(secrets["YOUTUBE_DATA_API_KEY"]) ?? ""
+    }
+
     static var innerTubeKeyWebRemix: String {
         nonEmpty(secrets["INNERTUBE_KEY_WEB_REMIX"]) ?? ""
     }

@@ -192,13 +192,15 @@ struct SongRowView: View {
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("More options for \(song.title)")
+                    .accessibilityIdentifier("song_menu_\(song.id)")
                 }
             }
             // Round 2 SongRow recipe: 8pt vertical padding, 56pt min height.
             // Horizontal padding is owned by the parent list (lg/16pt) to avoid
             // compounding with existing call sites.
             .padding(.vertical, Theme.Spacing.sm)
-            .frame(minHeight: 56)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(SongRowButtonStyle())
@@ -217,6 +219,7 @@ struct SongRowView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(song.title) by \(song.artistName)")
         .accessibilityHint("Double tap to play")
+        .accessibilityIdentifier("song_row_\(song.id)")
     }
 }
 

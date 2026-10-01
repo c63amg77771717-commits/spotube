@@ -318,11 +318,14 @@ struct LibraryView: View {
 
                             Spacer()
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, Theme.Spacing.xxs)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, Theme.Spacing.lg)
                     .accessibilityLabel("Create new playlist")
+                    .accessibilityIdentifier("library_create_playlist")
 
                     // Liked Songs row
                     NavigationLink(value: Route.likedSongs) {
@@ -358,12 +361,15 @@ struct LibraryView: View {
                                 .font(.caption)
                                 .foregroundStyle(Theme.Colors.textTertiary)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, Theme.Spacing.xxs)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.horizontal, Theme.Spacing.lg)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Liked Songs, \(viewModel.favoritesCount) songs")
+                    .accessibilityIdentifier("library_liked_songs")
 
                     // Downloads row
                     if featureFlags.isDownloadEnabled {
@@ -393,12 +399,15 @@ struct LibraryView: View {
                                     .font(.caption)
                                     .foregroundStyle(Theme.Colors.textTertiary)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, Theme.Spacing.xxs)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, Theme.Spacing.lg)
                         .accessibilityElement(children: .combine)
                         .accessibilityLabel("Downloads, \(downloadManager.downloadCount) songs")
+                        .accessibilityIdentifier("library_downloads")
                     }
                 }
 
@@ -443,17 +452,20 @@ struct LibraryView: View {
 
                                     playlistRowContent(playlist: playlist)
                                 }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, Theme.Spacing.lg)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(selectedPlaylists.contains(playlist.id) ? "Deselect \(playlist.title)" : "Select \(playlist.title)")
+                            .accessibilityIdentifier("library_playlist_\(playlist.id)")
                         } else {
                             NavigationLink(value: Route.playlist(playlistId: playlist.id)) {
                                 playlistRowContent(playlist: playlist)
                             }
                             .buttonStyle(.plain)
                             .padding(.horizontal, Theme.Spacing.lg)
+                            .accessibilityIdentifier("library_playlist_\(playlist.id)")
                             .contextMenu {
                                 if searchText.isEmpty {
                                     Button {
@@ -512,7 +524,9 @@ struct LibraryView: View {
                     .foregroundStyle(Theme.Colors.textTertiary)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, Theme.Spacing.xxs)
+        .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(playlist.title), \(playlist.songs.count) songs")
     }

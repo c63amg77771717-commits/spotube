@@ -491,17 +491,22 @@ private struct PlaylistSongRowView: View {
                             Image(systemName: "ellipsis")
                                 .foregroundStyle(Theme.Colors.textTertiary)
                                 .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
+                        .accessibilityLabel("More options for \(song.title)")
+                        .accessibilityIdentifier("playlist_song_menu_\(song.id)")
                     }
                 }
                 .padding(.vertical, Theme.Spacing.sm)
+                .padding(.horizontal, Theme.Spacing.lg)
+                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, Theme.Spacing.lg)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("\(song.title) by \(song.artistName)")
             .accessibilityHint(editMode == .active ? "Double tap to select" : "Double tap to play")
+            .accessibilityIdentifier("playlist_song_row_\(song.id)")
 
             if index < totalCount - 1 {
                 Rectangle()

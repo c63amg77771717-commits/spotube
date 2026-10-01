@@ -9,6 +9,18 @@ final class SearchViewModel {
         didSet { onQueryChanged() }
     }
     private(set) var selectedFilter: SearchFilter?
+    private(set) var searchesLibrary: Bool
+
+    var availableFilters: [SearchFilter] {
+        if searchesLibrary { return [.songs, .playlists] }
+        if !SecretsProvider.youtubeDataAPIKey.isEmpty
+            || !((try? YouTubeSearchKeyStore().read()) ?? "").isEmpty {
+            return [.songs]
+        }
+        return SearchFilter.allCases
+    }
+
+    var isOnlineConfigured: Bool { searchUseCase.isOnlineConfigured }
 
     private(set) var suggestions: [String] = []
     private(set) var results: SearchResult = .empty
@@ -96,9 +108,11 @@ final class SearchViewModel {
     @ObservationIgnored
     private var exploreTask: Task<Void, Never>?
 
-    init(searchUseCase: SearchMusicUseCase, browseHomeUseCase: BrowseHomeUseCase) {
+    init(searchUseCase: SearchMusicUseCase, browseHomeUseCase: BrowseHomeUseCase,
+         searchesLibrary: Bool = false) {
         self.searchUseCase = searchUseCase
         self.browseHomeUseCase = browseHomeUseCase
+        self.searchesLibrary = searchesLibrary
         loadHistory()
     }
 
@@ -121,6 +135,7 @@ final class SearchViewModel {
             selectedFilter = .songs
         }
         let submittedFilter = selectedFilter
+        let submittedLibraryScope = searchesLibrary
 
         invalidateResultRequests()
         let generation = requestGeneration
@@ -140,10 +155,14 @@ final class SearchViewModel {
             }
 
             do {
-                let result = try await searchUseCase.execute(
-                    query: submittedQuery,
-                    filter: submittedFilter
-                )
+                let result: SearchResult
+                if submittedLibraryScope {
+                    result = try await searchUseCase.executeLibrary(
+                        query: submittedQuery, filter: submittedFilter)
+                } else {
+                    result = try await searchUseCase.executeOnline(
+                        query: submittedQuery, filter: submittedFilter)
+                }
                 guard !Task.isCancelled, requestGeneration == generation else { return }
 
                 results = normalizedResult(ContentPreferences.filtered(result))
@@ -205,6 +224,14 @@ final class SearchViewModel {
         shouldApplyDefaultFilter = false
     }
 
+    func selectLibraryScope(_ library: Bool) {
+        guard searchesLibrary != library else { return }
+        searchesLibrary = library
+        resetFilterToDefault()
+        onQueryChanged()
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { search() }
+    }
+
     func resetFilterToDefault() {
         selectedFilter = nil
         shouldApplyDefaultFilter = true
@@ -216,7 +243,7 @@ final class SearchViewModel {
     }
 
     func loadTrending() {
-        guard trendingSuggestions.isEmpty else { return }
+        guard !searchesLibrary, trendingSuggestions.isEmpty else { return }
         trendingTask?.cancel()
         trendingTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
@@ -320,7 +347,13 @@ final class SearchViewModel {
     private func fetchSuggestions(query: String, generation: Int) async {
         guard !Task.isCancelled, requestGeneration == generation else { return }
         do {
-            let result = try await searchUseCase.suggestions(query: query)
+            let result: [String]
+            if searchesLibrary {
+                let matches = try await searchUseCase.executeLibrary(query: query, filter: .songs)
+                result = Array(matches.songs.map(\.title).prefix(8))
+            } else {
+                result = try await searchUseCase.suggestions(query: query)
+            }
             guard !Task.isCancelled, requestGeneration == generation else { return }
             suggestions = result
         } catch {
