@@ -89,6 +89,7 @@ struct DockMiniPlayer: View {
             .buttonStyle(.bouncy)
             .frame(width: 44, height: 44)
             .accessibilityLabel(playerVM.isPlaying ? LocalizationManager.text("Pause") : LocalizationManager.text("Play"))
+            .accessibilityIdentifier("dock_play_pause")
         }
     }
 }

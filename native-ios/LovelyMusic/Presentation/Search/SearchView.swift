@@ -169,7 +169,7 @@ struct SearchView: View {
                             viewModel.query = chip.searchTerm
                             Task { viewModel.search() }
                         } label: {
-                            Label(String(localized: chip.displayKey), systemImage: chip.icon)
+                            Label(LocalizationManager.text(chip.displayKey), systemImage: chip.icon)
                                 .font(Theme.Typography.subheadline)
                                 .fontWeight(.medium)
                                 .foregroundStyle(Theme.Colors.textPrimary)
@@ -179,7 +179,7 @@ struct SearchView: View {
                                 .background(Theme.Colors.surfaceCard, in: Capsule())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Search \(String(localized: chip.displayKey))")
+                        .accessibilityLabel("Search \(LocalizationManager.text(chip.displayKey))")
                     }
                 }
                 .padding(.horizontal, Theme.Spacing.lg)

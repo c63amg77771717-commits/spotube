@@ -632,7 +632,7 @@ final class PlayerViewModel {
                         "Halting auto-skip after \(self.consecutiveAutoSkipFailures) consecutive unavailable songs"
                     )
                     streamError =
-                        "Nhiều bài hát trong hàng đợi không khả dụng. Vui lòng chọn bài khác."
+                        "佇列中的多首歌曲無法播放，請選擇其他歌曲。"
                     autoSkipTask?.cancel()
                     return
                 }
@@ -661,7 +661,7 @@ final class PlayerViewModel {
                         "Halting auto-skip after \(self.consecutiveAutoSkipFailures) consecutive failures"
                     )
                     streamError =
-                        "Không thể phát các bài hát gần đây. Vui lòng kiểm tra kết nối hoặc chọn bài khác."
+                        "最近幾首歌曲播放失敗，請檢查網路連線或選擇其他歌曲。"
                     autoSkipTask?.cancel()
                     return
                 }

@@ -284,6 +284,31 @@ struct DownloadsView: View {
         }
     }
 
+    private var selectionHeader: some View {
+        HStack {
+            Text("\(selectedSongs.count) selected")
+                .font(Theme.Typography.subheadline)
+                .foregroundStyle(Theme.Colors.textSecondary)
+            Spacer()
+            Button(
+                selectedSongs.count == downloadManager.downloadedSongs.count
+                    ? "Deselect All" : "Select All"
+            ) {
+                withAnimation(Theme.AnimationPresets.gentle) {
+                    if selectedSongs.count == downloadManager.downloadedSongs.count {
+                        selectedSongs.removeAll()
+                    } else {
+                        selectedSongs = Set(downloadManager.downloadedSongs.map(\.song.id))
+                    }
+                }
+            }
+            .font(Theme.Typography.subheadline.weight(.semibold))
+            .foregroundStyle(Theme.Colors.brandGradient)
+        }
+        .padding(.horizontal, Theme.Spacing.lg)
+        .padding(.vertical, Theme.Spacing.sm)
+    }
+
     // MARK: - Selection
 
     private func toggleSelection(_ id: String) {

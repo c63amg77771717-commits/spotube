@@ -56,7 +56,7 @@ struct SettingsView: View {
                     NavigationLink {
                         PlaybackAudioSettingsView(
                             viewModel: viewModel,
-                            equalizerPresetName: equalizerManager.selectedPreset.name,
+                            equalizerPresetName: equalizerManager.selectedPreset.localizedName,
                             sleepTimerIsActive: sleepTimerManager.isActive,
                             sleepTimerFormatted: sleepTimerManager.formattedRemaining,
                             audioQualityPicker: AnyView(audioQualityPicker),
@@ -243,7 +243,7 @@ struct SettingsView: View {
     private func settingsNavCard(
         icon: String,
         accentColor: Color,
-        title: String,
+        title: LocalizedStringKey,
         subtitle: String,
         badge: String? = nil
     ) -> some View {
@@ -412,7 +412,7 @@ struct SettingsView: View {
 
     private var playbackSubtitle: String {
         let quality = viewModel.audioQuality.displayName
-        let eq = equalizerManager.selectedPreset.name
+        let eq = equalizerManager.selectedPreset.localizedName
         return "\(quality)音質 · \(eq)"
     }
 

@@ -326,6 +326,7 @@ struct EvanTubeHomeView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("home_song_\(song.id)")
     }
 
     private func onlineRow(_ item: EvanTubeOnlineItem) -> some View {

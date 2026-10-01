@@ -21,7 +21,7 @@ struct MB3ImportView: View {
                     Button {
                         showFilePicker = true
                     } label: {
-                        Label("選取 MB3 ZIP", systemImage: "square.and.arrow.down")
+                        Label("選取歌單 ZIP", systemImage: "square.and.arrow.down")
                             .frame(maxWidth: .infinity)
                             .padding(12)
                     }
@@ -97,7 +97,7 @@ struct MB3ImportView: View {
                 .padding(20)
             }
             .background(Theme.Colors.backgroundPrimary)
-            .navigationTitle("匯入 MB3 歌單")
+            .navigationTitle("匯入歌單")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

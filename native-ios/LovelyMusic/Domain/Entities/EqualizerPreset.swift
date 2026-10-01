@@ -7,7 +7,7 @@ struct EqualizerPreset: Codable, Identifiable, Equatable, Hashable {
     let bands: [Float]
 
     var localizedName: String {
-        String(localized: String.LocalizationValue(name))
+        LocalizationManager.text(String.LocalizationValue(name))
     }
 
     static let frequencyLabels = ["32", "64", "125", "250", "500", "1K", "2K", "4K", "8K", "16K"]

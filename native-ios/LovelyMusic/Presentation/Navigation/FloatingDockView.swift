@@ -60,26 +60,34 @@ struct FloatingDockView: View {
     }
 }
 
-/// Isolated sub-view: only this tiny progress bar re-renders every 0.5s,
-/// instead of the entire FloatingDockView + DockMiniPlayer + DockTabBar.
+/// Progress updates and scrubbing stay isolated from the rest of the dock.
 private struct DockProgressBar: View {
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(PlaybackProgress.self) private var playbackProgress
+    @State private var sliderValue = 0.0
+    @State private var isSeeking = false
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Theme.Colors.divider)
-                    .frame(height: 2.5)
-                PlaybackGradient(isPlaying: playerVM.isPlaying)
-                    .clipShape(Capsule())
-                    .frame(width: max(0, geo.size.width * playbackProgress.progress), height: 2.5)
-                    .shadow(color: Theme.Colors.brandGradientStart.opacity(0.6), radius: 4, y: 0)
-                    .animation(.linear(duration: 0.5), value: playbackProgress.progress)
-            }
+        ProgressSlider(
+            value: Binding(
+                get: { isSeeking ? sliderValue : playbackProgress.progress },
+                set: { sliderValue = $0; isSeeking = true }
+            ),
+            isPlaying: playerVM.isPlaying,
+            onEditingChanged: { editing in
+                if !editing { playerVM.seekToProgress(sliderValue) }
+            },
+            duration: playbackProgress.duration
+        )
+        .padding(.horizontal, Theme.Spacing.lg)
+        .disabled(playbackProgress.duration <= 0)
+        .accessibilityIdentifier("dock_progress_slider")
+        .onChange(of: playbackProgress.progress) { _, progress in
+            if isSeeking, abs(progress - sliderValue) < 0.005 { isSeeking = false }
         }
-        .frame(height: 2.5)
-        .transition(.opacity.animation(.easeIn(duration: 0.3).delay(0.1)))
+        .onChange(of: playerVM.currentSong?.id) {
+            isSeeking = false
+            sliderValue = 0
+        }
     }
 }

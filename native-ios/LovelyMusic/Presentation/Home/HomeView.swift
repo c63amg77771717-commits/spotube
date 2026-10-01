@@ -24,7 +24,7 @@ struct HomeView: View {
         self.viewModel = viewModel
     }
 
-    private var greetingText: LocalizedStringKey {
+    private var greetingText: String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
         case 5..<12: return LocalizationManager.text("Good Morning")
