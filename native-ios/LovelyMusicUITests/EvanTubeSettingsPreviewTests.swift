@@ -132,6 +132,33 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         save(app, name: "00-新版載入畫面")
     }
 
+    @MainActor func testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW"]
+        app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launch()
+        let library = app.buttons["tab_library"]
+        XCTAssertTrue(library.waitForExistence(timeout: 30))
+        library.tap()
+        app.buttons["Create new playlist"].tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        let title = "列點擊測試"
+        alert.textFields.firstMatch.tap()
+        alert.textFields.firstMatch.typeText(title)
+        alert.buttons["建立"].tap()
+        let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
+        for _ in 0..<5 where !row.isHittable { app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
+        let opened = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: app.buttons["library_settings"]
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 5), .completed,
+                       "Tapping the blank area of a playlist row must open the playlist")
+        save(app, name: "08-歌單整列點擊")
+    }
+
     @MainActor private func verifyDocumentFooter(
         _ app: XCUIApplication, above dock: XCUIElement, footerIdentifier: String = "legal_footer"
     ) {
