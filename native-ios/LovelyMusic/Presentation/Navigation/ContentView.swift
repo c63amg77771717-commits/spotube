@@ -162,11 +162,12 @@ struct ContentView: View {
         .task {
             #if DEBUG
             // Explicit UI-preview fixture uses bundled licensed audio.
-            if ProcessInfo.processInfo.environment["REVIEW_MODE"] == "1",
-               let trackID = ProcessInfo.processInfo.environment["EVANTUBE_PREVIEW_TRACK"],
-               let result = try? await container.innerTubeRepository.search(query: "", filter: .songs),
-               let song = result.songs.first(where: { $0.id == trackID }) {
-                playerVM.play(song: song)
+            if CommandLine.arguments.contains("-evantubeSettingsPreview") {
+                playerVM.play(song: Song(
+                    id: "demo_song_morning_light", title: "Arcadia", artistName: "Kevin MacLeod",
+                    artistId: nil, albumName: "Peaceful Moments", albumId: nil,
+                    duration: 98, thumbnailURL: "demo_album_peaceful"
+                ))
             }
             #endif
             _ = await container.apnsManager.requestPushAuthorization()

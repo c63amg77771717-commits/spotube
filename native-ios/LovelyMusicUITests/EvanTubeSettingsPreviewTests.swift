@@ -8,9 +8,9 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             "-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
             "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW",
             "-disableScreenshots", "NO",
+            "-evantubeSettingsPreview",
         ]
         app.launchEnvironment["REVIEW_MODE"] = "1"
-        app.launchEnvironment["EVANTUBE_PREVIEW_TRACK"] = "demo_song_morning_light"
         addUIInterruptionMonitor(withDescription: "System permissions") { alert in
             for label in ["不允許", "Don't Allow", "Don’t Allow", "允許", "Allow"] {
                 if alert.buttons[label].exists { alert.buttons[label].tap(); return true }
@@ -18,6 +18,7 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             return false
         }
         app.launch()
+        save(app, name: "00-預覽啟動狀態")
         let playPause = app.buttons["dock_play_pause"]
         XCTAssertTrue(playPause.waitForExistence(timeout: 30))
         let playing = XCTNSPredicateExpectation(
