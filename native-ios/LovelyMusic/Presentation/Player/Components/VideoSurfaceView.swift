@@ -16,7 +16,8 @@ struct VideoSurfaceView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PlayerLayerUIView {
         let view = PlayerLayerUIView()
-        view.backgroundColor = .black
+        view.backgroundColor = .clear
+        view.isOpaque = false
         view.playerLayer.player = player
         view.playerLayer.videoGravity = videoGravity
         return view

@@ -123,9 +123,10 @@ final class AudioEngine {
         }
     }
 
-    var shuffleEnabled: Bool = false {
+    var shuffleEnabled: Bool = UserDefaults.standard.bool(forKey: "playbackShuffleEnabled") {
         didSet {
             guard oldValue != shuffleEnabled else { return }
+            UserDefaults.standard.set(shuffleEnabled, forKey: "playbackShuffleEnabled")
             playbackPolicyRevision &+= 1
             invalidateCrossfadePreparation(clearReservation: true)
             if shuffleEnabled {
@@ -138,11 +139,14 @@ final class AudioEngine {
             savePlaybackState()
         }
     }
-    var repeatMode: RepeatMode = .off {
+    var repeatMode: RepeatMode = RepeatMode(rawValue:
+        UserDefaults.standard.string(forKey: "playbackRepeatMode") ?? "off") ?? .off {
         didSet {
             guard oldValue != repeatMode else { return }
+            UserDefaults.standard.set(repeatMode.rawValue, forKey: "playbackRepeatMode")
             playbackPolicyRevision &+= 1
             invalidateCrossfadePreparation(clearReservation: true)
+            savePlaybackState()
         }
     }
 
@@ -1218,10 +1222,14 @@ final class AudioEngine {
         self.queue = state.queue
         self.autoplayQueue = state.autoplayQueue
         self.currentIndex = state.currentIndex
-        self.shuffleEnabled = state.shuffleEnabled
-        if let mode = RepeatMode(rawValue: state.repeatMode) {
+        if UserDefaults.standard.object(forKey: "playbackShuffleEnabled") == nil {
+            self.shuffleEnabled = state.shuffleEnabled
+        }
+        if UserDefaults.standard.object(forKey: "playbackRepeatMode") == nil,
+           let mode = RepeatMode(rawValue: state.repeatMode) {
             self.repeatMode = mode
         }
+        if shuffleEnabled { generateShuffledOrder() }
         // Set current track so the UI shows the restored song, but don't trigger playback
         if state.currentIndex >= 0, state.currentIndex < state.queue.count {
             self.currentTrack = state.queue[state.currentIndex]

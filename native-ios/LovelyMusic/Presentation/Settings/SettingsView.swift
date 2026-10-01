@@ -160,6 +160,8 @@ struct SettingsView: View {
         .alert("Reset All Settings?", isPresented: $viewModel.showResetAllAlert) {
             Button("Reset", role: .destructive) {
                 viewModel.resetAllSettings()
+                container.audioEngine.shuffleEnabled = false
+                container.audioEngine.repeatMode = .off
             }
             Button("Cancel", role: .cancel) {}
         } message: {

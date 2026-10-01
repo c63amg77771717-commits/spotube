@@ -321,6 +321,8 @@ final class SettingsViewModel {
         for key in keys {
             defaults.removeObject(forKey: key)
         }
+        defaults.set(false, forKey: "playbackShuffleEnabled")
+        defaults.set("off", forKey: "playbackRepeatMode")
 
         // Re-seed local state from cleared UserDefaults so UI reflects defaults.
         playbackQualitySettings.resetToDefaults()

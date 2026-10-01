@@ -132,6 +132,8 @@ final class RemotePrefetchPolicyTests: XCTestCase {
 
     private var savedMetadataFile: Data?
     private var didIsolateMetadataFile = false
+    private let playbackModeKeys = ["playbackShuffleEnabled", "playbackRepeatMode"]
+    private var savedPlaybackModes: [String: Any] = [:]
 
     private var metadataFileURL: URL {
         FileManager.default.urls(
@@ -156,6 +158,10 @@ final class RemotePrefetchPolicyTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        savedPlaybackModes = Dictionary(uniqueKeysWithValues: playbackModeKeys.compactMap { key in
+            UserDefaults.standard.object(forKey: key).map { (key, $0) }
+        })
+        playbackModeKeys.forEach { UserDefaults.standard.removeObject(forKey: $0) }
 
         let fileManager = FileManager.default
         savedMetadataFile = nil
@@ -181,6 +187,11 @@ final class RemotePrefetchPolicyTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        for key in playbackModeKeys {
+            if let value = savedPlaybackModes[key] { UserDefaults.standard.set(value, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        savedPlaybackModes = [:]
         URLProtocol.unregisterClass(RemotePrefetchBodyURLProtocol.self)
         RemotePrefetchBodyURLProtocol.reset()
 
