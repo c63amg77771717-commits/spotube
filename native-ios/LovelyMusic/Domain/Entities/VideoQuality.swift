@@ -17,7 +17,7 @@ enum VideoQuality: String, CaseIterable {
         case .hd1080: return "1080p Full HD"
         case .qhd1440: return "1440p 2K"
         case .uhd2160: return "2160p 4K"
-        case .auto: return String(localized: "Auto (Highest)")
+        case .auto: return LocalizationManager.text("Auto (Highest)")
         }
     }
 

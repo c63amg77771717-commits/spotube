@@ -4,6 +4,7 @@ import SwiftUI
 @MainActor @Observable
 final class LocalizationManager {
     enum Language: String, CaseIterable, Identifiable {
+        case traditionalChinese = "zh-Hant"
         case english = "en"
         case japanese = "ja"
         case vietnamese = "vi"
@@ -12,6 +13,7 @@ final class LocalizationManager {
 
         var displayName: String {
             switch self {
+            case .traditionalChinese: "繁體中文"
             case .english: "English"
             case .japanese: "日本語"
             case .vietnamese: "Tiếng Việt"
@@ -20,6 +22,7 @@ final class LocalizationManager {
 
         var flag: String {
             switch self {
+            case .traditionalChinese: "🇹🇼"
             case .english: "🇺🇸"
             case .japanese: "🇯🇵"
             case .vietnamese: "🇻🇳"
@@ -32,6 +35,7 @@ final class LocalizationManager {
         /// Default InnerTube region code (`gl`) paired with this language
         var contentRegion: String {
             switch self {
+            case .traditionalChinese: "TW"
             case .english: "US"
             case .japanese: "JP"
             case .vietnamese: "VN"
@@ -56,14 +60,19 @@ final class LocalizationManager {
     private(set) var refreshToken: UUID = UUID()
 
     init() {
-        let saved = UserDefaults.standard.string(forKey: Self.defaultsKey) ?? "en"
-        let lang = Language(rawValue: saved) ?? .english
+        let saved = UserDefaults.standard.string(forKey: Self.defaultsKey) ?? "zh-Hant"
+        let lang = Language(rawValue: saved) ?? .traditionalChinese
         self.currentLanguage = lang
         self.locale = Locale(identifier: lang.rawValue)
     }
 
     func localizedString(_ key: String.LocalizationValue) -> String {
-        let langCode = currentLanguage.rawValue
+        Self.text(key)
+    }
+
+    nonisolated static func text(_ key: String.LocalizationValue) -> String {
+        let saved = UserDefaults.standard.string(forKey: "appLanguage") ?? "zh-Hant"
+        let langCode = ["zh-Hant", "en", "ja", "vi"].contains(saved) ? saved : "zh-Hant"
         guard let path = Bundle.main.path(forResource: langCode, ofType: "lproj"),
               let bundle = Bundle(path: path) else {
             return String(localized: key)

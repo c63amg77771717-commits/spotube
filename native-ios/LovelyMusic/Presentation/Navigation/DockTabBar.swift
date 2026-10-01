@@ -32,18 +32,13 @@ struct DockTabBar: View {
                                 tab.pulseIcon,
                                 size: Theme.SizeTokens.iconMedium,
                                 color: Theme.Colors.textSecondary,
-                                usesBrandGradient: isSelected
+                                usesBrandGradient: true
                             )
 
-                            if isSelected {
-                                Text(tab.label)
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(Theme.Colors.brandGradient)
-                            } else {
-                                Text(tab.label)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Theme.Colors.textSecondary)
-                            }
+                            Text(tab.label)
+                                .font(.system(size: 10, weight: isSelected ? .semibold : .regular))
+                                .foregroundStyle(Theme.Colors.brandGradient)
+                                .opacity(isSelected ? 1 : 0.75)
 
                             // Dot indicator
                             Circle()
@@ -61,7 +56,7 @@ struct DockTabBar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("tab_\(tab.rawValue)")
-                .accessibilityLabel("\(tab.label) tab")
+                .accessibilityLabel(tab.label)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }

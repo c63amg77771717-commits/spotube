@@ -27,7 +27,7 @@ struct CustomCloseButton: View {
             .frame(minWidth: Theme.SizeTokens.touchTarget, minHeight: Theme.SizeTokens.touchTarget)
         }
         .buttonStyle(.bouncy)
-        .accessibilityLabel(String(localized: "Close"))
+        .accessibilityLabel(LocalizationManager.text("Close"))
     }
 }
 

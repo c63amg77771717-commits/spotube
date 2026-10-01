@@ -84,7 +84,7 @@ struct LanguageRegionSettingsView: View {
                     ) {
                         CustomMenuPicker(
                             selection: $viewModel.region,
-                            options: ["VN", "US", "JP", "KR"],
+                            options: ["TW", "HK", "VN", "US", "JP", "KR"],
                             label: { regionDisplayName($0) },
                             icon: nil
                         )
@@ -99,7 +99,7 @@ struct LanguageRegionSettingsView: View {
                     ) {
                         CustomMenuPicker(
                             selection: $viewModel.language,
-                            options: ["vi", "en", "ja", "ko"],
+                            options: ["zh-Hant", "vi", "en", "ja", "ko"],
                             label: { languageDisplayName($0) },
                             icon: nil
                         )
@@ -133,20 +133,23 @@ struct LanguageRegionSettingsView: View {
 
     private func regionDisplayName(_ code: String) -> String {
         switch code {
-        case "VN": return String(localized: "🇻🇳 Vietnam")
-        case "US": return String(localized: "🇺🇸 United States")
-        case "JP": return String(localized: "🇯🇵 Japan")
-        case "KR": return String(localized: "🇰🇷 Korea")
+        case "TW": return LocalizationManager.text("🇹🇼 Taiwan")
+        case "HK": return LocalizationManager.text("🇭🇰 Hong Kong")
+        case "VN": return LocalizationManager.text("🇻🇳 Vietnam")
+        case "US": return LocalizationManager.text("🇺🇸 United States")
+        case "JP": return LocalizationManager.text("🇯🇵 Japan")
+        case "KR": return LocalizationManager.text("🇰🇷 Korea")
         default: return code
         }
     }
 
     private func languageDisplayName(_ code: String) -> String {
         switch code {
-        case "vi": return String(localized: "🇻🇳 Vietnamese")
-        case "en": return String(localized: "🇺🇸 English")
-        case "ja": return String(localized: "🇯🇵 Japanese")
-        case "ko": return String(localized: "🇰🇷 Korean")
+        case "zh-Hant": return LocalizationManager.text("繁體中文")
+        case "vi": return LocalizationManager.text("🇻🇳 Vietnamese")
+        case "en": return LocalizationManager.text("🇺🇸 English")
+        case "ja": return LocalizationManager.text("🇯🇵 Japanese")
+        case "ko": return LocalizationManager.text("🇰🇷 Korean")
         default: return code
         }
     }

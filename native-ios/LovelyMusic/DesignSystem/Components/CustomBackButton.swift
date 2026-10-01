@@ -44,7 +44,7 @@ struct CustomBackButton: View {
             .frame(minWidth: Theme.SizeTokens.touchTarget, minHeight: Theme.SizeTokens.touchTarget)
         }
         .buttonStyle(.bouncy)
-        .accessibilityLabel(String(localized: "Back"))
+        .accessibilityLabel(LocalizationManager.text("Back"))
     }
 }
 

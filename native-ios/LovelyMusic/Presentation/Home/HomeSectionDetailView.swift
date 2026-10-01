@@ -112,9 +112,10 @@ struct HomeSectionDetailView: View {
             NavigationLink(value: Route.playlist(playlistId: playlist.id)) {
                 cardRow(
                     title: playlist.title,
-                    subtitle: playlist.songCount.map { "\($0) songs" },
+                    subtitle: playlist.songCount.map { LocalizationManager.text("\($0) songs") },
                     thumbnailURL: playlist.thumbnailURL,
-                    cornerRadius: Theme.CornerRadius.small
+                    cornerRadius: Theme.CornerRadius.small,
+                    playlist: playlist
                 )
             }
             .buttonStyle(.plain)
@@ -141,10 +142,15 @@ struct HomeSectionDetailView: View {
         title: String,
         subtitle: String?,
         thumbnailURL: String?,
-        cornerRadius: CGFloat
+        cornerRadius: CGFloat,
+        playlist: Playlist? = nil
     ) -> some View {
         HStack(spacing: Theme.Spacing.md) {
-            AsyncThumbnail(url: thumbnailURL, size: 56, cornerRadius: cornerRadius)
+            if let playlist {
+                PlaylistCoverThumbnail(playlist: playlist, size: 56, cornerRadius: cornerRadius)
+            } else {
+                AsyncThumbnail(url: thumbnailURL, size: 56, cornerRadius: cornerRadius)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

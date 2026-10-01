@@ -53,7 +53,7 @@ enum PremiumError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .productNotFound:
-            return String(localized: "The selected product could not be found.")
+            return LocalizationManager.text("The selected product could not be found.")
         }
     }
 }

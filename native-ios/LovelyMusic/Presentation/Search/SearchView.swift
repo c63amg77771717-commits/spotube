@@ -312,7 +312,7 @@ struct SearchView: View {
         case .playlist(let playlist):
             NavigationLink(value: Route.playlist(playlistId: playlist.id)) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    AsyncThumbnail(url: playlist.thumbnailURL, size: 150)
+                                            PlaylistCoverThumbnail(playlist: playlist, size: 150)
 
                     Text(playlist.title)
                         .font(Theme.Typography.caption)
@@ -453,44 +453,41 @@ struct SearchView: View {
                         .padding(.horizontal, Theme.Spacing.lg)
 
                         ForEach(viewModel.searchHistory, id: \.self) { term in
-                            Button {
-                                isSearchFocused = false
-                                viewModel.query = term
-                                Task { viewModel.search() }
-                            } label: {
-                                HStack(spacing: Theme.Spacing.sm) {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                        .font(.caption2)
-                                        .foregroundStyle(Theme.Colors.textTertiary)
-                                    Text(term)
-                                        .font(Theme.Typography.body)
-                                        .foregroundStyle(Theme.Colors.textPrimary)
-                                    Spacer()
-                                    Image(systemName: "arrow.up.left")
-                                        .font(.caption)
-                                        .foregroundStyle(Theme.Colors.textTertiary)
+                            HStack(spacing: Theme.Spacing.sm) {
+                                Button {
+                                    isSearchFocused = false
+                                    viewModel.query = term
+                                    Task { viewModel.search() }
+                                } label: {
+                                    HStack(spacing: Theme.Spacing.sm) {
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .font(.caption2)
+                                            .foregroundStyle(Theme.Colors.textTertiary)
+                                        Text(term)
+                                            .font(Theme.Typography.body)
+                                            .foregroundStyle(Theme.Colors.textPrimary)
+                                        Spacer()
+                                    }
+                                    .frame(minHeight: 44)
+                                    .contentShape(Rectangle())
                                 }
-                                .padding(.vertical, Theme.Spacing.xxs)
-                                .frame(minHeight: 44)
-                                .padding(.horizontal, Theme.Spacing.lg)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Search for \(term)")
-                            .overlay(alignment: .trailing) {
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Search for \(term)")
                                 Button {
                                     withAnimation {
                                         viewModel.deleteFromHistory(term)
                                     }
                                 } label: {
                                     Image(systemName: "xmark")
-                                        .font(.caption2)
-                                        .foregroundStyle(Theme.Colors.textTertiary)
-                                        .padding(Theme.Spacing.sm)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(Theme.Colors.textSecondary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
                                 .accessibilityLabel("Remove \(term) from history")
-                                .padding(.trailing, Theme.Spacing.lg)
                             }
+                            .padding(.horizontal, Theme.Spacing.lg)
                         }
                     }
                 }
@@ -968,8 +965,8 @@ struct SearchView: View {
 
     private func playlistRow(_ playlist: Playlist) -> some View {
         HStack(spacing: Theme.Spacing.md) {
-            AsyncThumbnail(
-                url: playlist.thumbnailURL, size: 56, cornerRadius: Theme.CornerRadius.small)
+                PlaylistCoverThumbnail(
+                    playlist: playlist, size: 56, cornerRadius: Theme.CornerRadius.small)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.title)

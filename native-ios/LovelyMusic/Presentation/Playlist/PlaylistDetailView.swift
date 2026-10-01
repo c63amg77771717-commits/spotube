@@ -1,4 +1,5 @@
 import Combine
+import PhotosUI
 import SwiftUI
 
 struct PlaylistDetailView: View {
@@ -10,9 +11,13 @@ struct PlaylistDetailView: View {
     @State private var topSafeAreaInset: CGFloat = 0
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(DownloadManager.self) private var downloadManager
-    @Environment(PremiumManager.self) private var premiumManager
     @Environment(FeatureFlagManager.self) private var featureFlags
-    @State private var showPaywall = false
+    @State private var coverStore = PlaylistCoverStore.shared
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var photoPlaylistId: String?
+    @State private var showPhotoPicker = false
+    @State private var showCoverError = false
+    @State private var coverError = ""
     @State private var showRemoveSongsConfirmation = false
 
     init(
@@ -37,9 +42,7 @@ struct PlaylistDetailView: View {
                 topSafeAreaInset = newValue
             }
             .background(Theme.Colors.backgroundPrimary)
-            .fullScreenCover(isPresented: $showPaywall) {
-                PaywallView()
-            }
+            .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
             .confirmationDialog(
                 "Remove \(selectedSongs.count) songs from playlist?",
                 isPresented: $showRemoveSongsConfirmation,
@@ -66,20 +69,40 @@ struct PlaylistDetailView: View {
                 if let playlist = viewModel.playlist {
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: Theme.Spacing.sm) {
-                            // Rename button (only for local playlists)
-                            if playlist.isLocal {
-                                Menu {
+                            Menu {
+                                Button {
+                                    photoPlaylistId = playlist.id
+                                    showPhotoPicker = true
+                                } label: {
+                                    Label("從相片選擇封面", systemImage: "photo")
+                                }
+                                Button {
+                                    selectedPhoto = nil
+                                    photoPlaylistId = nil
+                                    do {
+                                        try coverStore.restoreAutomaticCover(for: playlist.id)
+                                    } catch {
+                                        coverError = error.localizedDescription
+                                        showCoverError = true
+                                    }
+                                } label: {
+                                    Label("還原自動封面", systemImage: "arrow.counterclockwise")
+                                }
+                                .disabled(coverStore.cover(for: playlist).image == nil)
+                                if playlist.isLocal {
                                     Button {
                                         viewModel.startRename()
                                     } label: {
                                         Label("Rename", systemImage: "pencil")
                                     }
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                        .font(.body)
-                                        .foregroundStyle(Theme.Colors.textPrimary)
                                 }
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.body)
+                                    .foregroundStyle(Theme.Colors.brandGradient)
+                                    .frame(width: Theme.SizeTokens.touchTarget, height: Theme.SizeTokens.touchTarget)
                             }
+                            .accessibilityLabel("歌單選項")
 
                             if !playlist.songs.isEmpty {
                                 SelectEditButton(isEditing: editMode == .active) {
@@ -104,8 +127,40 @@ struct PlaylistDetailView: View {
                     viewModel.renameText = ""
                 }
             }
-            .task {
+            .alert("無法變更封面", isPresented: $showCoverError) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text(coverError)
+            }
+            .task(id: playlistId) {
                 viewModel.loadPlaylist(playlistId: playlistId)
+            }
+            .task(id: selectedPhoto) {
+                guard let photo = selectedPhoto, let requestedPlaylistId = photoPlaylistId,
+                      requestedPlaylistId == playlistId else { return }
+                do {
+                    guard let data = try await photo.loadTransferable(type: Data.self) else {
+                        throw PlaylistCoverStore.CoverError.invalidImage
+                    }
+                    guard !Task.isCancelled, selectedPhoto == photo,
+                          requestedPlaylistId == playlistId,
+                          viewModel.playlist?.id == requestedPlaylistId else { return }
+                    try coverStore.setCover(data: data, for: requestedPlaylistId)
+                    selectedPhoto = nil
+                    photoPlaylistId = nil
+                } catch {
+                    guard !Task.isCancelled, selectedPhoto == photo,
+                          requestedPlaylistId == playlistId else { return }
+                    selectedPhoto = nil
+                    photoPlaylistId = nil
+                    coverError = error.localizedDescription
+                    showCoverError = true
+                }
+            }
+            .onChange(of: playlistId) { _, _ in
+                selectedPhoto = nil
+                photoPlaylistId = nil
+                showPhotoPicker = false
             }
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchText = newValue
@@ -129,7 +184,8 @@ struct PlaylistDetailView: View {
         ScrollView {
             if let playlist = viewModel.playlist {
                 LazyVStack(spacing: 0) {
-                    ParallaxHeaderView(thumbnailURL: playlist.thumbnailURL, topInset: topInset) {
+                    let cover = coverStore.cover(for: playlist)
+                    ParallaxHeaderView(thumbnailURL: cover.thumbnailURL, customImage: cover.image, topInset: topInset) {
                         Text(playlist.title)
                             .font(Theme.Typography.title)
                             .foregroundStyle(Theme.Colors.textPrimary)
@@ -188,8 +244,6 @@ struct PlaylistDetailView: View {
                             isSelected: selectedSongs.contains(song.id),
                             isDownloadEnabled: featureFlags.isDownloadEnabled,
                             isDownloaded: downloadManager.isDownloaded(songId: song.id),
-                            canDownload: premiumManager.canDownload(
-                                currentCount: downloadManager.downloadCount),
                             onTap: {
                                 if editMode == .active {
                                     toggleSelection(song.id)
@@ -205,12 +259,8 @@ struct PlaylistDetailView: View {
                             onDownloadTap: {
                                 if downloadManager.isDownloaded(songId: song.id) {
                                     downloadManager.removeDownload(songId: song.id)
-                                } else if premiumManager.canDownload(
-                                    currentCount: downloadManager.downloadCount)
-                                {
-                                    downloadManager.downloadSong(song)
                                 } else {
-                                    showPaywall = true
+                                    downloadManager.downloadSong(song)
                                 }
                             }
                         )
@@ -276,7 +326,7 @@ struct PlaylistDetailView: View {
             Spacer()
             Button(
                 selectedSongs.count == viewModel.filteredSongs.count
-                    ? String(localized: "Deselect All") : String(localized: "Select All")
+                    ? LocalizationManager.text("Deselect All") : LocalizationManager.text("Select All")
             ) {
                 withAnimation(Theme.AnimationPresets.gentle) {
                     if selectedSongs.count == viewModel.filteredSongs.count {
@@ -324,22 +374,8 @@ struct PlaylistDetailView: View {
                             selectedSongs.contains($0.id)
                                 && !downloadManager.isDownloaded(songId: $0.id)
                         }
-                        let availableSlots =
-                            premiumManager.isPremium
-                            ? songsToDownload.count
-                            : max(
-                                0, premiumManager.freeDownloadLimit - downloadManager.downloadCount)
-
-                        if availableSlots == 0 && !songsToDownload.isEmpty {
-                            showPaywall = true
-                            return
-                        }
-
-                        for song in songsToDownload.prefix(availableSlots) {
+                        for song in songsToDownload {
                             downloadManager.downloadSong(song)
-                        }
-                        if songsToDownload.count > availableSlots {
-                            showPaywall = true
                         }
                         withAnimation(Theme.AnimationPresets.smooth) {
                             selectedSongs.removeAll()
@@ -372,7 +408,6 @@ private struct PlaylistSongRowView: View {
     let isSelected: Bool
     let isDownloadEnabled: Bool
     let isDownloaded: Bool
-    let canDownload: Bool
     let onTap: () -> Void
     let onPlayNext: () -> Void
     let onAddToQueue: () -> Void
@@ -440,8 +475,6 @@ private struct PlaylistSongRowView: View {
                                 Button(action: onDownloadTap) {
                                     if isDownloaded {
                                         Label("Remove Download", systemImage: "trash")
-                                    } else if !canDownload {
-                                        Label("Download (Limit Reached)", systemImage: "lock.fill")
                                     } else {
                                         Label("Download", systemImage: "arrow.down.circle")
                                     }

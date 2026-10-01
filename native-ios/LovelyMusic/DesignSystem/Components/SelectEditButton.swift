@@ -9,7 +9,7 @@ struct SelectEditButton: View {
             HStack(spacing: Theme.Spacing.xs) {
                 Image(systemName: isEditing ? "checkmark" : "checkmark.circle")
                     .font(.system(size: 14, weight: .semibold))
-                Text(isEditing ? String(localized: "Done") : String(localized: "Select"))
+                Text(isEditing ? LocalizationManager.text("Done") : LocalizationManager.text("Select"))
                     .font(Theme.Typography.subheadline.weight(.semibold))
             }
             .foregroundStyle(isEditing ? .white : Theme.Colors.textPrimary)

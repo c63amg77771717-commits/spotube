@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ProgressSlider: View {
     @Binding var value: Double
-    var accentColor: Color?
+    var isPlaying: Bool = false
     var onEditingChanged: (Bool) -> Void = { _ in }
     // Accessibility: time labels and duration for VoiceOver announcements
     var currentTimeLabel: String = ""
@@ -32,15 +32,7 @@ struct ProgressSlider: View {
     }
 
     private var effectiveAccent: Color {
-        accentColor ?? Theme.Colors.brandGradientStart
-    }
-
-    private var fillGradient: LinearGradient {
-        if let accent = accentColor {
-            return LinearGradient(
-                colors: [accent, accent.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
-        }
-        return Theme.Colors.brandGradient
+        Theme.Colors.brandGradientStart
     }
 
     var body: some View {
@@ -51,8 +43,8 @@ struct ProgressSlider: View {
                     .fill(Theme.Colors.surfaceCard)
                     .frame(height: 4)
 
-                Capsule()
-                    .fill(fillGradient)
+                PlaybackGradient(isPlaying: isPlaying)
+                    .clipShape(Capsule())
                     .frame(width: max(0, geo.size.width * CGFloat(displayValue)), height: 4)
                     .animation(nil, value: displayValue)
 

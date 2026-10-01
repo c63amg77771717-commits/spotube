@@ -5,10 +5,10 @@ enum AppearanceMode: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .system: String(localized: "System")
-        case .light: String(localized: "Light")
-        case .dark: String(localized: "Dark")
-        case .pureBlack: String(localized: "Pure Black")
+        case .system: LocalizationManager.text("System")
+        case .light: LocalizationManager.text("Light")
+        case .dark: LocalizationManager.text("Dark")
+        case .pureBlack: LocalizationManager.text("Pure Black")
         }
     }
 

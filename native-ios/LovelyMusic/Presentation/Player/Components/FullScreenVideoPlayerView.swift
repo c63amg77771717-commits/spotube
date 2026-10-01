@@ -269,7 +269,7 @@ private struct FullScreenVideoProgressBar: View {
                         isSeeking = true
                     }
                 ),
-                accentColor: .white,
+                isPlaying: playerVM.isPlaying,
                 onEditingChanged: { editing in
                     if editing {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()

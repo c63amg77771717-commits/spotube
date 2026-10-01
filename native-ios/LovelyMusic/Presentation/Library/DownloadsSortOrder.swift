@@ -13,10 +13,10 @@ enum DownloadsSortOrder: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .recentlyAdded: return String(localized: "Recently added")
-        case .titleAZ: return String(localized: "Title (A-Z)")
-        case .artistAZ: return String(localized: "Artist (A-Z)")
-        case .duration: return String(localized: "Duration")
+        case .recentlyAdded: return LocalizationManager.text("Recently added")
+        case .titleAZ: return LocalizationManager.text("Title (A-Z)")
+        case .artistAZ: return LocalizationManager.text("Artist (A-Z)")
+        case .duration: return LocalizationManager.text("Duration")
         }
     }
 

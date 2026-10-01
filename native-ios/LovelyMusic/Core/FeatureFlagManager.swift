@@ -34,7 +34,7 @@ final class FeatureFlagManager {
     private(set) var adsSongInterval: Int = 10  // ads_song_interval — inline ad every N songs (Playlist/Album/Liked)
 
     // — Tier 1: Premium Configuration -----------------------------------------
-    private(set) var isPremiumEnabled: Bool = true  // premium_enabled
+    private(set) var isPremiumEnabled: Bool = false  // EvanTube is free
     private(set) var isLifetimeEnabled: Bool = true  // lifetime_enabled
     private(set) var termsOfServiceURL: String = ""  // terms_of_service_url
     private(set) var privacyPolicyURL: String = ""  // privacy_policy_url
@@ -277,7 +277,7 @@ final class FeatureFlagManager {
         adsSongInterval = config.monetization.adsSongInterval
 
         // Tier 1 — Premium Configuration
-        isPremiumEnabled = config.monetization.premiumEnabled
+        isPremiumEnabled = false
         isLifetimeEnabled = config.monetization.lifetimeEnabled
         termsOfServiceURL = config.monetization.termsOfServiceURL
         privacyPolicyURL = config.monetization.privacyPolicyURL

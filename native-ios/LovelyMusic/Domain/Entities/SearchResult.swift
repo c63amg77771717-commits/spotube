@@ -18,10 +18,10 @@ enum SearchFilter: CaseIterable {
 
     var displayName: String {
         switch self {
-        case .songs: return String(localized: "Songs")
-        case .albums: return String(localized: "Albums")
-        case .artists: return String(localized: "Artists")
-        case .playlists: return String(localized: "Playlists")
+        case .songs: return LocalizationManager.text("Songs")
+        case .albums: return LocalizationManager.text("Albums")
+        case .artists: return LocalizationManager.text("Artists")
+        case .playlists: return LocalizationManager.text("Playlists")
         }
     }
 }

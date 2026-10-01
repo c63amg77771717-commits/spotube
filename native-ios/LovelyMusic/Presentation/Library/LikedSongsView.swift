@@ -7,10 +7,8 @@ struct LikedSongsView: View {
     @State private var selectedSongs: Set<String> = []
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(DownloadManager.self) private var downloadManager
-    @Environment(PremiumManager.self) private var premiumManager
     @Environment(FeatureFlagManager.self) private var featureFlags
     @State private var showBulkUnlikeConfirmation = false
-    @State private var showPaywall = false
     @State private var songForPlaylist: Song?
     @Environment(DIContainer.self) private var container
 
@@ -161,9 +159,6 @@ struct LikedSongsView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.Colors.backgroundPrimary)
         }
-        .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView()
-        }
     }
 
     // MARK: - Playback Header
@@ -192,7 +187,7 @@ struct LikedSongsView: View {
             Spacer()
             Button(
                 selectedSongs.count == filteredFavorites.count
-                    ? String(localized: "Deselect All") : String(localized: "Select All")
+                    ? LocalizationManager.text("Deselect All") : LocalizationManager.text("Select All")
             ) {
                 withAnimation(Theme.AnimationPresets.gentle) {
                     if selectedSongs.count == filteredFavorites.count {
@@ -297,21 +292,8 @@ struct LikedSongsView: View {
                             selectedSongs.contains($0.id)
                                 && !downloadManager.isDownloaded(songId: $0.id)
                         }
-                        let availableSlots =
-                            premiumManager.isPremium
-                            ? songsToDownload.count
-                            : max(0, premiumManager.freeDownloadLimit - downloadManager.downloadCount)
-
-                        if availableSlots == 0 && !songsToDownload.isEmpty {
-                            showPaywall = true
-                            return
-                        }
-
-                        for song in songsToDownload.prefix(availableSlots) {
+                        for song in songsToDownload {
                             downloadManager.downloadSong(song)
-                        }
-                        if songsToDownload.count > availableSlots {
-                            showPaywall = true
                         }
                         withAnimation(Theme.AnimationPresets.smooth) {
                             selectedSongs.removeAll()

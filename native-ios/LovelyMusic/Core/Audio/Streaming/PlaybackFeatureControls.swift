@@ -479,11 +479,11 @@ final class PlaybackQualitySettings {
             // selecting HE-AAC (mp4a.40.5) which AVPlayer cannot open on some configs.
             selected = wifi
         }
-        return Self.cap(selected, isPremium: isPremium)
+        return selected
     }
 
     func effectiveDownloadQuality(isPremium: Bool) -> AudioQuality {
-        Self.cap(download, isPremium: isPremium)
+        download
     }
 
     func resetToDefaults() {
@@ -497,9 +497,6 @@ final class PlaybackQualitySettings {
         defaults.string(forKey: key).flatMap(AudioQuality.init(rawValue:))
     }
 
-    private static func cap(_ quality: AudioQuality, isPremium: Bool) -> AudioQuality {
-        !isPremium && quality == .high ? .medium : quality
-    }
 }
 
 // MARK: - Explicit quality wiring

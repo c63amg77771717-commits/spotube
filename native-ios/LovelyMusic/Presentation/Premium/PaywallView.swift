@@ -49,7 +49,7 @@ struct PaywallView: View {
                 Task { await premiumManager.checkSubscriptionStatus() }
             case .failure(let error):
                 premiumManager.setRedemptionError(
-                    String(localized: "Code redemption failed: \(error.localizedDescription)")
+                    LocalizationManager.text("Code redemption failed: \(error.localizedDescription)")
                 )
             }
         }
@@ -281,11 +281,11 @@ struct PaywallView: View {
                         .foregroundStyle(isSelected ? Theme.Colors.brandGradientStart : Theme.Colors.textPrimary)
 
                     if isLifetime {
-                        Text(String(localized: "one-time"))
+                        Text(LocalizationManager.text("one-time"))
                             .font(Theme.Typography.captionSecondary)
                             .foregroundStyle(Theme.Colors.premiumGold)
                     } else {
-                        Text(isYearly ? String(localized: "/year") : String(localized: "/month"))
+                        Text(isYearly ? LocalizationManager.text("/year") : LocalizationManager.text("/month"))
                             .font(Theme.Typography.captionSecondary)
                             .foregroundStyle(Theme.Colors.textTertiary)
                     }

@@ -29,14 +29,14 @@ struct AddToPlaylistSheet: View {
                         Button {
                             Task {
                                 try? await managePlaylistUseCase.addSong(song, to: playlist.id)
-                                addedMessage = String(localized: "Added to \(playlist.title)")
+                                addedMessage = LocalizationManager.text("Added to \(playlist.title)")
                                 try? await Task.sleep(for: .seconds(0.8))
                                 dismiss()
                             }
                         } label: {
                             HStack(spacing: Theme.Spacing.md) {
-                                AsyncThumbnail(
-                                    url: playlist.thumbnailURL,
+                                PlaylistCoverThumbnail(
+                                    playlist: playlist,
                                     size: 44,
                                     cornerRadius: Theme.CornerRadius.small
                                 )

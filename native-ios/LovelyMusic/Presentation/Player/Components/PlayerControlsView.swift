@@ -7,9 +7,6 @@ struct PlayerControlsView: View {
     let bufferingTooLong: Bool
     let shuffleEnabled: Bool
     let repeatMode: AudioEngine.RepeatMode
-    let dominantColor: Color
-    let isFreeUser: Bool
-    let remainingSkips: Int
     let currentSongId: String?
 
     let onShuffle: () -> Void
@@ -30,11 +27,11 @@ struct PlayerControlsView: View {
                         .font(.system(size: Theme.SizeTokens.iconSmall, weight: .medium))
                         .foregroundStyle(
                             shuffleEnabled
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                     Circle()
-                        .fill(dominantColor)
+                        .fill(Theme.Colors.brandGradient)
                         .frame(width: 3, height: 3)
                         .opacity(shuffleEnabled ? 1 : 0)
                 }
@@ -98,8 +95,7 @@ struct PlayerControlsView: View {
                         ZStack {
                             Circle()
                                 .fill(.ultraThinMaterial)
-                            Circle()
-                                .stroke(Theme.Colors.brandGradient, lineWidth: 1.5)
+                            PlaybackRing(isPlaying: isPlaying)
                             PulseIcon(
                                 isPlaying ? .pause : .play,
                                 size: Theme.SizeTokens.iconLarge,
@@ -138,23 +134,14 @@ struct PlayerControlsView: View {
                         size: 26,
                         color: Theme.Colors.textPrimary
                     )
-                    if isFreeUser && remainingSkips <= 4 {
-                        Text("\(remainingSkips) left")
-                            .font(Theme.Typography.badge)
-                            .foregroundStyle(
-                                remainingSkips == 0
-                                    ? Theme.Colors.error
-                                    : Theme.Colors.textTertiary)
-                    }
+
                 }
             }
             .frame(width: 44)
             .frame(minHeight: 56)
             .accessibilityLabel("Next track")
             .accessibilityHint("Double tap to go to next track")
-            .accessibilityValue(
-                isFreeUser ? "\(remainingSkips) skips remaining" : ""
-            )
+
 
             Spacer(minLength: Theme.Spacing.xxs)
 
@@ -167,7 +154,7 @@ struct PlayerControlsView: View {
                         .font(.system(size: Theme.SizeTokens.iconSmall, weight: .medium))
                         .foregroundStyle(repeatColor)
                     Circle()
-                        .fill(dominantColor)
+                        .fill(Theme.Colors.brandGradient)
                         .frame(width: 3, height: 3)
                         .opacity(repeatMode == .off ? 0 : 1)
                 }
@@ -190,18 +177,17 @@ struct PlayerControlsView: View {
         }
     }
 
-    private var repeatColor: Color {
-        switch repeatMode {
-        case .off: return Theme.Colors.textTertiary
-        case .all, .one: return dominantColor
-        }
+    private var repeatColor: AnyShapeStyle {
+        repeatMode == .off
+            ? AnyShapeStyle(Theme.Colors.textTertiary)
+            : AnyShapeStyle(Theme.Colors.brandGradient)
     }
 
     private var repeatModeDescription: String {
         switch repeatMode {
-        case .off: return "off"
-        case .all: return "all"
-        case .one: return "one"
+        case .off: return "關閉"
+        case .all: return "全部重複"
+        case .one: return "單曲重複"
         }
     }
 }

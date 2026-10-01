@@ -26,23 +26,23 @@ enum PlaybackErrorCategory {
 
     var title: String {
         switch self {
-        case .noInternet: return "No Internet Connection"
-        case .regionBlocked: return "Not Available in Your Region"
-        case .songRemoved: return "Song No Longer Available"
-        case .serverError: return "Server Error"
-        case .authRequired: return "Sign In Required"
-        case .unknown: return "Playback Error"
+        case .noInternet: return LocalizationManager.text("No Internet Connection")
+        case .regionBlocked: return LocalizationManager.text("Not Available in Your Region")
+        case .songRemoved: return LocalizationManager.text("Song No Longer Available")
+        case .serverError: return LocalizationManager.text("Server Error")
+        case .authRequired: return LocalizationManager.text("Sign In Required")
+        case .unknown: return LocalizationManager.text("Playback Error")
         }
     }
 
     var action: String {
         switch self {
-        case .noInternet: return "Check your connection and try again"
-        case .regionBlocked: return "This content is restricted in your area"
-        case .songRemoved: return "This song has been removed from the catalog"
-        case .serverError: return "Please try again later"
-        case .authRequired: return "Sign in to YouTube to access this content"
-        case .unknown: return "Something went wrong"
+        case .noInternet: return LocalizationManager.text("Check your connection and try again")
+        case .regionBlocked: return LocalizationManager.text("This content is restricted in your area")
+        case .songRemoved: return LocalizationManager.text("This song has been removed from the catalog")
+        case .serverError: return LocalizationManager.text("Please try again later")
+        case .authRequired: return LocalizationManager.text("Sign in to YouTube to access this content")
+        case .unknown: return LocalizationManager.text("Something went wrong")
         }
     }
 }
@@ -51,7 +51,7 @@ enum TransferEstimateFormatter {
     static func upperBoundString(bytes: Int64) -> String {
         let byteCount = max(0, bytes)
         guard byteCount >= 1_024 else {
-            return "up to \(byteCount) bytes"
+            return LocalizationManager.text("up to \(byteCount) bytes")
         }
         let units: [(threshold: Double, label: String)] = [
             (1_024 * 1_024 * 1_024, "GB"),
@@ -63,7 +63,7 @@ enum TransferEstimateFormatter {
         let value = ceilingValue.rounded() == ceilingValue
             ? String(format: "%.0f", ceilingValue)
             : String(format: "%.1f", ceilingValue)
-        return "up to \(value) \(selected.label)"
+        return LocalizationManager.text("up to \(value) \(selected.label)")
     }
 }
 
@@ -128,9 +128,6 @@ final class PlayerViewModel {
     var isQueuePresented: Bool = false
     var isLyricsVisible: Bool = false
     var showYouTubeLoginPrompt: Bool = false
-    var showSkipLimitPaywall: Bool = false
-    var showSkipLimitNudge: Bool = false
-    var showLyricsPaywall: Bool = false
     var isDockHidden: Bool = false
 
     /// The AVPlayer for video rendering, observed by the UI layer.
@@ -139,7 +136,6 @@ final class PlayerViewModel {
     /// The current video load state, exposed for UI feedback.
     var videoLoadState: VideoPlaybackManager.VideoLoadState { audioEngine.videoLoadState }
 
-    var canAccessFullLyrics: Bool { premiumManager.canAccess(.syncedLyrics) }
 
     // MARK: - Retry
     private var retryCount = 0
@@ -319,30 +315,25 @@ final class PlayerViewModel {
     func guardedPlaybackErrorMessage(_ error: GuardedPlaybackError) -> String {
         switch error {
         case .continueOnPhone:
-            return "Continue on your phone to review the network and temporary storage estimate."
+            return LocalizationManager.text("Continue on your phone to review the network and temporary storage estimate.")
         case .transferConsentDeclined:
-            return "The full-song transfer was not started. You can retry when you are ready."
+            return LocalizationManager.text("The full-song transfer was not started. You can retry when you are ready.")
         case .policyDenied(.cannotEstablishConservativeUpperBound):
-            return "Temporary playback preparation cannot be safely sized on this device."
+            return LocalizationManager.text("Temporary playback preparation cannot be safely sized on this device.")
         case .policyDenied:
-            return "Playback is unavailable under the current network or storage policy."
+            return LocalizationManager.text("Playback is unavailable under the current network or storage policy.")
         case .descriptorQualificationFailed:
-            return "The song source could not be verified for a safe full transfer."
+            return LocalizationManager.text("The song source could not be verified for a safe full transfer.")
         case .legacyTransportFailed:
-            return "The song transfer did not complete. Retry to check the current policy again."
+            return LocalizationManager.text("The song transfer did not complete. Retry to check the current policy again.")
         case .legacyRemuxFailed:
-            return "The temporary song file could not be prepared for playback."
+            return LocalizationManager.text("The temporary song file could not be prepared for playback.")
         case .rangePathUnavailable:
-            return "This streaming path is unavailable in the current app version."
+            return LocalizationManager.text("This streaming path is unavailable in the current app version.")
         }
     }
 
     func next() {
-        let allowed = premiumManager.recordSkip()
-        if !allowed {
-            // Soft nudge — skip still happens, show non-blocking banner
-            showSkipLimitNudge = true
-        }
         adManager?.recordSkipAndShowIfNeeded()
         // User-initiated skip — clear the auto-skip failure budget.
         resetConsecutiveFailures()
@@ -369,14 +360,6 @@ final class PlayerViewModel {
     /// navigates — they are taking control of the queue.
     private func resetConsecutiveFailures() {
         consecutiveAutoSkipFailures = 0
-    }
-
-    var remainingSkips: Int {
-        premiumManager.remainingSkips
-    }
-
-    var isFreeUser: Bool {
-        !premiumManager.isPremium
     }
 
     func previous() {
@@ -835,19 +818,19 @@ final class PlayerViewModel {
         if lower.contains("sign in") || lower.contains("login") || lower.contains("auth")
             || lower.contains("bot") || lower.contains("confirm your age") || lower.contains("private")
         {
-            return String(localized: "Sign in to YouTube is required to play this track.")
+            return LocalizationManager.text("Sign in to YouTube is required to play this track.")
         } else if lower.contains("internet") || lower.contains("network")
             || lower.contains("connection") || lower.contains("offline")
         {
-            return String(localized: "Network error. Check your connection and try again.")
+            return LocalizationManager.text("Network error. Check your connection and try again.")
         } else if lower.contains("unavailable") || lower.contains("no audio stream")
             || lower.contains("no stream")
         {
-            return String(localized: "This song is unavailable in your region.")
+            return LocalizationManager.text("This song is unavailable in your region.")
         } else if lower.contains("url") || lower.contains("stream") {
-            return String(localized: "Unable to load this song. The stream may be unavailable.")
+            return LocalizationManager.text("Unable to load this song. The stream may be unavailable.")
         } else {
-            return String(localized: "Something went wrong. Tap retry to try again.")
+            return LocalizationManager.text("Something went wrong. Tap retry to try again.")
         }
     }
 

@@ -118,7 +118,7 @@ struct SyncedLyricsScrollView: View {
         }
         .modifier(LyricsTranslationModifier(
             lyrics: lyrics,
-            targetLanguage: UserDefaults.standard.string(forKey: "language") ?? "vi",
+            targetLanguage: UserDefaults.standard.string(forKey: "language") ?? "zh-Hant",
             showTranslation: $showTranslation,
             translatedLines: $translatedLines,
             isTranslating: $isTranslating,
@@ -152,7 +152,7 @@ struct SyncedLyricsScrollView: View {
         VStack(spacing: Theme.Spacing.xxs) {
             Text(line.text)
                 .font(isCurrent ? currentLineFont : lineFont)
-                .foregroundStyle(isCurrent ? Theme.Colors.textPrimary : Theme.Colors.textTertiary.opacity(0.6))
+                .foregroundStyle(isCurrent ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textTertiary.opacity(0.6)))
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
                 .animation(.easeInOut(duration: 0.3), value: isCurrent)
@@ -160,7 +160,7 @@ struct SyncedLyricsScrollView: View {
             if showLyricsTranslationStored, showTranslation, let translated = translatedLines[line.id] {
                 Text(translated)
                     .font(translationFont)
-                    .foregroundStyle(Theme.Colors.brandGradientStart.opacity(0.8))
+                    .foregroundStyle(Theme.Colors.brandGradient.opacity(0.8))
                     .frame(maxWidth: .infinity, alignment: .center)
                     .multilineTextAlignment(.center)
                     .transition(.opacity.combined(with: .move(edge: .top)))
@@ -182,7 +182,7 @@ struct SyncedLyricsScrollView: View {
                 } else {
                     Image(systemName: showTranslation ? "character.bubble.fill" : "character.bubble")
                         .foregroundStyle(
-                            showTranslation ? Theme.Colors.brandGradientStart : Theme.Colors.textSecondary
+                            showTranslation ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textSecondary)
                         )
                 }
             }
@@ -317,7 +317,7 @@ struct LyricsTranslationModifier: ViewModifier {
             }
         } catch {
             withAnimation {
-                translationError = "Translation unavailable"
+                translationError = LocalizationManager.text("Translation unavailable")
             }
         }
     }

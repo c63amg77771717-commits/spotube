@@ -89,8 +89,8 @@ struct QueueView: View {
                     } label: {
                         Text(
                             editMode?.wrappedValue == .active
-                                ? String(localized: "Done")
-                                : String(localized: "Edit")
+                                ? LocalizationManager.text("Done")
+                                : LocalizationManager.text("Edit")
                         )
                         .fontWeight(.semibold)
                     }

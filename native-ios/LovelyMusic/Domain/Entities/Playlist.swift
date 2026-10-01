@@ -12,6 +12,17 @@ struct Playlist: Identifiable, Hashable {
     /// RustyPipe-aligned canonical reduction: `Podcast → Playlist{is_podcast:true}`.
     let isPodcast: Bool
 
+    /// The first track owns the automatic cover, even when another track has artwork.
+    var automaticCoverURL: String? {
+        guard let firstSong = songs.first else { return isLocal ? nil : thumbnailURL }
+        if let thumbnail = firstSong.thumbnailURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !thumbnail.isEmpty {
+            return thumbnail
+        }
+        return firstSong.hasYouTubeOrigin
+            ? "https://i.ytimg.com/vi/\(firstSong.id)/hqdefault.jpg" : nil
+    }
+
     init(
         id: String = UUID().uuidString,
         title: String,

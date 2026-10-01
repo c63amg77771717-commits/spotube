@@ -168,9 +168,9 @@ enum DemoError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .streamingNotAvailable:
-            return "Streaming is not available in demo mode."
+            return LocalizationManager.text("Streaming is not available in demo mode.")
         case .notFound:
-            return "Content not found in demo catalog."
+            return LocalizationManager.text("Content not found in demo catalog.")
         }
     }
 }

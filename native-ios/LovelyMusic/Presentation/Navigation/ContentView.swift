@@ -14,8 +14,7 @@ struct ContentView: View {
     @Environment(ScrollDirectionTracker.self) private var scrollTracker
 
     // Layout constants — extracted from inline magic numbers
-    private let dockHeightWithPlayer: CGFloat = 120
-    private let dockHeightWithoutPlayer: CGFloat = 72
+    @State private var dockHeight: CGFloat = 160
     private let dockHideOffset: CGFloat = 200
 
     /// Dock is hidden when: edit mode forces it OR user scrolled down
@@ -23,18 +22,9 @@ struct ContentView: View {
         playerVM.isDockHidden || scrollTracker.isScrollingDown
     }
 
-    /// Single source of truth for the bottom safe-area inset reserved by
-    /// `ContentView` (dock + ad-banner). Returns 0 when the dock is hidden so
-    /// the inset collapses smoothly. Driving `.safeAreaInset` from one
-    /// computed value couples dock auto-hide and ad-banner load into a single
-    /// animated transition (polish-A5) and avoids one-frame layout clips.
-    private var bottomInsetValue: CGFloat {
-        guard !dockHidden else { return 0 }
-        let adHeight: CGFloat = container.adManager.shouldShowAds ? 50 : 0
-        let dockHeight: CGFloat =
-            playerVM.currentSong != nil ? dockHeightWithPlayer : dockHeightWithoutPlayer
-        return dockHeight + adHeight
-    }
+    // Reserve the measured dock height even while it is hidden by scrolling.
+    // Revealing it at the end of a page must not cover the last row.
+    private var bottomInsetValue: CGFloat { dockHeight }
 
     /// Shows soft update only if the user hasn't dismissed this particular version.
     private var showSoftUpdateBinding: Binding<Bool> {
@@ -100,10 +90,9 @@ struct ContentView: View {
             .onChange(of: searchPath.count) { _, _ in scrollTracker.resetToVisible() }
             .onChange(of: libraryPath.count) { _, _ in scrollTracker.resetToVisible() }
             .background(Theme.Colors.backgroundPrimary)
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
                 Color.clear
                     .frame(height: bottomInsetValue)
-                    .animation(Theme.AnimationPresets.smooth, value: bottomInsetValue)
             }
 
             // Banner ad + floating dock — sits at the bottom of the ZStack.
@@ -129,6 +118,9 @@ struct ContentView: View {
                         }
                     }
                 })
+            }
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { height in
+                if height > 0 { dockHeight = height }
             }
             .offset(y: dockHidden ? dockHideOffset : 0)
             .opacity(dockHidden ? 0 : 1)
@@ -266,7 +258,7 @@ enum AppTab: String, Hashable, CaseIterable, Identifiable {
         switch self {
         case .home: return "首頁"
         case .search: return "搜尋"
-        case .library: return "媒體庫"
+        case .library: return "為你而來"
         }
     }
 }

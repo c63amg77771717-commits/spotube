@@ -11,7 +11,6 @@ struct FullPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var dragOffset: CGFloat = 0
     @State private var showAddToPlaylist = false
-    @State private var showPaywall = false
     @State private var showYouTubeLogin = false
     @State private var showYouTubeLoginAlert = false
     @State private var isVideoFullScreen = false
@@ -85,69 +84,24 @@ struct FullPlayerView: View {
                     Text(transferConsentMessage(consent))
                 }
             }
-            .overlay(alignment: .top) {
-                if playerVM.showSkipLimitNudge {
-                    skipLimitNudgeBanner
-                }
-            }
-            .onChange(of: playerVM.showSkipLimitNudge) { _, shown in
-                guard shown else { return }
-                Task {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                    playerVM.showSkipLimitNudge = false
-                }
-            }
             .sensoryFeedback(.impact(weight: .medium), trigger: playerVM.isPlaying)
             .sensoryFeedback(.selection, trigger: playerVM.currentSong?.id)
             .sensoryFeedback(.impact(weight: .light), trigger: playerVM.shuffleEnabled)
             .sensoryFeedback(.impact(weight: .light), trigger: playerVM.repeatMode)
     }
 
-    private var skipLimitNudgeBanner: some View {
-        VStack(spacing: Theme.Spacing.xxxs) {
-            Text("You've reached your free skip limit")
-                .font(Theme.Typography.caption.weight(.semibold))
-                .foregroundStyle(Theme.Colors.textPrimary)
-            Text("Upgrade for unlimited skips")
-                .font(Theme.Typography.captionSecondary)
-                .foregroundStyle(Theme.Colors.brandGradientStart)
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.sm)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-        .padding(.top, Theme.Spacing.xxxl)
-        .transition(.move(edge: .top).combined(with: .opacity))
-    }
-
     private var playerContent: some View {
         GeometryReader { geo in
             ZStack {
-                // Dynamic gradient background
-                if let thumbnail = playerVM.currentSong?.thumbnailURL {
-                    AsyncImage(url: URL(string: thumbnail)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .blur(radius: 30)
-                            .overlay(Theme.Colors.overlayHeavy)
-                    } placeholder: {
-                        ShimmerView(cornerRadius: 0)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .overlay(Theme.Colors.overlayHeavy)
-                    }
-                    .ignoresSafeArea()
-                } else {
-                    LinearGradient(
-                        colors: [
-                            Theme.Colors.playerGradientTop, Theme.Colors.playerGradientBottom,
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                }
+                Theme.Colors.backgroundPrimary.ignoresSafeArea()
+                RadialGradient(
+                    colors: [Theme.Colors.brandGradientStart.opacity(0.22), .clear],
+                    center: .topLeading, startRadius: 0, endRadius: geo.size.width
+                ).ignoresSafeArea()
+                RadialGradient(
+                    colors: [Theme.Colors.brandGradientEnd.opacity(0.14), .clear],
+                    center: .bottomTrailing, startRadius: 0, endRadius: geo.size.width
+                ).ignoresSafeArea()
 
                 VStack(spacing: Theme.Spacing.xl) {
                     // Drag handle + top controls
@@ -210,26 +164,14 @@ struct FullPlayerView: View {
                                             {
                                                 container.downloadManager.removeDownload(
                                                     songId: song.id)
-                                            } else if premiumManager.canDownload(
-                                                currentCount: container.downloadManager
-                                                    .downloadCount)
-                                            {
-                                                container.downloadManager.downloadSong(song)
                                             } else {
-                                                showPaywall = true
+                                                container.downloadManager.downloadSong(song)
                                             }
                                         } label: {
                                             if container.downloadManager.isDownloaded(
                                                 songId: song.id)
                                             {
                                                 Label("Remove Download", systemImage: "trash")
-                                            } else if !premiumManager.canDownload(
-                                                currentCount: container.downloadManager
-                                                    .downloadCount)
-                                            {
-                                                Label(
-                                                    "Download (Limit Reached)",
-                                                    systemImage: "lock.fill")
                                             } else {
                                                 Label(
                                                     downloadMenuLabel,
@@ -350,7 +292,7 @@ struct FullPlayerView: View {
                                     thumbnailURL: playerVM.currentSong?.thumbnailURL,
                                     size: geo.size.width * 0.85,
                                     isPlaying: playerVM.isPlaying,
-                                    dominantColor: playerVM.dominantColor
+                                    dominantColor: Theme.Colors.brandGradientStart
                                 )
 
                                 Spacer()
@@ -365,7 +307,7 @@ struct FullPlayerView: View {
                     // Song info
                     HStack {
                         VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                            Text(playerVM.currentSong?.title ?? String(localized: "Not Playing"))
+                            Text(playerVM.currentSong?.title ?? LocalizationManager.text("Not Playing"))
                                 .font(Theme.Typography.title2)
                                 .foregroundStyle(Theme.Colors.textPrimary)
                                 .lineLimit(1)
@@ -414,9 +356,6 @@ struct FullPlayerView: View {
                         bufferingTooLong: playerVM.bufferingTooLong,
                         shuffleEnabled: playerVM.shuffleEnabled,
                         repeatMode: playerVM.repeatMode,
-                        dominantColor: playerVM.dominantColor,
-                        isFreeUser: playerVM.isFreeUser,
-                        remainingSkips: playerVM.remainingSkips,
                         currentSongId: playerVM.currentSong?.id,
                         onShuffle: { playerVM.toggleShuffle() },
                         onPrevious: { playerVM.previous() },
@@ -433,9 +372,7 @@ struct FullPlayerView: View {
                         isAutoplayEnabled: playerVM.isAutoplayEnabled,
                         isVideoMode: playerVM.isVideoMode,
                         isLyricsVisible: playerVM.isLyricsVisible,
-                        canAccessFullLyrics: playerVM.canAccessFullLyrics,
                         isVideoPlaybackEnabled: featureFlags.isVideoPlaybackEnabled,
-                        dominantColor: playerVM.dominantColor,
                         onCycleSpeed: { playerVM.cyclePlaybackSpeed() },
                         onToggleAutoplay: { playerVM.toggleAutoplay() },
                         onToggleVideo: {
@@ -585,9 +522,6 @@ struct FullPlayerView: View {
             QueueView()
                 .environment(playerVM)
         }
-        .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .sheet(isPresented: $showAddToPlaylist) {
             if let song = playerVM.currentSong {
                 AddToPlaylistSheet(
@@ -598,24 +532,6 @@ struct FullPlayerView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(Theme.Colors.backgroundPrimary)
             }
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { playerVM.showSkipLimitPaywall },
-                set: { playerVM.showSkipLimitPaywall = $0 }
-            )
-        ) {
-            PaywallView()
-                .environment(premiumManager)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { playerVM.showLyricsPaywall },
-                set: { playerVM.showLyricsPaywall = $0 }
-            )
-        ) {
-            PaywallView()
-                .environment(premiumManager)
         }
         .sheet(isPresented: $showYouTubeLogin) {
             YouTubeLoginView(authManager: container.authManager) {
@@ -658,93 +574,39 @@ struct FullPlayerView: View {
             bytes: consent.temporaryStorageUpperBoundBytes
         )
         let target = Song.formatTimestamp(Int(consent.targetSeconds.rounded(.down)))
-        return "This may use \(network) of network data and \(storage) of temporary storage. Playback will resume near \(target)."
+        return LocalizationManager.text("This may use \(network) of network data and \(storage) of temporary storage. Playback will resume near \(target).")
     }
 
     @ViewBuilder
     private func inlineLyricsView(geo: GeometryProxy) -> some View {
-        if playerVM.canAccessFullLyrics {
-            if let lyrics = playerVM.lyrics {
-                SyncedLyricsScrollView(
-                    lyrics: lyrics
-                )
-            } else if playerVM.isLoadingLyrics {
-                VStack {
-                    Spacer()
-                    ProgressView()
-                        .tint(Theme.Colors.textSecondary)
-                    Spacer()
-                }
-            } else {
-                VStack {
-                    Spacer()
-                    VStack(spacing: Theme.Spacing.md) {
-                        Image(systemName: "music.note.list")
-                            .font(.system(size: 32))
-                            .foregroundStyle(Theme.Colors.textTertiary)
-                        Text("No lyrics available")
-                            .font(Theme.Typography.subheadline)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    }
-                    Spacer()
-                }
+        if let lyrics = playerVM.lyrics {
+            SyncedLyricsScrollView(lyrics: lyrics)
+        } else if playerVM.isLoadingLyrics {
+            VStack {
+                Spacer()
+                ProgressView().tint(Theme.Colors.brandGradientStart)
+                Text("Loading…")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                Spacer()
             }
         } else {
             VStack {
                 Spacer()
-                VStack(spacing: Theme.Spacing.lg) {
-                    VStack(spacing: Theme.Spacing.md) {
-                        ForEach(0..<3, id: \.self) { i in
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Theme.Colors.textTertiary.opacity(0.3))
-                                .frame(height: 16)
-                                .frame(maxWidth: CGFloat([200, 260, 180][i]))
-                                .blur(radius: 4)
-                        }
-                    }
-
-                    VStack(spacing: Theme.Spacing.sm) {
-                        // Q2: gold scoped to paywall only — lock + CTA use brand purple here.
-                        Image(systemName: "lock.fill")
-                            .font(.title2)
-                            .foregroundStyle(Theme.Colors.brandGradientStart)
-
-                        Text("Synced Lyrics")
-                            .font(Theme.Typography.headline)
-                            .foregroundStyle(Theme.Colors.textPrimary)
-
-                        Text("Unlock premium to follow along")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-
-                        Button {
-                            playerVM.showLyricsPaywall = true
-                        } label: {
-                            Text("Upgrade")
-                                .font(Theme.Typography.subheadline.weight(.semibold))
-                                .foregroundStyle(Theme.Colors.onBrand)
-                                .padding(.horizontal, Theme.Spacing.xl)
-                                .padding(.vertical, Theme.Spacing.sm)
-                                .background(
-                                    Theme.Colors.brandGradient,
-                                    in: Capsule()
-                                )
-                        }
-                        .padding(.top, Theme.Spacing.xs)
-                    }
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Text("No lyrics available")
+                        .font(Theme.Typography.subheadline)
+                        .foregroundStyle(Theme.Colors.textSecondary)
                 }
                 Spacer()
             }
         }
     }
 
-    private var downloadMenuLabel: String {
-        if premiumManager.isPremium {
-            return String(localized: "Download")
-        }
-        let remaining = premiumManager.freeDownloadLimit - container.downloadManager.downloadCount
-        return String(localized: "Download (\(remaining)/\(premiumManager.freeDownloadLimit) left)")
-    }
+    private var downloadMenuLabel: String { LocalizationManager.text("Download") }
 
     // MARK: - Full Screen Video
 
@@ -777,7 +639,7 @@ private struct PlayerProgressSection: View {
                         isSeeking = true
                     }
                 ),
-                accentColor: playerVM.dominantColor,
+                isPlaying: playerVM.isPlaying,
                 onEditingChanged: { editing in
                     if editing {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()

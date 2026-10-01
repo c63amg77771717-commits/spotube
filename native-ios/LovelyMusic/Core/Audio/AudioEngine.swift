@@ -168,7 +168,6 @@ final class AudioEngine {
     /// needed for CDN authentication of session-signed URLs. Set from DIContainer.
     var authCookieProvider: (() -> String?)? = nil
     /// Closure providing current premium status. Injected by DIContainer.
-    var isPremiumProvider: (() -> Bool)?
 
     /// Optional reference to the download manager for offline playback.
     var downloadManager: DownloadManager?
@@ -4129,7 +4128,7 @@ final class AudioEngine {
 
     private func applyEqualizer() {
         guard let em = equalizerManager else { return }
-        let isActive = em.isEnabled && (isPremiumProvider?() ?? true)
+        let isActive = em.isEnabled
         eqProcessor.updateBands(em.customBands, enabled: isActive)
     }
 

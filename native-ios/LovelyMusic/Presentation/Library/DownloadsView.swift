@@ -6,8 +6,6 @@ struct DownloadsView: View {
     @State private var sortOrder: DownloadsSortOrder = .load()
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(PlayerViewModel.self) private var playerVM
-    @Environment(PremiumManager.self) private var premiumManager
-    @State private var showPaywall = false
     @State private var showClearAllConfirmation = false
     @State private var showRemoveSelectedConfirmation = false
     @State private var songForPlaylist: Song?
@@ -276,9 +274,6 @@ struct DownloadsView: View {
                     .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Spacer()
-                if !premiumManager.isPremium {
-                    downloadLimitBadge
-                }
                 Text(downloadManager.formattedTotalSize())
                     .font(Theme.Typography.subheadline)
                     .foregroundStyle(Theme.Colors.textTertiary)
@@ -286,97 +281,7 @@ struct DownloadsView: View {
             .padding(.horizontal, Theme.Spacing.lg)
             .padding(.vertical, Theme.Spacing.md)
 
-            if !premiumManager.isPremium
-                && downloadManager.downloadCount >= premiumManager.freeDownloadLimit - 1
-            {
-                premiumUpsellBanner
-                    .padding(.horizontal, Theme.Spacing.lg)
-            }
         }
-    }
-
-    private var downloadLimitBadge: some View {
-        Text("\(downloadManager.downloadCount)/\(premiumManager.freeDownloadLimit)")
-            .font(Theme.Typography.caption2.weight(.semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.xxxs)
-            .background(
-                Capsule()
-                    .fill(
-                        downloadManager.downloadCount >= premiumManager.freeDownloadLimit
-                            ? AnyShapeStyle(Theme.Colors.error)
-                            : AnyShapeStyle(Theme.Colors.brandGradient))
-            )
-    }
-
-    private var premiumUpsellBanner: some View {
-        Button {
-            showPaywall = true
-        } label: {
-            HStack(spacing: Theme.Spacing.md) {
-                Image(systemName: "lock.fill")
-                    .font(Theme.Typography.subheadline)
-                    .foregroundStyle(.white)
-
-                VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                    Text(
-                        downloadManager.downloadCount >= premiumManager.freeDownloadLimit
-                            ? "Download limit reached"
-                            : "Almost at your download limit"
-                    )
-                    .font(Theme.Typography.caption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    Text("Upgrade to Premium for unlimited downloads")
-                        .font(Theme.Typography.caption2)
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(Theme.Typography.caption2.weight(.bold))
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-            .padding(Theme.Spacing.md)
-            .background(
-                LinearGradient(
-                    colors: [Theme.Colors.brandGradientStart, Theme.Colors.brandGradientEnd],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-        }
-        .buttonStyle(.plain)
-        .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView()
-        }
-    }
-
-    private var selectionHeader: some View {
-        HStack {
-            Text("\(selectedSongs.count) selected")
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(Theme.Colors.textSecondary)
-            Spacer()
-            Button(
-                selectedSongs.count == downloadManager.downloadedSongs.count
-                    ? "Deselect All" : "Select All"
-            ) {
-                withAnimation(Theme.AnimationPresets.gentle) {
-                    if selectedSongs.count == downloadManager.downloadedSongs.count {
-                        selectedSongs.removeAll()
-                    } else {
-                        selectedSongs = Set(downloadManager.downloadedSongs.map(\.song.id))
-                    }
-                }
-            }
-            .font(Theme.Typography.subheadline.weight(.semibold))
-            .foregroundStyle(Theme.Colors.brandGradientStart)
-        }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.sm)
     }
 
     // MARK: - Selection

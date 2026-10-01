@@ -184,10 +184,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// Ref: https://developer.apple.com/documentation/carplay/cpnowplayingtemplate
     private func makeNowPlayingTab() -> CPListTemplate {
         let template = CPListTemplate(
-            title: String(localized: "Now Playing"),
+            title: LocalizationManager.text("Now Playing"),
             sections: buildNowPlayingTabSections()
         )
-        template.tabTitle = String(localized: "Now Playing")
+        template.tabTitle = LocalizationManager.text("Now Playing")
         template.tabImage = UIImage(systemName: "play.circle.fill")
         nowPlayingTab = template
         return template
@@ -199,8 +199,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         guard let engine = container?.audioEngine, let song = engine.currentTrack else {
             // Empty state when nothing is playing
             let hint = CPListItem(
-                text: String(localized: "Nothing playing"),
-                detailText: String(localized: "Pick a song from Browse or For You"),
+                text: LocalizationManager.text("Nothing playing"),
+                detailText: LocalizationManager.text("Pick a song from Browse or For You"),
                 image: UIImage(systemName: "play.slash")
             )
             return [CPListSection(items: [hint])]
@@ -221,14 +221,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
         // Queue shortcut
         let queueItem = makeListImageItem(
-            text: String(localized: "Queue"),
+            text: LocalizationManager.text("Queue"),
             image: UIImage(systemName: "list.bullet")
         ) { [weak self] in self?.showQueue() }
 
         return [
             CPListSection(
                 items: [currentItem],
-                header: String(localized: "Playing now"),
+                header: LocalizationManager.text("Playing now"),
                 sectionIndexTitle: nil
             ),
             CPListSection(items: [queueItem]),
@@ -292,7 +292,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private func makeSearchTab() -> CPSearchTemplate {
         let template = CPSearchTemplate()
         template.delegate = self
-        template.tabTitle = String(localized: "Search")
+        template.tabTitle = LocalizationManager.text("Search")
         template.tabImage = UIImage(systemName: "magnifyingglass")
         searchTemplate = template
         return template
@@ -302,28 +302,28 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func makeBrowseTab() -> CPListTemplate {
         let template = CPListTemplate(
-            title: String(localized: "Browse"),
+            title: LocalizationManager.text("Browse"),
             sections: [
                 CPListSection(items: [
                     makeListImageItem(
-                        text: String(localized: "Recently Played"),
+                        text: LocalizationManager.text("Recently Played"),
                         image: UIImage(systemName: "clock.fill")
                     ) { [weak self] in self?.showRecentlyPlayed() },
                     makeListImageItem(
-                        text: String(localized: "Favorites"),
+                        text: LocalizationManager.text("Favorites"),
                         image: UIImage(systemName: "heart.fill")
                     ) { [weak self] in self?.showFavorites() },
                 ])
             ]
         )
-        template.tabTitle = String(localized: "Browse")
+        template.tabTitle = LocalizationManager.text("Browse")
         template.tabImage = UIImage(systemName: "music.note.house.fill")
         return template
     }
 
     private func showRecentlyPlayed() {
         guard let container else { return }
-        let title = String(localized: "Recently Played")
+        let title = LocalizationManager.text("Recently Played")
         let loadingTemplate = CPListTemplate(
             title: title,
             sections: [CPListSection(items: [makeLoadingItem()])]
@@ -358,7 +358,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func showFavorites() {
         guard let container else { return }
-        let title = String(localized: "Favorites")
+        let title = LocalizationManager.text("Favorites")
         let loadingTemplate = CPListTemplate(
             title: title,
             sections: [CPListSection(items: [makeLoadingItem()])]
@@ -399,7 +399,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
             if queue.isEmpty {
                 let template = CPListTemplate(
-                    title: String(localized: "Queue"),
+                    title: LocalizationManager.text("Queue"),
                     sections: [CPListSection(items: [makeEmptyItem()])]
                 )
                 self.interfaceController?.pushTemplate(template, animated: true, completion: nil)
@@ -429,7 +429,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 return item
             }
             let template = CPListTemplate(
-                title: "\(String(localized: "Queue")) (\(queue.count))",
+                title: "\(LocalizationManager.text("Queue")) (\(queue.count))",
                 sections: [CPListSection(items: items)]
             )
             self.interfaceController?.pushTemplate(template, animated: true, completion: nil)
@@ -440,10 +440,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func makePlaylistsTab() -> CPListTemplate {
         let template = CPListTemplate(
-            title: String(localized: "Playlists"),
+            title: LocalizationManager.text("Playlists"),
             sections: [CPListSection(items: [makeLoadingItem()])]
         )
-        template.tabTitle = String(localized: "Playlists")
+        template.tabTitle = LocalizationManager.text("Playlists")
         template.tabImage = UIImage(systemName: "list.bullet.rectangle.fill")
         loadPlaylists(into: template)
         return template
@@ -464,7 +464,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                     let songCount = playlist.songs.count
                     let item = CPListItem(
                         text: playlist.title,
-                        detailText: String(localized: "\(songCount) songs"),
+                        detailText: LocalizationManager.text("\(songCount) songs"),
                         image: UIImage(systemName: "music.note.list")
                     )
                     item.handler = { [weak self] _, completion in
@@ -511,11 +511,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     /// Load home sections (Featured Mix, Chill Vibes, etc.) as browsable suggestions.
     private func makeSuggestionsTab() -> CPListTemplate {
         let template = CPListTemplate(
-            title: String(localized: "For You"),
+            title: LocalizationManager.text("For You"),
             sections: [CPListSection(items: [makeLoadingItem()])]
         )
 
-        template.tabTitle = String(localized: "For You")
+        template.tabTitle = LocalizationManager.text("For You")
         template.tabImage = UIImage(systemName: "sparkles")
         loadHomeSections(into: template)
         return template
@@ -591,7 +591,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 let items = songList.map { self.makeSongItem($0, fromQueue: songList) }
                 template.updateSections([
                     CPListSection(
-                        items: items, header: String(localized: "Recently Played"),
+                        items: items, header: LocalizationManager.text("Recently Played"),
                         sectionIndexTitle: nil)
                 ])
             }
@@ -630,8 +630,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func makePlayAllItems(songs: [Song]) -> [CPListItem] {
         let playAll = CPListItem(
-            text: "▶ \(String(localized: "Play All"))",
-            detailText: String(localized: "\(songs.count) songs")
+            text: "▶ \(LocalizationManager.text("Play All"))",
+            detailText: LocalizationManager.text("\(songs.count) songs")
         )
         playAll.handler = { [weak self] _, completion in
             guard let first = songs.first else {
@@ -642,8 +642,8 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         }
 
         let shuffleAll = CPListItem(
-            text: "🔀 \(String(localized: "Shuffle All"))",
-            detailText: String(localized: "\(songs.count) songs")
+            text: "🔀 \(LocalizationManager.text("Shuffle All"))",
+            detailText: LocalizationManager.text("\(songs.count) songs")
         )
         shuffleAll.handler = { [weak self] _, completion in
             let shuffled = songs.shuffled()
@@ -727,14 +727,14 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             controller.dismissTemplate(animated: false, completion: nil)
         }
         let dismiss = CPAlertAction(
-            title: String(localized: "Dismiss"),
+            title: LocalizationManager.text("Dismiss"),
             style: .cancel,
             handler: { _ in }
         )
         let alert = CPAlertTemplate(
             titleVariants: [
-                String(localized: "Cannot play this song"),
-                String(localized: "Playback failed"),
+                LocalizationManager.text("Cannot play this song"),
+                LocalizationManager.text("Playback failed"),
             ],
             actions: [dismiss]
         )
@@ -771,7 +771,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func makeLoadingItem() -> CPListItem {
         CPListItem(
-            text: String(localized: "Loading…"),
+            text: LocalizationManager.text("Loading…"),
             detailText: nil,
             image: UIImage(systemName: "arrow.trianglehead.2.clockwise")
         )
@@ -779,15 +779,15 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
 
     private func makeEmptyItem() -> CPListItem {
         CPListItem(
-            text: String(localized: "No items"),
-            detailText: String(localized: "Nothing here yet"),
+            text: LocalizationManager.text("No items"),
+            detailText: LocalizationManager.text("Nothing here yet"),
             image: UIImage(systemName: "tray")
         )
     }
 
     private func makeErrorItem(_ error: Error) -> CPListItem {
         CPListItem(
-            text: String(localized: "Failed to load"),
+            text: LocalizationManager.text("Failed to load"),
             detailText: error.localizedDescription,
             image: UIImage(systemName: "exclamationmark.triangle")
         )

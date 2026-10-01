@@ -74,7 +74,7 @@ final class PremiumManager {
     private var redemptionFeedbackClearTask: Task<Void, Never>?
 
     func setRedemptionSuccess() {
-        redemptionFeedback = .success(String(localized: "Premium activated"))
+        redemptionFeedback = .success(LocalizationManager.text("Premium activated"))
         scheduleRedemptionFeedbackClear()
     }
 
@@ -130,6 +130,8 @@ final class PremiumManager {
         redemptionFeedbackAutoClearInterval: TimeInterval = 6.0
     ) {
         self.featureFlagManager = featureFlagManager
+        // EvanTube has no subscription products or purchase flow.
+        guard featureFlagManager?.isPremiumEnabled != false else { return }
         self.redemptionFeedbackAutoClearInterval = redemptionFeedbackAutoClearInterval
         // Trust local cache for instant launch UX, but only if not stale
         let localCached = UserDefaults.standard.bool(forKey: Self.premiumCacheKey)
@@ -213,10 +215,10 @@ final class PremiumManager {
             break
 
         case .pending:
-            purchaseError = String(localized: "Purchase is pending approval.")
+            purchaseError = LocalizationManager.text("Purchase is pending approval.")
 
         @unknown default:
-            purchaseError = String(localized: "An unknown purchase result occurred.")
+            purchaseError = LocalizationManager.text("An unknown purchase result occurred.")
         }
     }
 
@@ -231,7 +233,7 @@ final class PremiumManager {
         await checkSubscriptionStatus()
 
         if !isPremium {
-            purchaseError = String(localized: "No active subscriptions found to restore.")
+            purchaseError = LocalizationManager.text("No active subscriptions found to restore.")
         }
     }
 
@@ -282,31 +284,16 @@ final class PremiumManager {
     // MARK: - Feature Gating
 
     func canAccess(_ feature: PremiumFeature) -> Bool {
-        if let override = devPremiumOverride { return override }
-        return isPremium
+        true
     }
 
-    var remainingSkips: Int {
-        isPremium ? .max : max(0, freeSkipLimit - skipCount)
-    }
+    var remainingSkips: Int { .max }
 
-    func recordSkip() -> Bool {
-        guard !isPremium else { return true }
-        resetSkipsIfNeeded()
-        if skipCount >= freeSkipLimit { return false }
-        skipCount += 1
-        UserDefaults.standard.set(skipCount, forKey: Self.skipCountKey)
-        return true
-    }
+    func recordSkip() -> Bool { true }
 
-    func canDownload(currentCount: Int) -> Bool {
-        if let override = devPremiumOverride { return override }
-        return isPremium || currentCount < freeDownloadLimit
-    }
+    func canDownload(currentCount: Int) -> Bool { true }
 
-    func maxAllowedQuality() -> String {
-        isPremium ? "high" : "medium"
-    }
+    func maxAllowedQuality() -> String { "high" }
 
     // MARK: - Helpers
 

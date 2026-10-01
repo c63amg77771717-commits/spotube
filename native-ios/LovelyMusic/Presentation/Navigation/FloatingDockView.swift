@@ -72,16 +72,10 @@ private struct DockProgressBar: View {
                 Capsule()
                     .fill(Theme.Colors.divider)
                     .frame(height: 2.5)
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [playerVM.dominantColor, playerVM.dominantColor.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                PlaybackGradient(isPlaying: playerVM.isPlaying)
+                    .clipShape(Capsule())
                     .frame(width: max(0, geo.size.width * playbackProgress.progress), height: 2.5)
-                    .shadow(color: playerVM.dominantColor.opacity(0.6), radius: 4, y: 0)
+                    .shadow(color: Theme.Colors.brandGradientStart.opacity(0.6), radius: 4, y: 0)
                     .animation(.linear(duration: 0.5), value: playbackProgress.progress)
             }
         }

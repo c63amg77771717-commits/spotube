@@ -9,7 +9,7 @@ struct ForceUpdateView: View {
 
     private var displayMessage: String {
         message.isEmpty
-            ? String(localized: "A new version is available. Please update to continue using LovelyMusic.")
+            ? LocalizationManager.text("A new version is available. Please update to continue using LovelyMusic.")
             : message
     }
 

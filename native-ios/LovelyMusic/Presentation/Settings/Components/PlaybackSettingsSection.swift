@@ -4,14 +4,11 @@ import SwiftUI
 /// persistent queue, auto-skip on error, autoplay, equalizer.
 struct PlaybackSettingsSection: View {
     @Bindable var viewModel: SettingsViewModel
-    let isPremium: Bool
-    let canAccessEqualizer: Bool
     let equalizerPresetName: String
     let sleepTimerIsActive: Bool
     let sleepTimerFormatted: String
     let audioQualityPicker: AnyView
     let onCancelSleepTimer: () -> Void
-    let onShowEqualizerPaywall: () -> Void
 
     var body: some View {
         SettingsGroup(header: "Playback") {
@@ -83,23 +80,13 @@ struct PlaybackSettingsSection: View {
 
             SettingsDivider()
 
-            if canAccessEqualizer {
-                NavigationLink {
-                    EqualizerView()
-                } label: {
-                    SettingsRow(icon: "slider.vertical.3", title: "Equalizer") {
-                        Text(equalizerPresetName)
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    }
-                }
-            } else {
-                Button {
-                    onShowEqualizerPaywall()
-                } label: {
-                    SettingsRow(icon: "slider.vertical.3", title: "Equalizer") {
-                        PremiumBadgeView()
-                    }
+            NavigationLink {
+                EqualizerView()
+            } label: {
+                SettingsRow(icon: "slider.vertical.3", title: "Equalizer") {
+                    Text(equalizerPresetName)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
                 }
             }
         }

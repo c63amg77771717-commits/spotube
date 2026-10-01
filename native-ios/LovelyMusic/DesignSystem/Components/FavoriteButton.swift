@@ -12,7 +12,7 @@ struct FavoriteButton: View {
             action()
         } label: {
             Image(systemName: isFavorite ? "heart.fill" : "heart")
-                .foregroundStyle(isFavorite ? Theme.Colors.error : Theme.Colors.textTertiary)
+                .foregroundStyle(isFavorite ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textTertiary))
                 .symbolEffect(.bounce, value: animateBounce)
         }
         .buttonStyle(.plain)

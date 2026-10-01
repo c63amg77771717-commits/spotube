@@ -205,9 +205,6 @@ final class DIContainer {
         self.audioEngine.audioCacheManager = self.audioCacheManager
         self.audioEngine.equalizerManager = self.equalizerManager
         self.audioEngine.playbackStatePersistence = self.playbackStatePersistence
-        self.audioEngine.isPremiumProvider = { [weak premiumManager] in
-            premiumManager?.isPremium ?? false
-        }
 
         PlaybackQualityWiring.installExplicitDownloadResolverFactory(
             on: downloadManager,
@@ -359,8 +356,8 @@ final class DIContainer {
             object: nil,
             queue: .main
         ) { [weak innerTubeAPI, weak authManager] _ in
-            let region = UserDefaults.standard.string(forKey: "region") ?? "VN"
-            let language = UserDefaults.standard.string(forKey: "language") ?? "vi"
+            let region = UserDefaults.standard.string(forKey: "region") ?? "TW"
+            let language = UserDefaults.standard.string(forKey: "language") ?? "zh-Hant"
             Task {
                 await innerTubeAPI?.setLocale(YouTubeLocale(gl: region, hl: language))
                 await cachedRepoRef?.invalidateAll()

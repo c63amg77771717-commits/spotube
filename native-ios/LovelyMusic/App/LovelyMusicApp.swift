@@ -153,10 +153,10 @@ struct LovelyMusicApp: App {
             // `fetchFlags()` on non-bootstrap launches. iOS does not allow
             // programmatic relaunch; this just informs the user.
             .alert(
-                String(localized: "Configuration Updated"),
+                LocalizationManager.text("Configuration Updated"),
                 isPresented: $pendingRelaunchPrompt
             ) {
-                Button(String(localized: "OK"), role: .cancel) {
+                Button(LocalizationManager.text("OK"), role: .cancel) {
                     pendingRelaunchPrompt = false
                 }
             } message: {

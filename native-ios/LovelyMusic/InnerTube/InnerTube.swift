@@ -1036,12 +1036,12 @@ enum InnerTubeError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .httpError(let code): return "HTTP error: \(code)"
-        case .decodingError(let err): return "Decoding error: \(err.localizedDescription)"
-        case .invalidURL: return "Invalid URL"
-        case .noStreamAvailable: return "No audio stream available"
-        case .videoUnavailable(let reason): return "Video unavailable: \(reason)"
-        case .timeout: return "Request timed out"
+        case .httpError(let code): return LocalizationManager.text("HTTP error: \(code)")
+        case .decodingError(let err): return LocalizationManager.text("Decoding error: \(err.localizedDescription)")
+        case .invalidURL: return LocalizationManager.text("Invalid URL")
+        case .noStreamAvailable: return LocalizationManager.text("No audio stream available")
+        case .videoUnavailable(let reason): return LocalizationManager.text("Video unavailable: \(reason)")
+        case .timeout: return LocalizationManager.text("Request timed out")
         }
     }
 

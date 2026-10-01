@@ -10,12 +10,8 @@ struct LibraryView: View {
     @Environment(DownloadManager.self) private var downloadManager
     @Environment(PremiumManager.self) private var premiumManager
     @Environment(FeatureFlagManager.self) private var featureFlags
-    @AppStorage("libraryPremiumBannerDismissed") private var bannerDismissed = false
-    @State private var showPaywall = false
     @State private var libraryScrollPosition = ScrollPosition(idType: String.self)
     @State private var showBulkDeleteConfirmation = false
-    @State private var showMB3Import = false
-    @State private var showDriveSync = false
 
     init(viewModel: LibraryViewModel) {
         self.viewModel = viewModel
@@ -35,21 +31,6 @@ struct LibraryView: View {
                 // Inline search
                 InlineSearchBar(text: $searchText, placeholder: "Search library")
                     .padding(.horizontal, Theme.Spacing.lg)
-
-                Button {
-                    showDriveSync = true
-                } label: {
-                    Label("Google Drive 歌單同步", systemImage: "arrow.triangle.2.circlepath.icloud")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                        .background(Theme.Colors.surfaceCard)
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-                }
-                .foregroundStyle(Theme.Colors.brandGradientStart)
-                .padding(.horizontal, Theme.Spacing.lg)
-
-                // Premium upsell banner
-                libraryPremiumBanner
 
                 // Error state
                 if let error = viewModel.error {
@@ -80,14 +61,18 @@ struct LibraryView: View {
             }
         }
         .background(Theme.Colors.backgroundPrimary)
-        .navigationTitle("媒體庫")
-        .sheet(isPresented: $showMB3Import) {
-            MB3ImportView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $showDriveSync) {
-            GoogleDriveSyncView()
-        }
+        .navigationTitle("為你而來")
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink(value: Route.settings) {
+                    Image(systemName: "gearshape")
+                        .font(.title3)
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Settings")
+                .accessibilityIdentifier("library_settings")
+            }
             if !viewModel.playlists.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     SelectEditButton(isEditing: editMode == .active) {
@@ -174,62 +159,6 @@ struct LibraryView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This action cannot be undone.")
-        }
-    }
-
-    // MARK: - Premium Banner
-
-    @ViewBuilder
-    private var libraryPremiumBanner: some View {
-        if featureFlags.isDownloadEnabled && !premiumManager.isPremium && !bannerDismissed {
-            Button {
-                showPaywall = true
-            } label: {
-                HStack(spacing: Theme.Spacing.md) {
-                    // Round 2 Q2: gold scoped to paywall only — use brand purple here.
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.brandGradientStart)
-
-                    Text("Unlock unlimited downloads & more")
-                        .font(Theme.Typography.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-
-                    Spacer()
-
-                    Button {
-                        withAnimation(Theme.AnimationPresets.smooth) {
-                            bannerDismissed = true
-                        }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Theme.Colors.textTertiary)
-                            // Enlarge tap target to 44×44pt minimum (icon stays 10pt visually)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.vertical, Theme.Spacing.md)
-                .frame(maxHeight: 60)
-                .background(
-                    Theme.Colors.brandGradientStart.opacity(0.08)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                        .stroke(Theme.Colors.brandGradientStart.opacity(0.25), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, Theme.Spacing.lg)
-            .transition(.opacity.combined(with: .move(edge: .top)))
-            .fullScreenCover(isPresented: $showPaywall) {
-                PaywallView()
-            }
         }
     }
 
@@ -334,7 +263,7 @@ struct LibraryView: View {
                     Spacer()
                     Button(
                         selectedPlaylists.count == cachedPlaylists.count
-                            ? String(localized: "Deselect All") : String(localized: "Select All")
+                            ? LocalizationManager.text("Deselect All") : LocalizationManager.text("Select All")
                     ) {
                         withAnimation(Theme.AnimationPresets.gentle) {
                             if selectedPlaylists.count == cachedPlaylists.count {
@@ -345,7 +274,7 @@ struct LibraryView: View {
                         }
                     }
                     .font(Theme.Typography.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.Colors.brandGradientStart)
+                    .foregroundStyle(Theme.Colors.brandGradient)
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
             } else {
@@ -369,17 +298,6 @@ struct LibraryView: View {
 
             VStack(spacing: Theme.Spacing.xxs) {
                 if editMode == .inactive {
-                    Button {
-                        showMB3Import = true
-                    } label: {
-                        Label("匯入 MB3 ZIP 歌單", systemImage: "square.and.arrow.down")
-                            .foregroundStyle(Theme.Colors.brandGradientStart)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, Theme.Spacing.sm)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, Theme.Spacing.lg)
-
                     // Create playlist button
                     Button {
                         viewModel.isCreatingPlaylist = true
@@ -574,8 +492,8 @@ struct LibraryView: View {
     @ViewBuilder
     private func playlistRowContent(playlist: Playlist) -> some View {
         HStack(spacing: Theme.Spacing.md) {
-            AsyncThumbnail(
-                url: playlist.thumbnailURL, size: 48, cornerRadius: Theme.CornerRadius.small)
+                PlaylistCoverThumbnail(
+                    playlist: playlist, size: 48, cornerRadius: Theme.CornerRadius.small)
 
             VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
                 Text(playlist.title)

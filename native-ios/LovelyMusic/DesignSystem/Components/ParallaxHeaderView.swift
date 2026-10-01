@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Parallax scroll header used by Playlist, Album, Artist detail pages.
 ///
@@ -13,6 +14,7 @@ import SwiftUI
 /// to a static header when the user has opted out of non-essential motion.
 struct ParallaxHeaderView<Content: View>: View {
     let thumbnailURL: String?
+    let customImage: UIImage?
     let height: CGFloat
     let isCircular: Bool
     let topInset: CGFloat
@@ -22,12 +24,14 @@ struct ParallaxHeaderView<Content: View>: View {
 
     init(
         thumbnailURL: String?,
+        customImage: UIImage? = nil,
         height: CGFloat = 380,
         isCircular: Bool = false,
         topInset: CGFloat = 0,
         @ViewBuilder content: @escaping () -> Content
     ) {
         self.thumbnailURL = thumbnailURL
+        self.customImage = customImage
         self.height = height
         self.isCircular = isCircular
         self.topInset = topInset
@@ -95,11 +99,21 @@ struct ParallaxHeaderView<Content: View>: View {
 
     private var foregroundContent: some View {
         VStack(spacing: Theme.Spacing.md) {
-            AsyncThumbnail(
-                url: thumbnailURL,
-                size: thumbnailSize,
-                cornerRadius: thumbnailCorner
-            )
+            Group {
+                if let customImage {
+                    Image(uiImage: customImage)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    AsyncThumbnail(
+                        url: thumbnailURL,
+                        size: thumbnailSize,
+                        cornerRadius: thumbnailCorner
+                    )
+                }
+            }
+            .frame(width: thumbnailSize, height: thumbnailSize)
+            .clipShape(RoundedRectangle(cornerRadius: thumbnailCorner))
             .shadow(
                 color: Theme.Colors.brandGradientStart.opacity(0.25),
                 radius: 24,
@@ -114,7 +128,13 @@ struct ParallaxHeaderView<Content: View>: View {
 
     @ViewBuilder
     private var thumbnailBackground: some View {
-        if let url = thumbnailURL, let imageURL = URL(string: url) {
+        if let customImage {
+            Image(uiImage: customImage)
+                .resizable()
+                .scaledToFill()
+                .blur(radius: 18)
+                .overlay(backgroundGradient)
+        } else if let url = thumbnailURL, let imageURL = URL(string: url) {
             AsyncImage(url: imageURL) { phase in
                 switch phase {
                 case .success(let image):

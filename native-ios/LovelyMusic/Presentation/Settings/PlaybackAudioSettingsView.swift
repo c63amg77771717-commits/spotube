@@ -5,15 +5,11 @@ import SwiftUI
 struct PlaybackAudioSettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @Environment(PlayerViewModel.self) private var playerVM
-    let isPremium: Bool
-    let canAccessEqualizer: Bool
     let equalizerPresetName: String
     let sleepTimerIsActive: Bool
     let sleepTimerFormatted: String
     let audioQualityPicker: AnyView
-    let canAccessLyrics: Bool
     let onCancelSleepTimer: () -> Void
-    let onShowEqualizerPaywall: () -> Void
 
     var body: some View {
         ScrollView {
@@ -48,7 +44,7 @@ struct PlaybackAudioSettingsView: View {
 
                     SettingsDivider()
 
-                    if canAccessEqualizer {
+
                         NavigationLink {
                             EqualizerView()
                         } label: {
@@ -67,19 +63,6 @@ struct PlaybackAudioSettingsView: View {
                                 }
                             }
                         }
-                    } else {
-                        Button {
-                            onShowEqualizerPaywall()
-                        } label: {
-                            SettingsRow(
-                                icon: "slider.vertical.3",
-                                iconColor: .purple,
-                                title: "Equalizer"
-                            ) {
-                                PremiumBadgeView()
-                            }
-                        }
-                    }
 
                     SettingsDivider()
 
@@ -218,20 +201,14 @@ struct PlaybackAudioSettingsView: View {
                         title: "Auto-Show Lyrics"
                     ) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            if !canAccessLyrics {
-                                PremiumBadgeView()
-                            }
                             CustomToggle(
                                 isOn: Binding(
                                     get: { viewModel.showLyricsAutomatically },
                                     set: { newValue in
-                                        if canAccessLyrics {
                                             viewModel.showLyricsAutomatically = newValue
-                                        }
                                     }
                                 )
                             )
-                            .disabled(!canAccessLyrics)
                         }
                     }
 
@@ -243,23 +220,17 @@ struct PlaybackAudioSettingsView: View {
                         title: "Lyrics Font Size"
                     ) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            if !canAccessLyrics {
-                                PremiumBadgeView()
-                            }
                             CustomMenuPicker(
                                 selection: Binding(
                                     get: { viewModel.lyricsFontSize },
                                     set: { newValue in
-                                        if canAccessLyrics {
                                             viewModel.lyricsFontSize = newValue
-                                        }
                                     }
                                 ),
                                 options: LyricsFontSize.allCases,
                                 label: { $0.displayName },
                                 icon: nil
                             )
-                            .disabled(!canAccessLyrics)
                         }
                     }
 
@@ -271,20 +242,14 @@ struct PlaybackAudioSettingsView: View {
                         title: "Show Translation"
                     ) {
                         HStack(spacing: Theme.Spacing.xs) {
-                            if !canAccessLyrics {
-                                PremiumBadgeView()
-                            }
                             CustomToggle(
                                 isOn: Binding(
                                     get: { viewModel.showLyricsTranslation },
                                     set: { newValue in
-                                        if canAccessLyrics {
                                             viewModel.showLyricsTranslation = newValue
-                                        }
                                     }
                                 )
                             )
-                            .disabled(!canAccessLyrics)
                         }
                     }
                 }

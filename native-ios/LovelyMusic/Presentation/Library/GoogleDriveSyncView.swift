@@ -10,8 +10,8 @@ struct GoogleDriveSyncView: View {
             Form {
                 Section {
                     Label("跨裝置歌單", systemImage: "arrow.triangle.2.circlepath.icloud")
-                        .foregroundStyle(Theme.Colors.brandGradientStart)
-                    Text("同步 EvanTube 與 MB3 匯入歌單。使用相同 Google 帳號，即可在已設定的 iOS 與 Android 版更新歌單。")
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Text("同步 EvanTube 與匯入歌單。使用相同 Google 帳號，即可在不同 iOS 裝置更新歌單。")
                     Text("同步內容包含歌單名稱、歌曲順序與增刪紀錄，不會上傳音樂檔案。離線修改會在 App 重新連線後同步。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }

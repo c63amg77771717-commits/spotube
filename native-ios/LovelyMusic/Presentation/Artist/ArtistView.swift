@@ -91,8 +91,8 @@ struct ArtistView: View {
                                     } label: {
                                         Text(
                                             showAllSongs
-                                                ? String(localized: "Show Less")
-                                                : String(localized: "See All")
+                                                ? LocalizationManager.text("Show Less")
+                                                : LocalizationManager.text("See All")
                                         )
                                         .font(Theme.Typography.caption)
                                         .foregroundStyle(Theme.Colors.textSecondary)

@@ -152,8 +152,8 @@ struct OnboardingView: View {
         } label: {
             Text(
                 isLastPage
-                    ? String(localized: "Get Started")
-                    : String(localized: "Next")
+                    ? LocalizationManager.text("Get Started")
+                    : LocalizationManager.text("Next")
             )
             .font(Theme.Typography.headline)
             .foregroundStyle(.white)

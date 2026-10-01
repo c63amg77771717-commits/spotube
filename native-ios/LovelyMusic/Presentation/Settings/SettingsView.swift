@@ -1,18 +1,15 @@
-import StoreKit
 import SwiftUI
 
 struct SettingsView: View {
     @State private var viewModel: SettingsViewModel
+    @Environment(DIContainer.self) private var container
+    @State private var showPlaylistImport = false
+    @State private var showDriveSync = false
     @Bindable var themeManager: ThemeManager
     @Environment(SleepTimerManager.self) private var sleepTimerManager
-    @Environment(PremiumManager.self) private var premiumManager
     @Environment(EqualizerManager.self) private var equalizerManager
     @Environment(LocalizationManager.self) private var localizationManager
     @Environment(FeatureFlagManager.self) private var featureFlags
-    @State private var showPaywall = false
-    @State private var showQualityPaywall = false
-    @State private var showEqualizerPaywall = false
-    @State private var showOfferCodeRedemption = false
     // Haptic feedback triggers (SwiftUI native, replacing UIKit imperative calls)
     @State private var mediumHapticTrigger = false
     @Namespace private var qualityNamespace
@@ -44,30 +41,8 @@ struct SettingsView: View {
                             .staggeredAppear(index: 0)
                     }
 
-                    // MARK: - Premium Section
-                    if featureFlags.isPremiumEnabled {
-                        premiumSection
-                            .padding(.horizontal, Theme.Spacing.lg)
-                            .staggeredAppear(index: 1)
-                    }
-
-                    // MARK: - Developer Toggle
-                    if featureFlags.isDevModeEnabled {
-                        SettingsGroup(header: "🧪 Developer") {
-                            SettingsRow(icon: "hammer.fill", title: "Premium Override") {
-                            CustomToggle(
-                                isOn: Binding(
-                                    get: { premiumManager.devPremiumOverride ?? false },
-                                    set: { premiumManager.devPremiumOverride = $0 }
-                                ))
-                        }
-                    }
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.medium)
-                            .stroke(Color.orange, lineWidth: 1)
-                            .padding(.horizontal, Theme.Spacing.lg)
-                    )
-                }
+                playlistSettingsSection
+                    .padding(.bottom, Theme.Spacing.lg)
 
                 // MARK: - Appearance (elevated visual showcase)
                 if featureFlags.isAppearanceSettingsEnabled {
@@ -81,20 +56,13 @@ struct SettingsView: View {
                     NavigationLink {
                         PlaybackAudioSettingsView(
                             viewModel: viewModel,
-                            isPremium: premiumManager.isPremium,
-                            canAccessEqualizer: premiumManager.canAccess(.equalizer),
                             equalizerPresetName: equalizerManager.selectedPreset.name,
                             sleepTimerIsActive: sleepTimerManager.isActive,
                             sleepTimerFormatted: sleepTimerManager.formattedRemaining,
                             audioQualityPicker: AnyView(audioQualityPicker),
-                            canAccessLyrics: premiumManager.canAccess(.syncedLyrics),
                             onCancelSleepTimer: {
                                 sleepTimerManager.cancel()
                                 viewModel.sleepTimer = .off
-                            },
-                            onShowEqualizerPaywall: {
-                                showEqualizerPaywall = true
-                                mediumHapticTrigger.toggle()
                             }
                         )
                     } label: {
@@ -144,7 +112,7 @@ struct SettingsView: View {
                             icon: "music.note.house.fill",
                             accentColor: Theme.Colors.brandGradientEnd,
                             title: "About",
-                            subtitle: "Credits, Licenses & Legal",
+                            subtitle: "製作資訊、授權與條款",
                             badge: "v\(appVersion)"
                         )
                     }
@@ -173,22 +141,16 @@ struct SettingsView: View {
                 CustomBackButton(style: .plain)
             }
         }
+        .sheet(isPresented: $showPlaylistImport) {
+            MB3ImportView(viewModel: container.libraryViewModel)
+        }
+        .sheet(isPresented: $showDriveSync) {
+            GoogleDriveSyncView()
+        }
         .sheet(isPresented: $viewModel.showingLogin) {
             YouTubeLoginView(authManager: viewModel.authManager) {
                 NotificationCenter.default.post(name: .settingsChanged, object: nil)
             }
-        }
-        .sheet(isPresented: $showQualityPaywall) {
-            PaywallView()
-        }
-        .sheet(isPresented: $showEqualizerPaywall) {
-            PaywallView()
-        }
-        .task {
-            viewModel.capQualityIfNeeded(isPremium: premiumManager.isPremium)
-        }
-        .onChange(of: premiumManager.isPremium) { _, isPremium in
-            viewModel.capQualityIfNeeded(isPremium: isPremium)
         }
         .onChange(of: viewModel.sleepTimer) { _, newValue in
             sleepTimerManager.start(option: newValue)
@@ -222,6 +184,42 @@ struct SettingsView: View {
         // SwiftUI native haptics (replacing UIKit UIImpactFeedbackGenerator calls)
         .sensoryFeedback(.impact(weight: .medium), trigger: mediumHapticTrigger)
         .sensoryFeedback(.impact(weight: .light), trigger: viewModel.sleepTimer)
+    }
+
+    private var playlistSettingsSection: some View {
+        SettingsGroup(header: "歌單與同步") {
+            Button {
+                showPlaylistImport = true
+            } label: {
+                HStack(spacing: Theme.Spacing.md) {
+                    Label("匯入歌單", systemImage: "square.and.arrow.down")
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                }
+                .frame(minHeight: 52)
+                .padding(.horizontal, Theme.Spacing.lg)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings_playlist_import")
+            SettingsDivider()
+            Button {
+                showDriveSync = true
+            } label: {
+                HStack(spacing: Theme.Spacing.md) {
+                    Label("Google Drive 歌單同步", systemImage: "arrow.triangle.2.circlepath.icloud")
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(Theme.Colors.textTertiary)
+                }
+                .frame(minHeight: 52)
+                .padding(.horizontal, Theme.Spacing.lg)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("settings_drive_sync")
+        }
     }
 
     // MARK: - Gradient Header Background
@@ -415,7 +413,7 @@ struct SettingsView: View {
     private var playbackSubtitle: String {
         let quality = viewModel.audioQuality.displayName
         let eq = equalizerManager.selectedPreset.name
-        return "\(quality) quality · \(eq)"
+        return "\(quality)音質 · \(eq)"
     }
 
     private var languageSubtitle: String {
@@ -427,20 +425,21 @@ struct SettingsView: View {
     private var privacySubtitle: String {
         var parts: [String] = []
         if viewModel.pauseListenHistory || viewModel.pauseSearchHistory {
-            parts.append("History paused")
+            parts.append("紀錄已暫停")
         }
         if !viewModel.cacheSize.isEmpty {
-            parts.append("Cache \(viewModel.cacheSize)")
+            parts.append("快取 \(viewModel.cacheSize)")
         }
-        return parts.isEmpty ? "Manage data & privacy" : parts.joined(separator: " · ")
+        return parts.isEmpty ? "管理紀錄、快取與隱私" : parts.joined(separator: " · ")
     }
 
     private func regionName(_ code: String) -> String {
         switch code {
-        case "VN": return "Vietnam"
-        case "US": return "United States"
-        case "JP": return "Japan"
-        case "KR": return "Korea"
+        case "TW": return "台灣"
+        case "VN": return "越南"
+        case "US": return "美國"
+        case "JP": return "日本"
+        case "KR": return "韓國"
         default: return code
         }
     }
@@ -481,27 +480,14 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: Theme.Spacing.xxs) {
-                        Text(viewModel.accountName ?? String(localized: "Music Account"))
+                        Text(viewModel.accountName ?? LocalizationManager.text("Music Account"))
                             .font(Theme.Typography.title3)
                             .foregroundStyle(Theme.Colors.textPrimary)
 
-                        if premiumManager.isPremium {
-                            HStack(spacing: Theme.Spacing.xxs) {
-                                Image(systemName: "crown.fill")
-                                    .font(.system(size: 10))
-                                Text("Premium")
-                                    .font(Theme.Typography.caption)
-                                    .fontWeight(.semibold)
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, Theme.Spacing.sm)
-                            .padding(.vertical, Theme.Spacing.xxxs)
-                            .background(Theme.Colors.brandGradient, in: Capsule())
-                        } else {
+
                             Text("Signed in")
                                 .font(Theme.Typography.caption)
                                 .foregroundStyle(Theme.Colors.textSecondary)
-                        }
                     }
                     Spacer()
                 }
@@ -583,311 +569,6 @@ struct SettingsView: View {
                 avatarRingRotation = 360
             }
         }
-    }
-
-    // MARK: - Premium Section (Compact Redesign)
-    //
-    // Split into sub-views (`premiumUpgradeCard` / `premiumActiveCard`) to keep
-    // each SwiftUI body small enough for the type-checker. A single combined
-    // `Group { if-else }` body was hitting the @ViewBuilder inference timeout
-    // (cascading into a misleading `TableColumnBuilder` overload note) once
-    // the surrounding Theme tokens grew in r2-light-mode work.
-
-    @ViewBuilder
-    private var premiumSection: some View {
-        if premiumManager.isPremium {
-            premiumActiveCard
-        } else {
-            premiumUpgradeCard
-        }
-    }
-
-    private var premiumUpgradeCard: some View {
-        VStack(spacing: Theme.Spacing.sm) {
-            premiumUpgradeCTAButton
-            premiumRedeemCodeRow
-            premiumRedeemFeedback
-        }
-        .animation(.easeInOut(duration: 0.25), value: premiumManager.redemptionFeedback)
-    }
-
-    private var premiumUpgradeCTAButton: some View {
-        Button {
-            showPaywall = true
-            mediumHapticTrigger.toggle()
-        } label: {
-            premiumUpgradeCTALabel
-        }
-        .buttonStyle(.bouncy)
-        .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView()
-        }
-    }
-
-    private var premiumUpgradeCTALabel: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(.white.opacity(0.2))
-                    .frame(width: 44, height: 44)
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(.white)
-                    .symbolEffect(.breathe, isActive: true)
-            }
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                HStack(spacing: Theme.Spacing.xs) {
-                    Text("Upgrade to Premium")
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(.white)
-                    Text("Popular")
-                        .font(Theme.Typography.badge)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.white.opacity(0.2))
-                        .clipShape(Capsule())
-                }
-                Text("HQ audio, lyrics, equalizer & more")
-                    .font(Theme.Typography.captionSecondary)
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white.opacity(0.8))
-        }
-        .padding(Theme.Spacing.xl)
-        .background(
-            Theme.Colors.brandGradient
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-        .shadow(color: Theme.Colors.brandGradientStart.opacity(0.3), radius: 12, y: 6)
-    }
-
-    private var premiumRedeemCodeRow: some View {
-        Button {
-            showOfferCodeRedemption = true
-            mediumHapticTrigger.toggle()
-        } label: {
-            premiumRedeemCodeRowLabel
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            Text("Redeem code, button, double-tap to enter an Apple promo or gift code")
-        )
-        .offerCodeRedemption(isPresented: $showOfferCodeRedemption) { result in
-            switch result {
-            case .success:
-                premiumManager.setRedemptionSuccess()
-                Task { await premiumManager.checkSubscriptionStatus() }
-            case .failure(let error):
-                premiumManager.setRedemptionFailure(
-                    String(localized: "Code redemption failed: \(error.localizedDescription)")
-                )
-            }
-        }
-    }
-
-    private var premiumRedeemCodeRowLabel: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(Theme.Colors.brandGradient.opacity(0.10))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "giftcard.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.Colors.brandGradientStart)
-            }
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                Text("Redeem code")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Text("Apple promo or gift card")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.Colors.textTertiary)
-        }
-        .padding(Theme.Spacing.lg)
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
-        .background(Theme.Colors.surfaceCard)
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
-        )
-    }
-
-    @ViewBuilder
-    private var premiumRedeemFeedback: some View {
-        if let feedback = premiumManager.redemptionFeedback {
-            premiumRedeemFeedbackRow(feedback)
-                .transition(.opacity.combined(with: .move(edge: .top)))
-        }
-    }
-
-    private func premiumRedeemFeedbackRow(_ feedback: PremiumManager.RedemptionFeedback)
-        -> some View
-    {
-        let isSuccess: Bool
-        let iconName: String
-        let tint: Color
-        let message: String
-        switch feedback {
-        case .success(let text):
-            isSuccess = true
-            iconName = "checkmark.circle.fill"
-            tint = Theme.Colors.success
-            message = text
-        case .failure(let text):
-            isSuccess = false
-            iconName = "exclamationmark.triangle.fill"
-            tint = Theme.Colors.warning
-            message = text
-        }
-        return HStack(spacing: Theme.Spacing.sm) {
-            Image(systemName: iconName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(tint)
-            Text(message)
-                .font(Theme.Typography.caption)
-                .foregroundStyle(tint)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, Theme.Spacing.md)
-        .padding(.vertical, Theme.Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.medium))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            Text(isSuccess ? "Redemption succeeded. \(message)" : "Redemption failed. \(message)")
-        )
-        .accessibilityAddTraits(.isStaticText)
-    }
-
-    private var premiumActiveCard: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            premiumActiveHeader
-            premiumActiveExpiryBanner
-            premiumActiveManageButton
-        }
-        .padding(Theme.Spacing.lg)
-        .background(
-            ZStack {
-                Theme.Colors.surfaceCard
-                Theme.Colors.brandGradient.opacity(0.04)
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                .stroke(Theme.Colors.brandGradientStart.opacity(0.15), lineWidth: 1)
-        )
-        .shadow(
-            color: Theme.Shadows.small.color,
-            radius: Theme.Shadows.small.radius,
-            x: Theme.Shadows.small.x,
-            y: Theme.Shadows.small.y
-        )
-    }
-
-    private var premiumActiveHeader: some View {
-        HStack(spacing: Theme.Spacing.md) {
-            ZStack {
-                Circle()
-                    .fill(Theme.Colors.brandGradient.opacity(0.2))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(Theme.Colors.brandGradientStart)
-            }
-
-            VStack(alignment: .leading, spacing: Theme.Spacing.xxxs) {
-                HStack(spacing: Theme.Spacing.xs) {
-                    Text("Premium Active")
-                        .font(Theme.Typography.headline)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.caption)
-                        .foregroundStyle(Theme.Colors.success)
-                }
-                if let expDate = premiumManager.subscriptionExpirationDate {
-                    Text("Renews \(expDate, style: .date)")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                } else {
-                    Text("All features unlocked")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-            }
-
-            Spacer()
-
-            PremiumBadgeView(size: .standard)
-        }
-    }
-
-    @ViewBuilder
-    private var premiumActiveExpiryBanner: some View {
-        if let expDate = premiumManager.subscriptionExpirationDate,
-            expDate.timeIntervalSinceNow < 3 * 86400 && expDate.timeIntervalSinceNow > 0
-        {
-            HStack(spacing: Theme.Spacing.xs) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-                Text("Subscription renews in \(Int(expDate.timeIntervalSinceNow / 86400)) day(s)")
-                    .font(Theme.Typography.caption)
-                    .foregroundStyle(.orange)
-            }
-            .padding(.horizontal, Theme.Spacing.sm)
-            .padding(.vertical, Theme.Spacing.xs)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.small))
-        }
-    }
-
-    private var premiumActiveManageButton: some View {
-        Button {
-            Task {
-                if let windowScene = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .first
-                {
-                    try? await AppStore.showManageSubscriptions(in: windowScene)
-                }
-            }
-        } label: {
-            HStack {
-                Image(systemName: "gear.badge.checkmark")
-                    .font(.body)
-                    .foregroundStyle(Theme.Colors.textSecondary)
-                    .frame(width: 28)
-                Text("Manage Subscription")
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.Colors.textTertiary)
-            }
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Appearance Section (Visual Showcase)
@@ -973,34 +654,24 @@ struct SettingsView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: themeManager.appearanceMode)
     }
 
-    // MARK: - Audio Quality Picker (Premium-gated)
+    // MARK: - Audio Quality Picker
 
     private var audioQualityPicker: some View {
         HStack(spacing: Theme.Spacing.xxs) {
             ForEach(AudioQuality.allCases, id: \.self) { quality in
                 let isSelected = viewModel.audioQuality == quality
-                let isLocked = quality == .high && !premiumManager.isPremium
 
                 Button {
-                    if isLocked {
-                        showQualityPaywall = true
-                        mediumHapticTrigger.toggle()
-                    } else {
+
                         withAnimation(Theme.AnimationPresets.bouncy) {
                             viewModel.audioQuality = quality
                         }
-                    }
                 } label: {
                     HStack(spacing: Theme.Spacing.xxs) {
                         Text(quality.displayName)
                             .font(Theme.Typography.caption)
                             .fontWeight(isSelected ? .semibold : .medium)
-                        if isLocked {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 8))
-                            Text("PRO")
-                                .font(.system(size: 8, weight: .bold))
-                        }
+
                     }
                     .foregroundStyle(
                         isSelected
@@ -1031,20 +702,20 @@ struct SettingsView: View {
 
     private func regionDisplayName(_ code: String) -> String {
         switch code {
-        case "VN": return String(localized: "🇻🇳 Vietnam")
-        case "US": return String(localized: "🇺🇸 United States")
-        case "JP": return String(localized: "🇯🇵 Japan")
-        case "KR": return String(localized: "🇰🇷 Korea")
+        case "VN": return LocalizationManager.text("🇻🇳 Vietnam")
+        case "US": return LocalizationManager.text("🇺🇸 United States")
+        case "JP": return LocalizationManager.text("🇯🇵 Japan")
+        case "KR": return LocalizationManager.text("🇰🇷 Korea")
         default: return code
         }
     }
 
     private func languageDisplayName(_ code: String) -> String {
         switch code {
-        case "vi": return String(localized: "🇻🇳 Vietnamese")
-        case "en": return String(localized: "🇺🇸 English")
-        case "ja": return String(localized: "🇯🇵 Japanese")
-        case "ko": return String(localized: "🇰🇷 Korean")
+        case "vi": return LocalizationManager.text("🇻🇳 Vietnamese")
+        case "en": return LocalizationManager.text("🇺🇸 English")
+        case "ja": return LocalizationManager.text("🇯🇵 Japanese")
+        case "ko": return LocalizationManager.text("🇰🇷 Korean")
         default: return code
         }
     }

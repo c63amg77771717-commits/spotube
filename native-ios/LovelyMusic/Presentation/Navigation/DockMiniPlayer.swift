@@ -6,17 +6,6 @@ struct DockMiniPlayer: View {
     var body: some View {
         if let song = playerVM.currentSong {
             VStack(spacing: 0) {
-                // Thin progress indicator
-                GeometryReader { geo in
-                    let progress = playerVM.duration > 0
-                        ? min(playerVM.currentTime / playerVM.duration, 1.0) : 0
-                    Rectangle()
-                        .fill(Theme.Colors.brandGradient)
-                        .frame(width: geo.size.width * progress)
-                }
-                .frame(height: 2)
-                .background(Theme.Colors.surfaceCard)
-
                 HStack(spacing: Theme.Spacing.md) {
                     ZStack(alignment: .bottomTrailing) {
                         AsyncThumbnail(url: song.thumbnailURL, size: 40, cornerRadius: Theme.CornerRadius.small)
@@ -95,11 +84,11 @@ struct DockMiniPlayer: View {
                     usesBrandGradient: true
                 )
                 .frame(width: 44, height: 44)
-                .overlay(Circle().stroke(Theme.Colors.brandGradient, lineWidth: 1.5))
+                .overlay(PlaybackRing(isPlaying: playerVM.isPlaying))
             }
             .buttonStyle(.bouncy)
             .frame(width: 44, height: 44)
-            .accessibilityLabel(playerVM.isPlaying ? String(localized: "Pause") : String(localized: "Play"))
+            .accessibilityLabel(playerVM.isPlaying ? LocalizationManager.text("Pause") : LocalizationManager.text("Play"))
         }
     }
 }

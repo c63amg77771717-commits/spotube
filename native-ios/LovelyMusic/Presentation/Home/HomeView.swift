@@ -8,7 +8,6 @@ struct HomeView: View {
     /// the feed (polish-B5).
     @State private var minuteTick: Int = 0
     @Environment(PlayerViewModel.self) private var playerVM
-    @Environment(PremiumManager.self) private var premiumManager
     @Environment(FeatureFlagManager.self) private var featureFlags
     @Environment(ThemeManager.self) private var themeManager
     @Environment(\.colorScheme) private var colorScheme
@@ -18,7 +17,6 @@ struct HomeView: View {
     /// authoritative signal.
     @Environment(\.isTabActive) private var isTabActive
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showPaywall = false
     @State private var homeScrollPosition = ScrollPosition(idType: String.self)
     @Namespace private var chipNamespace
 
@@ -29,10 +27,10 @@ struct HomeView: View {
     private var greetingText: LocalizedStringKey {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
-        case 5..<12: return "Good Morning"
-        case 12..<17: return "Good Afternoon"
-        case 17..<22: return "Good Evening"
-        default: return "Good Night"
+        case 5..<12: return LocalizationManager.text("Good Morning")
+        case 12..<17: return LocalizationManager.text("Good Afternoon")
+        case 17..<22: return LocalizationManager.text("Good Evening")
+        default: return LocalizationManager.text("Good Night")
         }
     }
 
@@ -44,13 +42,13 @@ struct HomeView: View {
         _ = minuteTick
         let interval = Date().timeIntervalSince(date)
         if interval < 60 {
-            return String(localized: "Updated just now")
+            return LocalizationManager.text("Updated just now")
         }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
         formatter.dateTimeStyle = .numeric
         let relative = formatter.localizedString(for: date, relativeTo: Date())
-        return String(localized: "Updated \(relative)")
+        return LocalizationManager.text("Updated \(relative)")
     }
 
     var body: some View {
@@ -110,42 +108,6 @@ struct HomeView: View {
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .padding(.horizontal, Theme.Spacing.lg)
                             .accessibilityLabel(updated)
-                    }
-
-                    // Premium chip for free users — brand purple in Round 2 (gold is paywall-only).
-                    if !premiumManager.isPremium {
-                        Button {
-                            showPaywall = true
-                        } label: {
-                            HStack(spacing: Theme.Spacing.xxs) {
-                                Image(systemName: "crown.fill")
-                                    .font(Theme.Typography.caption3)
-                                    .symbolEffect(.breathe, isActive: true)
-                                Text("Go Premium")
-                                    .font(Theme.Typography.caption)
-                                    .fontWeight(.semibold)
-                            }
-                            .foregroundStyle(Theme.Colors.brandGradientStart)
-                            .padding(.horizontal, Theme.Spacing.md)
-                            .padding(.vertical, Theme.Spacing.xs)
-                            .background(
-                                Capsule()
-                                    .fill(Theme.Colors.brandGradientStart.opacity(0.10))
-                                    .overlay(
-                                        Capsule()
-                                            .stroke(
-                                                Theme.Colors.brandGradientStart.opacity(0.30),
-                                                lineWidth: 1
-                                            )
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, Theme.Spacing.lg)
-                        .accessibilityIdentifier("go_premium")
-                        .fullScreenCover(isPresented: $showPaywall) {
-                            PaywallView()
-                        }
                     }
 
                     // Quick-Play Grid (Spotify-style 2×3 recently played)
@@ -846,8 +808,8 @@ struct HomeView: View {
         case .playlist(let playlist):
             NavigationLink(value: Route.playlist(playlistId: playlist.id)) {
                 VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                    AsyncThumbnail(
-                        url: playlist.thumbnailURL,
+                    PlaylistCoverThumbnail(
+                        playlist: playlist,
                         size: 150,
                         cornerRadius: Theme.CornerRadius.medium
                     )

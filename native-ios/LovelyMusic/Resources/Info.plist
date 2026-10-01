@@ -25,6 +25,7 @@
 	<string>6.0</string>
 	<key>CFBundleLocalizations</key>
 	<array>
+		<string>zh-Hant</string>
 		<string>en</string>
 		<string>ja</string>
 		<string>vi</string>

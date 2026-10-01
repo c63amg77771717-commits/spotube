@@ -7,9 +7,7 @@ struct PlayerBottomBarView: View {
     let isAutoplayEnabled: Bool
     let isVideoMode: Bool
     let isLyricsVisible: Bool
-    let canAccessFullLyrics: Bool
     let isVideoPlaybackEnabled: Bool
-    let dominantColor: Color
 
     let onCycleSpeed: () -> Void
     let onToggleAutoplay: () -> Void
@@ -28,8 +26,8 @@ struct PlayerBottomBarView: View {
                     .fontWeight(.semibold)
                     .foregroundStyle(
                         playbackSpeed != 1.0
-                            ? Theme.Colors.brandGradientStart
-                            : Theme.Colors.textTertiary
+                            ? AnyShapeStyle(Theme.Colors.brandGradient)
+                            : AnyShapeStyle(Theme.Colors.textTertiary)
                     )
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
@@ -52,15 +50,15 @@ struct PlayerBottomBarView: View {
                         .font(.title3)
                         .foregroundStyle(
                             isAutoplayEnabled
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                     Text("Autoplay")
                         .font(Theme.Typography.caption2.weight(.medium))
                         .foregroundStyle(
                             isAutoplayEnabled
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                 }
             }
@@ -77,16 +75,16 @@ struct PlayerBottomBarView: View {
                         .font(.title3)
                         .foregroundStyle(
                             isVideoMode
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                         .contentTransition(.symbolEffect(.replace))
                     Text(isVideoMode ? "Audio" : "Video")
                         .font(Theme.Typography.caption2.weight(.medium))
                         .foregroundStyle(
                             isVideoMode
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                 }
             }
@@ -106,15 +104,15 @@ struct PlayerBottomBarView: View {
                         .font(.title3)
                         .foregroundStyle(
                             isLyricsVisible
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                     Text("Lyrics")
                         .font(Theme.Typography.caption2.weight(.medium))
                         .foregroundStyle(
                             isLyricsVisible
-                                ? dominantColor
-                                : Theme.Colors.textTertiary
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
                 }
             }
@@ -122,15 +120,6 @@ struct PlayerBottomBarView: View {
             .accessibilityLabel(isLyricsVisible ? "Hide lyrics" : "Show lyrics")
             .accessibilityValue(isLyricsVisible ? "Showing" : "Hidden")
             .accessibilityIdentifier("toggle_lyrics")
-            .overlay(alignment: .topTrailing) {
-                if !canAccessFullLyrics {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(Theme.Colors.brandGradientStart)
-                        .padding(Theme.Spacing.xxxs)
-                        .accessibilityHidden(true)
-                }
-            }
 
             // Queue
             Button {

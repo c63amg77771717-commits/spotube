@@ -6,9 +6,9 @@ enum AudioQuality: String, CaseIterable, Codable, Sendable {
 
     var displayName: String {
         switch self {
-        case .low: return String(localized: "Low")
-        case .medium: return String(localized: "Medium")
-        case .high: return String(localized: "High")
+        case .low: return LocalizationManager.text("Low")
+        case .medium: return LocalizationManager.text("Medium")
+        case .high: return LocalizationManager.text("High")
         }
     }
 
@@ -28,12 +28,12 @@ enum SleepTimerOption: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .off: return String(localized: "Off")
-        case .min15: return String(localized: "15 minutes")
-        case .min30: return String(localized: "30 minutes")
-        case .min45: return String(localized: "45 minutes")
-        case .min60: return String(localized: "1 hour")
-        case .endOfTrack: return String(localized: "End of Track")
+        case .off: return LocalizationManager.text("Off")
+        case .min15: return LocalizationManager.text("15 minutes")
+        case .min30: return LocalizationManager.text("30 minutes")
+        case .min45: return LocalizationManager.text("45 minutes")
+        case .min60: return LocalizationManager.text("1 hour")
+        case .endOfTrack: return LocalizationManager.text("End of Track")
         }
     }
 }
@@ -43,9 +43,9 @@ enum LyricsFontSize: String, CaseIterable {
 
     var displayName: String {
         switch self {
-        case .small: return String(localized: "Small")
-        case .medium: return String(localized: "Medium")
-        case .large: return String(localized: "Large")
+        case .small: return LocalizationManager.text("Small")
+        case .medium: return LocalizationManager.text("Medium")
+        case .large: return LocalizationManager.text("Large")
         }
     }
 }
@@ -138,7 +138,7 @@ final class SettingsViewModel {
         didSet { UserDefaults.standard.set(showLyricsTranslation, forKey: "showLyricsTranslation") }
     }
 
-    var region: String = "VN" {
+    var region: String = "TW" {
         didSet {
             guard oldValue != region else { return }
             UserDefaults.standard.set(region, forKey: "region")
@@ -146,7 +146,7 @@ final class SettingsViewModel {
         }
     }
 
-    var language: String = "vi" {
+    var language: String = "zh-Hant" {
         didSet {
             guard oldValue != language else { return }
             UserDefaults.standard.set(language, forKey: "language")
@@ -156,8 +156,8 @@ final class SettingsViewModel {
 
     /// Reload content language & region from UserDefaults (called when app language changes)
     func reloadContentLocale() {
-        region = UserDefaults.standard.string(forKey: "region") ?? "VN"
-        language = UserDefaults.standard.string(forKey: "language") ?? "vi"
+        region = UserDefaults.standard.string(forKey: "region") ?? "TW"
+        language = UserDefaults.standard.string(forKey: "language") ?? "zh-Hant"
     }
 
     init(
@@ -180,8 +180,8 @@ final class SettingsViewModel {
         self.autoplayRelatedSongs =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
         self.crossfadeDuration = UserDefaults.standard.double(forKey: "crossfade_duration")
-        self.region = UserDefaults.standard.string(forKey: "region") ?? "VN"
-        self.language = UserDefaults.standard.string(forKey: "language") ?? "vi"
+        self.region = UserDefaults.standard.string(forKey: "region") ?? "TW"
+        self.language = UserDefaults.standard.string(forKey: "language") ?? "zh-Hant"
         self.pauseListenHistory = UserDefaults.standard.bool(forKey: "pauseListenHistory")
         self.pauseSearchHistory = UserDefaults.standard.bool(forKey: "pauseSearchHistory")
         self.hideExplicitContent = UserDefaults.standard.bool(forKey: "hideExplicitContent")
@@ -332,8 +332,8 @@ final class SettingsViewModel {
         autoSkipOnError = true
         autoplayRelatedSongs = true
         crossfadeDuration = 0
-        region = "VN"
-        language = "vi"
+        region = "TW"
+        language = "zh-Hant"
         pauseListenHistory = false
         pauseSearchHistory = false
         hideExplicitContent = false
