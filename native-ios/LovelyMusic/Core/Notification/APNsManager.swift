@@ -28,7 +28,10 @@ final class APNsManager: NSObject, UNUserNotificationCenterDelegate {
         return pendingRoute
     }
 
-    func requestPushAuthorization() async -> Bool {
+    func requestPushAuthorization(
+        pushServiceURL: URL? = SecretsProvider.pushNotificationBaseURL
+    ) async -> Bool {
+        guard pushServiceURL != nil else { return false }
         do {
             let granted = try await UNUserNotificationCenter.current()
                 .requestAuthorization(options: [.alert, .sound, .badge])
