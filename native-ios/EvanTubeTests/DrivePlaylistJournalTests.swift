@@ -172,11 +172,16 @@ final class DrivePlaylistJournalTests: XCTestCase {
         let playlist = try await repository.createPlaylist(title: "Shared")
         try repository.activateDriveSync(accountID: "a")
         let downloadedBeforeLocalEdit = try store.ownJournalData()
-        try await repository.addSongToPlaylist(song: song("aaaaaaaaaaa"), playlistId: playlist.id)
+        let added = Song(id: "4DARsEmUxMg", title: "化身孤岛的鲸 - 张靓颖", artistName: "张靓颖",
+                         artistId: nil, albumName: nil, albumId: nil, duration: nil,
+                         thumbnailURL: "https://i.ytimg.com/vi/4DARsEmUxMg/hqdefault.jpg")
+        try await repository.addSongToPlaylist(song: added, playlistId: playlist.id)
         try repository.mergeDriveJournals([downloadedBeforeLocalEdit])
         let reloaded = LocalPlaylistRepository(defaults: defaults, journal: DrivePlaylistJournalStore(defaults: defaults))
         let values = try await reloaded.getAllPlaylists()
-        XCTAssertEqual(values[0].songs.map(\.id), ["aaaaaaaaaaa"])
+        XCTAssertEqual(values[0].songs.map(\.id), [added.id])
+        XCTAssertEqual(values[0].songs.first?.title, added.title)
+        XCTAssertEqual(values[0].songs.first?.artistName, added.artistName)
         let pending = try DrivePlaylistJournal.decode(store.ownJournalData())
         try repository.mergeDriveJournals([downloadedBeforeLocalEdit])
         XCTAssertEqual(try DrivePlaylistJournal.decode(store.ownJournalData()), pending)
