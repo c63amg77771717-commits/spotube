@@ -707,9 +707,8 @@ struct SearchView: View {
     /// Hide episodes and invalid items; a playback failure must not hide a song.
     private var playableSongs: [Song] {
         viewModel.results.songs.filter { song in
-            song.hasYouTubeOrigin
+            !song.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 && !song.isEpisode
-                && (song.duration ?? 0) > 0
         }
     }
 

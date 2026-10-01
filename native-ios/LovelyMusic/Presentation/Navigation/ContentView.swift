@@ -160,7 +160,7 @@ struct ContentView: View {
                         try? await container.playlistRepository.addSongToPlaylist(song: Song(
                             id: "demo_song_morning_light", title: "Arcadia", artistName: "Kevin MacLeod",
                             artistId: nil, albumName: "Peaceful Moments", albumId: nil,
-                            duration: 98, thumbnailURL: "demo_album_peaceful"
+                            duration: nil, thumbnailURL: "demo_album_peaceful"
                         ), playlistId: playlist.id)
                     }
                 }

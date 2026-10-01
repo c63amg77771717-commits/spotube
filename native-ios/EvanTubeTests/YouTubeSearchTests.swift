@@ -10,6 +10,7 @@ final class YouTubeSearchTests: XCTestCase {
         XCTAssertEqual(result.songs.map(\.id), ["4DARsEmUxMg"])
         XCTAssertEqual(result.songs.first?.title, "化身孤島的鯨 & 音樂")
         XCTAssertNil(result.songs.first?.artistId, "Channel IDs must not be used as Music browse IDs")
+        XCTAssertNil(result.songs.first?.duration, "Unknown duration must not hide search results")
         XCTAssertFalse(result.continuation?.contains("test-key") ?? true)
         let next = try await service.continueSearch(token: try XCTUnwrap(result.continuation), key: "test-key")
         XCTAssertNil(next.continuation)
