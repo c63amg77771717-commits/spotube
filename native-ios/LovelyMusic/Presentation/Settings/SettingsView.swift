@@ -351,15 +351,11 @@ struct SettingsView: View {
 
                 if let url = URL(string: "https://www.iletai.qzz.io/policy#terms-of-use") {
                     Link("Terms of Use", destination: url)
+                        .accessibilityIdentifier("settings_footer_terms")
                 }
             }
             .font(Theme.Typography.caption)
             .foregroundStyle(Theme.Colors.textTertiary)
-
-            Text("Made with ♪ in Vietnam")
-                .font(Theme.Typography.caption)
-                .foregroundStyle(Theme.Colors.textTertiary.opacity(0.6))
-                .accessibilityIdentifier("settings_footer_note")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xxxl)
