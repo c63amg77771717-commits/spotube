@@ -140,10 +140,10 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         let library = app.buttons["tab_library"]
         XCTAssertTrue(library.waitForExistence(timeout: 30))
         library.tap()
-        app.buttons["Create new playlist"].tap()
+        app.buttons["library_create_playlist"].tap()
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 5))
-        let title = "列點擊測試"
+        let title = "Row Tap Test"
         alert.textFields.firstMatch.tap()
         alert.textFields.firstMatch.typeText(title)
         alert.buttons["建立"].tap()
@@ -211,6 +211,14 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             XCTAssertTrue(app.navigationBars["設定"].exists,
                           "Changing appearance must retain the current navigation")
             save(app, name: "11-外觀-\(mode)")
+            if mode == "light" {
+                let sync = app.buttons["settings_drive_sync"]
+                for _ in 0..<4 where !sync.isHittable { app.swipeDown() }
+                sync.tap()
+                XCTAssertTrue(app.navigationBars["Google Drive 同步"].waitForExistence(timeout: 10))
+                save(app, name: "11-外觀-light-歌單同步")
+                app.buttons["完成"].tap()
+            }
         }
         app.terminate()
         app.launch()

@@ -53,6 +53,5 @@ struct GoogleDriveSyncView: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
             .task { await sync.restore() }
         }
-        .preferredColorScheme(.dark)
     }
 }

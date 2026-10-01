@@ -326,6 +326,7 @@ struct LibraryView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
                     .accessibilityLabel("Create new playlist")
                     .accessibilityIdentifier("library_create_playlist")
+                    .accessibilityIdentifier("library_create_playlist")
 
                     // Liked Songs row
                     NavigationLink(value: Route.likedSongs) {
