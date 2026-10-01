@@ -734,9 +734,6 @@ struct SearchView: View {
                     }
                 }
 
-                // Inline ad between songs and albums
-                InlineFeedAdView()
-
                 // Albums
                 if !viewModel.results.albums.isEmpty {
                     Section {

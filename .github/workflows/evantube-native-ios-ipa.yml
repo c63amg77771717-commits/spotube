@@ -22,6 +22,8 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.2'
+      - name: Verify advertising SDK removal
+        run: python3 native-ios/scripts/check_no_ads.py
       - name: Test personalized recommendation policy
         run: |
           swiftc -parse-as-library native-ios/LovelyMusic/Domain/Entities/Song.swift native-ios/LovelyMusic/Domain/Entities/PersonalMusicTaste.swift native-ios/RecommendationChecks/RecommendationPolicyChecks.swift -o "$RUNNER_TEMP/recommendation-checks"
@@ -92,6 +94,7 @@ jobs:
           path: |
             ${{ runner.temp }}/evantube-previews
             ${{ runner.temp }}/evantube-ui-diagnostics
+            native-ios/LovelyMusic.xcodeproj/project.pbxproj
           if-no-files-found: error
       - name: Package IPA
         if: success()

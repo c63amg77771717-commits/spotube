@@ -42,7 +42,6 @@
 		13E047FB1B45F90D6F05FC7D /* SecretsProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B05B976B4058D3D3AAABE88 /* SecretsProvider.swift */; };
 		1450D2DD85F01C0CE4E9FF9E /* TelemetryProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77A26F049F1EC3D2CCA650A3 /* TelemetryProtocol.swift */; };
 		14802A1A50504DDA203EB9FE /* PlayerBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85230C66581932A6D51540D4 /* PlayerBody.swift */; };
-		14BAC1DE2575B17B0CC02724 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 411838EC08D7E50C7198AC64 /* GoogleMobileAds */; };
 		14BC88F94D612BC8758DBE33 /* chip_filter_both_envelopes.json in Resources */ = {isa = PBXBuildFile; fileRef = D0E07243527D92EFB3AB205F /* chip_filter_both_envelopes.json */; };
 		1710EC1E7B6FE9BB838236E8 /* demo_song_heroic_theme.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 65CCC04C0C97D3ECA7E6969C /* demo_song_heroic_theme.m4a */; };
 		18807525B99B9D2C0F33DABA /* GetSearchSuggestionsBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9001FB37AFDFB8CED14F782 /* GetSearchSuggestionsBody.swift */; };
@@ -370,7 +369,6 @@
 		E9B4BF80BCA0441BF4B573B9 /* Audiobook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A6EF87286324CE2D093B3EA /* Audiobook.swift */; };
 		EA8F53C23CEE0CB8EC3E80A3 /* ThemeScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAD4EC32B797B012C41CEFEB /* ThemeScheduleTests.swift */; };
 		EA9F209C6C51A89CCC5E4E8E /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C7F11D5BCE5BA699A0607F4 /* AboutSettingsSection.swift */; };
-		EB6E25E9366C2458941CC21B /* BannerAdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 997F55DBCBD3161980632BF7 /* BannerAdView.swift */; };
 		EB759EC52ACD2DFFAB3EB3FC /* demo_song_epic_rise.m4a in Resources */ = {isa = PBXBuildFile; fileRef = 06B809777C1BB3A7AF6A4F18 /* demo_song_epic_rise.m4a */; };
 		EC97187D5E417A3475182DF5 /* MediaHTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82642F9C292E0231AF97CDE8 /* MediaHTTPClient.swift */; };
 		ECF8B4407A6E7C6F2957BE43 /* ErrorStateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7081F8240B2D1D452A188E77 /* ErrorStateView.swift */; };
@@ -686,7 +684,6 @@
 		9815B6A1E8ACC33C06BD9197 /* HomeViewModelChipPrefetchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModelChipPrefetchTests.swift; sourceTree = "<group>"; };
 		984C86B4DFA36D9F5B31EE91 /* ArtistViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistViewModelTests.swift; sourceTree = "<group>"; };
 		98E56FD90542133607A4BDCD /* FullPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FullPlayerView.swift; sourceTree = "<group>"; };
-		997F55DBCBD3161980632BF7 /* BannerAdView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BannerAdView.swift; sourceTree = "<group>"; };
 		9A3FB66BEE6EEA5B2921EC44 /* LikedSongsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LikedSongsViewModel.swift; sourceTree = "<group>"; };
 		9B05B976B4058D3D3AAABE88 /* SecretsProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretsProvider.swift; sourceTree = "<group>"; };
 		9B3803D9FC056BBBF4F74AFC /* multirow_album_browseendpoint.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = multirow_album_browseendpoint.json; sourceTree = "<group>"; };
@@ -844,7 +841,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				2244B070DD9549246FCA3408 /* NukeUI in Frameworks */,
-				14BAC1DE2575B17B0CC02724 /* GoogleMobileAds in Frameworks */,
 				70285C30096FA1A5E854355E /* CarPlay.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -857,7 +853,6 @@
 			children = (
 				542315E6332DB9CDBB6BE3EF /* AsyncThumbnail.swift */,
 				04EF3A8E4751BAE8477F11D6 /* AudiobookTile.swift */,
-				997F55DBCBD3161980632BF7 /* BannerAdView.swift */,
 				508F3F388B163EC1EF69D617 /* CustomBackButton.swift */,
 				D27D6EA71503E7D1885529FB /* CustomCloseButton.swift */,
 				F6B543E4EF602EFB1CDAEFC1 /* CustomMenuPicker.swift */,
@@ -2005,7 +2000,6 @@
 			name = LovelyMusic;
 			packageProductDependencies = (
 				9FA92C448BDAB38E8DCECD68 /* NukeUI */,
-				411838EC08D7E50C7198AC64 /* GoogleMobileAds */,
 			);
 			productName = LovelyMusic;
 			productReference = F6AB41A8FE816FBC65CADA19 /* LovelyMusic.app */;
@@ -2084,7 +2078,6 @@
 			mainGroup = 9F7BEA657775B70CFA4BB20A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				B4AA262987C84BF701CE4E14 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
 				2DFA465C372992C617A7FD86 /* XCRemoteSwiftPackageReference "Nuke" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -2325,7 +2318,6 @@
 				0E6382517702174BE96B6A9E /* AudioSessionManager.swift in Sources */,
 				E9B4BF80BCA0441BF4B573B9 /* Audiobook.swift in Sources */,
 				A9B02FD8626F288977663476 /* AudiobookTile.swift in Sources */,
-				EB6E25E9366C2458941CC21B /* BannerAdView.swift in Sources */,
 				7F19606C9C2CEDD2B244826F /* BouncyButtonStyle.swift in Sources */,
 				542BD591B172A721B93CD696 /* BrowseBody.swift in Sources */,
 				67FDCFBA5605B2639A44ACE2 /* BrowseHomeUseCase.swift in Sources */,
@@ -3042,22 +3034,9 @@
 				minimumVersion = 12.8.0;
 			};
 		};
-		B4AA262987C84BF701CE4E14 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 12.2.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		411838EC08D7E50C7198AC64 /* GoogleMobileAds */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = B4AA262987C84BF701CE4E14 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
-			productName = GoogleMobileAds;
-		};
 		9FA92C448BDAB38E8DCECD68 /* NukeUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 2DFA465C372992C617A7FD86 /* XCRemoteSwiftPackageReference "Nuke" */;

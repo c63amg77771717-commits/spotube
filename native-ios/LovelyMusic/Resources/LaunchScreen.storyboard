@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="23501" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" launchScreen="YES" colorMatched="YES" initialViewController="launch-controller">
+    <device id="retina6_12" orientation="portrait" appearance="dark"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="23500"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="Named colors" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="launch-scene">
+            <objects>
+                <viewController id="launch-controller" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="launch-root">
+                        <rect key="frame" x="0.0" y="0.0" width="402" height="874"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <view hidden="YES" userInteractionEnabled="NO" contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="launch-brand-position">
+                                <rect key="frame" x="0.0" y="59" width="0.0" height="328"/>
+                            </view>
+                            <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" alignment="center" spacing="30" translatesAutoresizingMaskIntoConstraints="NO" id="launch-brand">
+                                <rect key="frame" x="68.5" y="209" width="265" height="363"/>
+                                <subviews>
+                                    <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="EvanTubeLogo" translatesAutoresizingMaskIntoConstraints="NO" id="launch-logo">
+                                        <rect key="frame" x="0.0" y="0.0" width="265" height="265"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" secondItem="launch-logo" secondAttribute="height" multiplier="1:1" id="logo-square"/>
+                                        </constraints>
+                                    </imageView>
+                                    <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" alignment="center" spacing="10" translatesAutoresizingMaskIntoConstraints="NO" id="launch-title">
+                                        <rect key="frame" x="42.5" y="295" width="180" height="68"/>
+                                        <subviews>
+                                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" image="EvanTubeLaunchWordmark" translatesAutoresizingMaskIntoConstraints="NO" id="launch-wordmark">
+                                                <rect key="frame" x="0.0" y="0.0" width="180" height="40"/>
+                                                <constraints>
+                                                    <constraint firstAttribute="width" constant="180" id="wordmark-width"/>
+                                                    <constraint firstAttribute="height" constant="40" id="wordmark-height"/>
+                                                </constraints>
+                                            </imageView>
+                                            <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="More Than Music" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="launch-tagline">
+                                                <rect key="frame" x="34" y="50" width="112" height="18"/>
+                                                <fontDescription key="fontDescription" type="system" pointSize="15"/>
+                                                <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                            </label>
+                                        </subviews>
+                                    </stackView>
+                                </subviews>
+                            </stackView>
+                            <stackView opaque="NO" contentMode="scaleToFill" axis="vertical" alignment="center" spacing="8" translatesAutoresizingMaskIntoConstraints="NO" id="launch-footer">
+                                <rect key="frame" x="122" y="759" width="158" height="41"/>
+                                <subviews>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="Evan Liao" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="launch-creator">
+                                        <rect key="frame" x="50" y="0.0" width="58" height="16"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="13"/>
+                                        <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                    </label>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" text="© 2026 Evan Liao · EvanTube" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="launch-copyright">
+                                        <rect key="frame" x="0.0" y="24" width="158" height="13"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="11"/>
+                                        <color key="textColor" red="0.6039215686" green="0.6509803922" blue="0.7215686275" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                    </label>
+                                </subviews>
+                            </stackView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="launch-safe-area"/>
+                        <color key="backgroundColor" name="LaunchBackground"/>
+                        <constraints>
+                            <constraint firstItem="launch-logo" firstAttribute="width" secondItem="launch-root" secondAttribute="width" multiplier="0.66" priority="999" id="logo-responsive-width"/>
+                            <constraint firstItem="launch-logo" firstAttribute="height" relation="lessThanOrEqual" secondItem="launch-safe-area" secondAttribute="height" multiplier="0.36" id="logo-responsive-height"/>
+                            <constraint firstItem="launch-brand" firstAttribute="centerX" secondItem="launch-root" secondAttribute="centerX" id="brand-center-x"/>
+                            <constraint firstItem="launch-brand-position" firstAttribute="top" secondItem="launch-safe-area" secondAttribute="top" id="brand-position-top"/>
+                            <constraint firstItem="launch-brand-position" firstAttribute="leading" secondItem="launch-safe-area" secondAttribute="leading" id="brand-position-leading"/>
+                            <constraint firstItem="launch-brand-position" firstAttribute="width" constant="0.0" id="brand-position-width"/>
+                            <constraint firstItem="launch-brand-position" firstAttribute="height" secondItem="launch-safe-area" secondAttribute="height" multiplier="0.42" id="brand-position-height"/>
+                            <constraint firstItem="launch-brand" firstAttribute="centerY" secondItem="launch-brand-position" secondAttribute="bottom" id="brand-center-y"/>
+                            <constraint firstItem="launch-footer" firstAttribute="centerX" secondItem="launch-root" secondAttribute="centerX" id="footer-center-x"/>
+                            <constraint firstItem="launch-safe-area" firstAttribute="bottom" secondItem="launch-footer" secondAttribute="bottom" constant="40" id="footer-bottom"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="launch-first-responder" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="0.0" y="0.0"/>
+        </scene>
+    </scenes>
+    <resources>
+        <image name="EvanTubeLogo" width="1254" height="1254"/>
+        <image name="EvanTubeLaunchWordmark" width="180" height="40"/>
+        <namedColor name="LaunchBackground">
+            <color red="0.0274509804" green="0.0509803922" blue="0.0823529412" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+        </namedColor>
+    </resources>
+</document>

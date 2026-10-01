@@ -107,6 +107,7 @@ struct SettingsView: View {
                         )
                     }
                     .buttonStyle(.bouncy)
+                    .accessibilityIdentifier("settings_about")
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
                 .staggeredAppear(index: 3)
@@ -341,18 +342,21 @@ struct SettingsView: View {
 
             // Horizontal legal links
             HStack(spacing: Theme.Spacing.md) {
-                if let url = URL(string: "https://www.iletai.qzz.io/policy#privacy-policy") {
-                    Link("Privacy Policy", destination: url)
+                NavigationLink("隱私權政策") {
+                    EvanTubeLegalView(document: .privacy)
                 }
+                .accessibilityIdentifier("settings_footer_privacy")
+                .frame(minHeight: 44)
 
                 Circle()
                     .fill(Theme.Colors.textTertiary)
                     .frame(width: 3, height: 3)
 
-                if let url = URL(string: "https://www.iletai.qzz.io/policy#terms-of-use") {
-                    Link("Terms of Use", destination: url)
-                        .accessibilityIdentifier("settings_footer_terms")
+                NavigationLink("使用條款") {
+                    EvanTubeLegalView(document: .terms)
                 }
+                .accessibilityIdentifier("settings_footer_terms")
+                .frame(minHeight: 44)
             }
             .font(Theme.Typography.caption)
             .foregroundStyle(Theme.Colors.textTertiary)

@@ -217,11 +217,6 @@ struct HomeView: View {
                         // Rhythm variation: tighter between carousel sections, more air before pivots
                         .padding(.top, index == 0 ? 0 : (section.isSongSection ? Theme.Spacing.sm : Theme.Spacing.xs))
 
-                        // Show inline ad after every N sections (CMS-configurable)
-                        if (index + 1) % featureFlags.adsSectionInterval == 0 {
-                            InlineFeedAdView()
-                                .padding(.vertical, Theme.Spacing.sm)
-                        }
                     }
 
                     if viewModel.hasMore {

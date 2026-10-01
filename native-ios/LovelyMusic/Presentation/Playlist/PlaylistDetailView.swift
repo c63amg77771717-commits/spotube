@@ -273,12 +273,6 @@ struct PlaylistDetailView: View {
                             }
                         }
 
-                        // Inline ad every N songs (CMS-configurable)
-                        if editMode == .inactive && (index + 1) % featureFlags.adsSongInterval == 0
-                            && index < viewModel.filteredSongs.count - 1
-                        {
-                            InlineFeedAdView()
-                        }
                     }
 
                     if viewModel.isLoadingMore {

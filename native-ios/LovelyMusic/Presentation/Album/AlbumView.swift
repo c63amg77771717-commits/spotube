@@ -107,12 +107,6 @@ struct AlbumView: View {
                             }
                         }
 
-                        // Inline ad every N songs (CMS-configurable)
-                        if (index + 1) % featureFlags.adsSongInterval == 0
-                            && index < album.songs.count - 1
-                        {
-                            InlineFeedAdView()
-                        }
                     }
 
                     if viewModel.isLoadingMore {

@@ -3,8 +3,7 @@ import XCTest
 
 @testable import LovelyMusic
 
-/// Tests covering the polish-A2 / polish-A3 `.dockSafeBottom()` modifier and
-/// the polish-E5 AdManager ad-unit-ID resolution flow.
+/// Tests covering `.dockSafeBottom()` and EvanTube's disabled advertising compatibility.
 @MainActor
 final class DockSafeBottomTests: XCTestCase {
 
@@ -27,60 +26,26 @@ final class DockSafeBottomTests: XCTestCase {
         XCTAssertNotNil(view)
     }
 
-    // MARK: - polish-E5 — AdManager ad unit ID resolution
-
-    /// Stub that returns whatever IDs the test supplies. Mirrors the
-    /// production `SecretsAdUnitIDProvider` shape.
-    private struct StubAdUnitIDProvider: AdUnitIDProviding {
-        var bannerAdUnitID: String?
-        var interstitialAdUnitID: String?
-    }
-
-    /// FeatureFlagManager isn't required for ID resolution, but its `init()`
-    /// is cheap and side-effect-free, so we use a real instance.
-    private func makeAdManager(provider: AdUnitIDProviding) -> AdManager {
-        let flags = FeatureFlagManager()
+    func test_adManager_staysDisabledWhenRemoteConfigEnablesAds() async throws {
+        let suiteName = "no_ads_\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let flags = FeatureFlagManager(apiKey: nil, defaults: defaults)
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "config_json": #"{"monetization":{"ads_enabled":true}}"#
+        ])
+        XCTAssertTrue(flags.applyRemoteConfigData(payload))
+        XCTAssertTrue(flags.isAdsEnabled)
         let premium = PremiumManager(featureFlagManager: flags)
-        return AdManager(
+        let adManager = AdManager(
             premiumManager: premium,
-            featureFlagManager: flags,
-            adUnitIDProvider: provider
-        )
-    }
-
-    func test_adManager_loadsAdUnitIDs_fromSecretsProvider() {
-        let knownBanner = "ca-app-pub-1111111111111111/1111111111"
-        let knownInterstitial = "ca-app-pub-2222222222222222/2222222222"
-        let stub = StubAdUnitIDProvider(
-            bannerAdUnitID: knownBanner,
-            interstitialAdUnitID: knownInterstitial
+            featureFlagManager: flags
         )
 
-        let adManager = makeAdManager(provider: stub)
-
-        XCTAssertEqual(
-            adManager.bannerAdUnitID, knownBanner,
-            "AdManager.bannerAdUnitID should expose the value supplied by the provider")
-    }
-
-    func test_adManager_fallsBackToGoogleTestID_whenSecretMissing() {
-        let stub = StubAdUnitIDProvider(
-            bannerAdUnitID: nil,
-            interstitialAdUnitID: nil
-        )
-
-        let adManager = makeAdManager(provider: stub)
-
-        XCTAssertEqual(
-            adManager.bannerAdUnitID,
-            AdUnitResolver.GoogleTestIDs.banner,
-            "When provider returns nil, AdManager must fall back to Google's public test banner ID — never empty / placeholder."
-        )
-
-        // Also exercise the resolver directly to assert the test-fallback flag
-        // is set and the interstitial fallback is wired.
-        let resolved = AdUnitResolver.resolve(stub)
-        XCTAssertTrue(resolved.usedTestFallback)
-        XCTAssertEqual(resolved.interstitial, AdUnitResolver.GoogleTestIDs.interstitial)
+        XCTAssertFalse(adManager.shouldShowAds)
+        await adManager.preloadInterstitial()
+        adManager.recordSkipAndShowIfNeeded()
+        XCTAssertFalse(adManager.isInterstitialReady)
+        XCTAssertFalse(adManager.shouldShowAds)
     }
 }

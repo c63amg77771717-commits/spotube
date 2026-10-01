@@ -79,13 +79,6 @@ struct LikedSongsView: View {
                             index, song in
                             songRow(song: song, index: index)
 
-                            // Inline ad every N songs (CMS-configurable)
-                            if editMode == .inactive
-                                && (index + 1) % featureFlags.adsSongInterval == 0
-                                && index < filteredFavorites.count - 1
-                            {
-                                InlineFeedAdView()
-                            }
                         }
                     }
                     .padding(.vertical, Theme.Spacing.sm)

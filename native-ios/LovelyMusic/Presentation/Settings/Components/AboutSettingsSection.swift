@@ -40,10 +40,8 @@ struct AboutSettingsSection: View {
 
             SettingsDivider()
 
-            Button {
-                if let url = URL(string: "https://www.iletai.qzz.io/policy#privacy-policy") {
-                    UIApplication.shared.open(url)
-                }
+            NavigationLink {
+                EvanTubeLegalView(document: .privacy)
             } label: {
                 SettingsRow(icon: "shield.checkerboard", title: "Privacy Policy") {
                     Image(systemName: "arrow.up.right")
@@ -55,10 +53,8 @@ struct AboutSettingsSection: View {
 
             SettingsDivider()
 
-            Button {
-                if let url = URL(string: "https://www.iletai.qzz.io/policy#terms-of-use") {
-                    UIApplication.shared.open(url)
-                }
+            NavigationLink {
+                EvanTubeLegalView(document: .terms)
             } label: {
                 SettingsRow(icon: "doc.text", title: "Terms of Use") {
                     Image(systemName: "arrow.up.right")

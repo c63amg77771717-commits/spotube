@@ -150,9 +150,6 @@ struct ArtistView: View {
                         }
                     }
 
-                    // Inline ad between songs and albums
-                    InlineFeedAdView()
-
                     // Albums
                     if !artist.albums.isEmpty {
                         VStack(alignment: .leading, spacing: Theme.Spacing.md) {

@@ -70,6 +70,66 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(dock.exists)
         XCTAssertLessThan(footer.frame.maxY, dock.frame.minY - 8)
         save(app, name: "03-設定-音訊語言隱私")
+
+        footer.tap()
+        XCTAssertTrue(app.navigationBars["使用條款"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format:
+            "label CONTAINS 'Evan Liao' AND label CONTAINS '生效日期'"
+        )).firstMatch.exists)
+        save(app, name: "06-使用條款")
+        verifyDocumentFooter(app, above: dock)
+        app.buttons["legal_back"].tap()
+
+        let about = app.buttons["settings_about"]
+        for _ in 0..<4 where !about.isHittable { app.swipeDown() }
+        XCTAssertTrue(about.isHittable)
+        about.tap()
+        XCTAssertTrue(app.navigationBars["關於 EvanTube"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["about_creator"].exists)
+        XCTAssertEqual(app.staticTexts["about_creator"].label, "Evan Liao")
+        XCTAssertTrue(app.descendants(matching: .any)["about_contact"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["Made with ❤️ by iletai"].exists)
+        XCTAssertFalse(app.staticTexts["審核草案"].exists)
+        save(app, name: "04-關於EvanTube")
+        verifyDocumentFooter(app, above: dock, footerIdentifier: "about_footer")
+        save(app, name: "04-關於EvanTube-製作者與條款")
+
+        let privacy = app.buttons["about_privacy"]
+        for _ in 0..<4 where !privacy.isHittable { app.swipeUp() }
+        XCTAssertTrue(privacy.isHittable)
+        privacy.tap()
+        XCTAssertTrue(app.navigationBars["隱私權政策"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format:
+            "label CONTAINS 'c63amg77771717@gmail.com' AND label CONTAINS '生效日期'"
+        )).firstMatch.exists)
+        save(app, name: "05-隱私權政策")
+        verifyDocumentFooter(app, above: dock)
+    }
+
+    @MainActor func testLaunchBrandingPreview() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-evantubeLaunchPreview", "-disableScreenshots", "NO",
+            "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW",
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["More Than Music"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Evan Liao"].exists)
+        XCTAssertTrue(app.staticTexts["© 2026 Evan Liao · EvanTube"].exists)
+        XCTAssertFalse(app.staticTexts["審核草案"].exists)
+        save(app, name: "00-新版載入畫面")
+    }
+
+    @MainActor private func verifyDocumentFooter(
+        _ app: XCUIApplication, above dock: XCUIElement, footerIdentifier: String = "legal_footer"
+    ) {
+        let footer = app.staticTexts[footerIdentifier]
+        for _ in 0..<12 {
+            if footer.isHittable && footer.frame.maxY < dock.frame.minY - 8 { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(footer.isHittable)
+        XCTAssertLessThan(footer.frame.maxY, dock.frame.minY - 8)
     }
 
     @MainActor private func save(_ app: XCUIApplication, name: String) {

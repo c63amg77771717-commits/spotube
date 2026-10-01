@@ -2,7 +2,7 @@ import XCTest
 
 /// Smoke-level UI checks for parallax screens (polish-A4) and dock-inset
 /// transitions (polish-A5). These are intentionally minimal: full visual
-/// verification of bottom-row clearance and ad-banner inset coupling
+/// verification of bottom-row clearance
 /// requires AXe/MCP UI automation that is not wired into this CI surface
 /// (see Phase 1 limitations note).
 ///
@@ -36,8 +36,8 @@ final class ParallaxBottomClearanceUITests: XCTestCase {
     }
 
     /// polish-A5 — Dock-inset transition smoke test. Currently asserts the
-    /// floating dock is reachable. Extend with ad-visibility toggling and
-    /// scroll-offset diffing once `AdManager` exposes a test hook.
+    /// floating dock is reachable. Extend with scroll-offset diffing when
+    /// deeper UI navigation is available.
     func test_dockInsetTransition_doesNotCrash() throws {
         let app = XCUIApplication()
         app.launch()

@@ -92,19 +92,12 @@ struct ContentView: View {
             .background(Theme.Colors.backgroundPrimary)
             .environment(\.dockBottomInset, bottomInsetValue)
 
-            // Banner ad + floating dock — sits at the bottom of the ZStack.
+            // Floating dock — sits at the bottom of the ZStack.
             // No Spacer needed: `ZStack(alignment: .bottom)` handles
             // positioning. Removing the redundant Spacer avoids forcing the
             // VStack to occupy the full ZStack height and eliminates
             // measurement issues that caused uneven dock margins.
             VStack(spacing: 0) {
-                if container.adManager.shouldShowAds {
-                    BannerAdView(adUnitID: container.adManager.bannerAdUnitID)
-                        .frame(height: 50)
-                        .background(Theme.Colors.backgroundPrimary)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
                 // Floating dock — consistent edge margins
                 FloatingDockView(selectedTab: $selectedTab, onReselect: { tab in
                     withAnimation {

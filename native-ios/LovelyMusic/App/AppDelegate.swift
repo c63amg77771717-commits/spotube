@@ -1,4 +1,3 @@
-import GoogleMobileAds
 import UIKit
 import os
 
@@ -8,10 +7,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         TelemetryManager.shared.logBreadcrumb("App finished launching")
-
-        // Initialize Google Mobile Ads SDK — must be called before any ad request.
-        // The SDK reads GADApplicationIdentifier from Info.plist automatically.
-        MobileAds.shared.start()
 
         configureAudioSession()
         return true

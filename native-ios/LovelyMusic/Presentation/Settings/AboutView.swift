@@ -1,294 +1,173 @@
 import SwiftUI
 
 struct AboutView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(PlayerViewModel.self) private var playerVM
-
-    private let appVersion: String = {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-    }()
-
-    private let buildNumber: String = {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "1"
-    }()
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "版本 \(version)（\(build)）"
+    }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: Theme.Spacing.xxl) {
-                // App icon + name
+            VStack(spacing: Theme.Spacing.lg) {
                 VStack(spacing: Theme.Spacing.md) {
-                    Image(systemName: "music.note.house.fill")
-                        .font(Theme.Typography.display)
-                        .foregroundStyle(Theme.Colors.brandGradient)
-                        .shadow(
-                            color: Theme.Colors.brandGradientStart.opacity(0.3), radius: 16, y: 8)
-
-                    Text("EvanTube")
-                        .font(Theme.Typography.largeTitle)
-                        .fontWeight(.bold)
-                        .foregroundStyle(Theme.Colors.textPrimary)
-
-                    Text("Version \(appVersion) (\(buildNumber))")
+                    Image("LaunchLogo")
+                        .resizable().scaledToFit()
+                        .frame(width: 140, height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 28))
+                        .accessibilityHidden(true)
+                    Image("EvanTubeLaunchWordmark")
+                        .resizable().scaledToFit()
+                        .frame(width: 230)
+                        .accessibilityLabel("EvanTube")
+                    Text("More Than Music")
                         .font(Theme.Typography.subheadline)
-                        .foregroundStyle(Theme.Colors.textTertiary)
+                        .foregroundStyle(.white)
+                    Text(version)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(.white.opacity(0.55))
                 }
-                .padding(.top, Theme.Spacing.xxxl)
+                .frame(maxWidth: .infinity)
+                .padding(Theme.Spacing.lg)
+                .background(Color(hex: "#080D15"),
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
 
-                // Description
-                Text("A beautiful, privacy-focused music streaming experience.")
+                Text("你的音樂，你的歌單。EvanTube 整合音樂探索、播放與歌單管理，讓喜歡的音樂陪你走過日常與深夜。")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, Theme.Spacing.xl)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                // Links
-                VStack(spacing: 0) {
-                    linkRow(
-                        icon: "shield.checkerboard",
-                        iconColor: .blue,
-                        title: "Privacy Policy",
-                        url: "https://www.iletai.qzz.io/policy#privacy-policy"
-                    )
-
-                    Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                        .padding(.leading, 58)
-
-                    linkRow(
-                        icon: "doc.text.fill",
-                        iconColor: .purple,
-                        title: "Terms of Use",
-                        url: "https://www.iletai.qzz.io/policy#terms-of-use"
-                    )
-
-                    Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                        .padding(.leading, 58)
-
-                    linkRow(
-                        icon: "envelope.fill",
-                        iconColor: Theme.Colors.brandGradientEnd,
-                        title: "Contact Developer",
-                        url: "mailto:lequangtrongtai@gmail.com"
-                    )
-                }
-                .background(Theme.Colors.surfaceCard)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
-                )
-                .shadow(
-                    color: Theme.Shadows.small.color,
-                    radius: Theme.Shadows.small.radius,
-                    x: Theme.Shadows.small.x,
-                    y: Theme.Shadows.small.y
-                )
-                .padding(.horizontal, Theme.Spacing.lg)
-
-                // YouTube Content Notice
-                VStack(spacing: 0) {
-                    youTubeNoticeHeader
-
-                    Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                        .padding(.leading, 58)
-
-                    linkRow(
-                        icon: "play.rectangle.fill",
-                        iconColor: .red,
-                        title: "YouTube Terms of Service",
-                        url: "https://www.youtube.com/t/terms"
-                    )
-
-                    Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                        .padding(.leading, 58)
-
-                    linkRow(
-                        icon: "lock.shield.fill",
-                        iconColor: .green,
-                        title: "Google Privacy Policy",
-                        url: "http://www.google.com/policies/privacy"
-                    )
-                }
-                .background(Theme.Colors.surfaceCard)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                        .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
-                )
-                .shadow(
-                    color: Theme.Shadows.small.color,
-                    radius: Theme.Shadows.small.radius,
-                    x: Theme.Shadows.small.x,
-                    y: Theme.Shadows.small.y
-                )
-                .padding(.horizontal, Theme.Spacing.lg)
-
-                // Music Credits (CC BY 3.0 attribution — required by license)
-                VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
-                    Text("Music Credits")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textTertiary)
-                        .textCase(.uppercase)
-                        .tracking(0.5)
-                        .padding(.horizontal, Theme.Spacing.lg)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                            Text("Kevin MacLeod — incompetech.com")
-                                .font(Theme.Typography.headline)
-                                .foregroundStyle(Theme.Colors.textPrimary)
-                            Text(
-                                "All bundled music is composed by Kevin MacLeod and used under the Creative Commons Attribution 3.0 Unported license (CC BY 3.0)."
-                            )
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        }
-                        .padding(Theme.Spacing.lg)
-
-                        Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                            .padding(.leading, 58)
-
-                        linkRow(
-                            icon: "music.note.list",
-                            iconColor: Theme.Colors.brandGradientStart,
-                            title: "Source — archive.org/details/Incompetech",
-                            url: "https://archive.org/details/Incompetech"
-                        )
-
-                        Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                            .padding(.leading, 58)
-
-                        linkRow(
-                            icon: "doc.plaintext.fill",
-                            iconColor: .orange,
-                            title: "License — CC BY 3.0",
-                            url: "https://creativecommons.org/licenses/by/3.0/"
-                        )
-
-                        Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
-                            .padding(.leading, 58)
-
-                        linkRow(
-                            icon: "person.crop.circle.fill",
-                            iconColor: .indigo,
-                            title: "Composer — incompetech.com",
-                            url: "https://incompetech.com"
-                        )
+                VStack(alignment: .leading, spacing: Theme.Spacing.md) {
+                    Label("製作者", systemImage: "person.crop.circle")
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Text("Evan Liao")
+                        .font(Theme.Typography.headline)
+                        .accessibilityIdentifier("about_creator")
+                    if let email = URL(string: "mailto:c63amg77771717@gmail.com") {
+                        Link("c63amg77771717@gmail.com", destination: email)
+                            .font(Theme.Typography.subheadline)
+                            .foregroundStyle(Theme.Colors.brandGradient)
+                            .frame(minHeight: 44, alignment: .leading)
+                            .accessibilityIdentifier("about_contact")
                     }
-                    .background(Theme.Colors.surfaceCard)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
-                            .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
-                    )
-                    .shadow(
-                        color: Theme.Shadows.small.color,
-                        radius: Theme.Shadows.small.radius,
-                        x: Theme.Shadows.small.x,
-                        y: Theme.Shadows.small.y
-                    )
-                    .padding(.horizontal, Theme.Spacing.lg)
                 }
-                .padding(.top, Theme.Spacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(Theme.Spacing.lg)
+                .background(Theme.Colors.surfaceCard,
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
 
-                // Credits
-                VStack(spacing: Theme.Spacing.sm) {
-                    Text("Made with ❤️ by iletai")
-                        .font(Theme.Typography.subheadline)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-
-                    Text("© 2025 LovelyMusic. All rights reserved.")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textTertiary)
+                VStack(spacing: 0) {
+                    NavigationLink {
+                        EvanTubeLegalView(document: .privacy)
+                    } label: { documentRow("隱私權政策", icon: "lock.shield") }
+                    .accessibilityIdentifier("about_privacy")
+                    Divider()
+                    NavigationLink {
+                        EvanTubeLegalView(document: .terms)
+                    } label: { documentRow("使用條款", icon: "doc.text") }
+                    .accessibilityIdentifier("about_terms")
+                    Divider()
+                    NavigationLink {
+                        EvanTubeCreditsView()
+                    } label: { documentRow("授權與致謝", icon: "heart.text.square") }
+                    .accessibilityIdentifier("about_credits")
                 }
-                .padding(.top, Theme.Spacing.lg)
+                .buttonStyle(.plain)
+                .background(Theme.Colors.surfaceCard,
+                            in: RoundedRectangle(cornerRadius: Theme.CornerRadius.large))
+
+                Text("自製內容由製作者保有權利；開源元件、音樂與第三方素材依各自授權使用。")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("© 2026 Evan Liao · EvanTube")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textTertiary)
+                    .accessibilityIdentifier("about_footer")
             }
-            .padding(.bottom, Theme.Spacing.xxxl)
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .padding(Theme.Spacing.lg)
         }
         .background(Theme.Colors.backgroundPrimary)
         .dockSafeBottom()
-        .navigationTitle("About")
+        .navigationTitle("關於 EvanTube")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                CustomBackButton(style: .plain)
+                CustomBackButton(style: .plain).accessibilityIdentifier("about_back")
             }
-        }
-        .onAppear {
-            playerVM.isDockHidden = true
-        }
-        .onDisappear {
-            playerVM.isDockHidden = false
         }
     }
 
-    private func linkRow(
-        icon: String,
-        iconColor: Color = Theme.Colors.brandGradientStart,
-        title: LocalizedStringKey,
-        url: String
-    ) -> some View {
-        Button {
-            if let link = URL(string: url) {
-                UIApplication.shared.open(link)
-            }
-        } label: {
-            HStack(spacing: Theme.Spacing.md) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.small, style: .continuous)
-                        .fill(iconColor.opacity(0.12))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(iconColor)
-                }
+    private func documentRow(_ title: String, icon: String) -> some View {
+        HStack(spacing: Theme.Spacing.md) {
+            Image(systemName: icon)
+                .foregroundStyle(Theme.Colors.brandGradient)
+                .frame(width: 28)
+            Text(title)
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(Theme.Colors.textTertiary)
+        }
+        .font(Theme.Typography.body)
+        .padding(Theme.Spacing.lg)
+        .frame(minHeight: 52)
+    }
+}
 
-                Text(title)
-                    .font(Theme.Typography.body)
-                    .foregroundStyle(Theme.Colors.textPrimary)
+private struct EvanTubeCreditsView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
+                Text("開源與設計參考").font(Theme.Typography.title2)
+                    .foregroundStyle(Theme.Colors.brandGradient)
+                Text("EvanTube 的原始碼基礎為 LovelyMusic，依 Apache License 2.0 使用。保留原專案著作權與授權聲明；修改與新增內容由 Evan Liao 維護。")
+                externalLink("LovelyMusic 原專案", "https://github.com/iletai/LovelyMusic-iOS")
+                externalLink("Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0")
+                Text("歌單與媒體庫操作的功能設計參考：Beans Music。")
+                externalLink("Beans Music", "https://github.com/XIaodou0416/Beans-Music")
 
-                Spacer()
+                Text("示範音樂").font(Theme.Typography.title2)
+                    .foregroundStyle(Theme.Colors.brandGradient)
+                Text("內建示範音樂由 Kevin MacLeod（incompetech.com）創作，依 Creative Commons Attribution 3.0 Unported（CC BY 3.0）授權使用。")
+                externalLink("音樂來源 — Incompetech", "https://archive.org/details/Incompetech")
+                externalLink("素材授權 — CC BY 3.0", "https://creativecommons.org/licenses/by/3.0/")
+                externalLink("作曲者 — Kevin MacLeod", "https://incompetech.com")
 
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 12, weight: .semibold))
+                Text("第三方服務").font(Theme.Typography.title2)
+                    .foregroundStyle(Theme.Colors.brandGradient)
+                Text("本 App 使用 YouTube API Services；相關影片與音樂由 YouTube 提供，使用時適用 YouTube 服務條款及 Google 隱私權政策。其他音樂、歌詞、封面與元件的權利屬於各自權利人。EvanTube 與這些服務並無官方隸屬或背書關係。")
+                externalLink("YouTube 服務條款", "https://www.youtube.com/t/terms")
+                externalLink("Google 隱私權政策", "https://policies.google.com/privacy")
+                Text("© 2026 Evan Liao · EvanTube").font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Colors.textTertiary)
             }
-            .padding(.horizontal, Theme.Spacing.lg)
-            .padding(.vertical, Theme.Spacing.md)
-            .contentShape(Rectangle())
+            .font(Theme.Typography.body)
+            .foregroundStyle(Theme.Colors.textPrimary)
+            .padding(Theme.Spacing.lg)
         }
-        .buttonStyle(.plain)
+        .background(Theme.Colors.backgroundPrimary)
+        .dockSafeBottom()
+        .navigationTitle("授權與致謝")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) { CustomBackButton(style: .plain) }
+        }
     }
 
-    var youTubeNoticeHeader: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack(spacing: Theme.Spacing.md) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: Theme.CornerRadius.small, style: .continuous)
-                        .fill(Theme.Colors.brandGradientStart.opacity(0.12))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "music.note.tv.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.Colors.brandGradientStart)
+    private func externalLink(_ title: String, _ destination: String) -> some View {
+        Group {
+            if let url = URL(string: destination) {
+                Link(destination: url) {
+                    Label(title, systemImage: "arrow.up.right")
+                        .frame(minHeight: 44, alignment: .leading)
                 }
-
-                Text("YouTube Content")
-                    .font(Theme.Typography.body)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Theme.Colors.textPrimary)
-
-                Spacer()
+                .foregroundStyle(Theme.Colors.brandGradient)
             }
-
-            Text(
-                "This app uses YouTube API Services. All video and music content is provided by YouTube. By using this app, you agree to be bound by the Google Privacy Policy."
-            )
-            .font(Theme.Typography.caption)
-            .foregroundStyle(Theme.Colors.textTertiary)
-            .padding(.leading, 44)
         }
-        .padding(.horizontal, Theme.Spacing.lg)
-        .padding(.vertical, Theme.Spacing.md)
     }
 }
