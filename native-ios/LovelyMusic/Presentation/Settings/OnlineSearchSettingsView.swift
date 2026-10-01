@@ -17,7 +17,7 @@ struct OnlineSearchSettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
-            Section("自訂搜尋金鑰") {
+            Section {
                 SecureField("YouTube Data API 金鑰", text: $key)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -44,6 +44,8 @@ struct OnlineSearchSettingsView: View {
                         .foregroundStyle(isError ? Theme.Colors.error : Theme.Colors.textSecondary)
                         .accessibilityIdentifier("search_api_key_message")
                 }
+            } header: {
+                Text("自訂搜尋金鑰")
             } footer: {
                 Text("自訂金鑰只儲存在這台裝置的安全鑰匙圈，不會隨 Google Drive 歌單同步。")
             }
