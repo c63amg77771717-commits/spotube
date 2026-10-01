@@ -77,6 +77,8 @@ private struct DockProgressBar: View {
             onEditingChanged: { editing in
                 if !editing { playerVM.seekToProgress(sliderValue) }
             },
+            currentTimeLabel: Song.formatTimestamp(Int(playbackProgress.currentTime)),
+            totalTimeLabel: Song.formatTimestamp(Int(playbackProgress.duration)),
             duration: playbackProgress.duration
         )
         .padding(.horizontal, Theme.Spacing.lg)

@@ -49,10 +49,14 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
                 progress.coordinate(withNormalizedOffset: CGVector(dx: 0.60, dy: 0.5)))
         let seeked = XCTNSPredicateExpectation(
             predicate: NSPredicate { _, _ in
-                guard let value = progress.value as? String,
-                      let digits = value.split(whereSeparator: { !$0.isNumber }).first,
-                      let percent = Int(digits) else { return false }
-                return (52...68).contains(percent)
+                guard let value = progress.value as? String else { return false }
+                let times = value.components(separatedBy: "／").compactMap { label -> Double? in
+                    let parts = label.split(separator: ":").compactMap { Double($0) }
+                    guard parts.count == 2 else { return nil }
+                    return parts[0] * 60 + parts[1]
+                }
+                guard times.count == 2, times[1] > 0 else { return false }
+                return (0.52...0.68).contains(times[0] / times[1])
             }, object: progress
         )
         XCTAssertEqual(XCTWaiter.wait(for: [seeked], timeout: 10), .completed)

@@ -26,7 +26,7 @@ struct ProgressSlider: View {
     /// VoiceOver value description (e.g., "1:23 of 3:45")
     private var accessibilityValueText: String {
         if !currentTimeLabel.isEmpty, !totalTimeLabel.isEmpty {
-            return LocalizationManager.text("\(currentTimeLabel) of \(totalTimeLabel)")
+            return "\(currentTimeLabel)／\(totalTimeLabel)"
         }
         return LocalizationManager.text("\(Int(value * 100)) percent")
     }

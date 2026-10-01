@@ -130,9 +130,9 @@ final class PremiumManager {
         redemptionFeedbackAutoClearInterval: TimeInterval = 6.0
     ) {
         self.featureFlagManager = featureFlagManager
+        self.redemptionFeedbackAutoClearInterval = redemptionFeedbackAutoClearInterval
         // EvanTube has no subscription products or purchase flow.
         guard featureFlagManager?.isPremiumEnabled != false else { return }
-        self.redemptionFeedbackAutoClearInterval = redemptionFeedbackAutoClearInterval
         // Trust local cache for instant launch UX, but only if not stale
         let localCached = UserDefaults.standard.bool(forKey: Self.premiumCacheKey)
         let iCloudCached = iCloudStore.bool(forKey: Self.iCloudPremiumKey)
