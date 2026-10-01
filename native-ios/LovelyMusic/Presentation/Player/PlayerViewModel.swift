@@ -5,13 +5,39 @@ import os
 
 // MARK: - Playback Error Categories
 
-enum PlaybackErrorCategory {
+enum PlaybackErrorCategory: Equatable {
     case noInternet
     case regionBlocked
     case songRemoved
     case serverError
     case authRequired
     case unknown
+
+    static func classify(_ message: String) -> Self {
+        let lower = message.lowercased()
+        if ["sign in", "login", "auth", "bot", "confirm your age", "private", "登入"]
+            .contains(where: lower.contains) {
+            return .authRequired
+        }
+        if ["network", "internet", "offline", "connection", "網路"]
+            .contains(where: lower.contains) {
+            return .noInternet
+        }
+        if ["removed", "deleted", "not found", "已移除", "刪除"]
+            .contains(where: lower.contains) {
+            return .songRemoved
+        }
+        // A missing stream or an unspecified unavailable video does not prove a region restriction.
+        if ["region", "country", "geoblock", "geo-block", "地區限制", "所在地區"]
+            .contains(where: lower.contains) {
+            return .regionBlocked
+        }
+        if ["server", "500", "503", "伺服器"]
+            .contains(where: lower.contains) {
+            return .serverError
+        }
+        return .unknown
+    }
 
     var icon: String {
         switch self {
@@ -605,7 +631,7 @@ final class PlayerViewModel {
                 additionalInfo: ["video_id": videoId]
             )
             streamError = userReadableError(from: error)
-            streamErrorCategory = categorizeError(from: error)
+            streamErrorCategory = PlaybackErrorCategory.classify(error)
             let isPermanent = audioEngine.lastErrorKind == .permanent
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
@@ -814,46 +840,19 @@ final class PlayerViewModel {
     }
 
     private func userReadableError(from error: String) -> String {
-        let lower = error.lowercased()
-        if lower.contains("sign in") || lower.contains("login") || lower.contains("auth")
-            || lower.contains("bot") || lower.contains("confirm your age") || lower.contains("private")
-        {
+        switch PlaybackErrorCategory.classify(error) {
+        case .authRequired:
             return LocalizationManager.text("Sign in to YouTube is required to play this track.")
-        } else if lower.contains("internet") || lower.contains("network")
-            || lower.contains("connection") || lower.contains("offline")
-        {
+        case .noInternet:
             return LocalizationManager.text("Network error. Check your connection and try again.")
-        } else if lower.contains("unavailable") || lower.contains("no audio stream")
-            || lower.contains("no stream")
-        {
+        case .regionBlocked:
             return LocalizationManager.text("This song is unavailable in your region.")
-        } else if lower.contains("url") || lower.contains("stream") {
+        case .songRemoved:
+            return PlaybackErrorCategory.songRemoved.action
+        case .serverError:
+            return PlaybackErrorCategory.serverError.action
+        case .unknown:
             return LocalizationManager.text("Unable to load this song. The stream may be unavailable.")
-        } else {
-            return LocalizationManager.text("Something went wrong. Tap retry to try again.")
-        }
-    }
-
-    private func categorizeError(from error: String) -> PlaybackErrorCategory {
-        let lower = error.lowercased()
-        if lower.contains("sign in") || lower.contains("login") || lower.contains("auth")
-            || lower.contains("bot") || lower.contains("confirm your age") || lower.contains("private")
-        {
-            return .authRequired
-        } else if lower.contains("network") || lower.contains("internet") || lower.contains("offline") {
-            return .noInternet
-        } else if lower.contains("unavailable") || lower.contains("region")
-            || lower.contains("blocked") || lower.contains("geo")
-        {
-            return .regionBlocked
-        } else if lower.contains("removed") || lower.contains("deleted")
-            || lower.contains("not found")
-        {
-            return .songRemoved
-        } else if lower.contains("server") || lower.contains("500") || lower.contains("503") {
-            return .serverError
-        } else {
-            return .unknown
         }
     }
 

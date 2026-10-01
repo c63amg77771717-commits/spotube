@@ -447,7 +447,8 @@ struct FullPlayerView: View {
                                 .multilineTextAlignment(.center)
                         }
                         #endif
-                        if featureFlags.isYouTubeAuthEnabled && !container.authManager.isLoggedIn {
+                        if playerVM.streamErrorCategory == .authRequired,
+                           featureFlags.isYouTubeAuthEnabled && !container.authManager.isLoggedIn {
                             Button {
                                 showYouTubeLogin = true
                             } label: {
@@ -457,11 +458,7 @@ struct FullPlayerView: View {
                                     .padding(.horizontal, Theme.Spacing.xl)
                                     .padding(.vertical, Theme.Spacing.sm)
                                     .background(
-                                        LinearGradient(
-                                            colors: [Color.red, Color.orange],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        ),
+                                        Theme.Colors.brandGradient,
                                         in: Capsule()
                                     )
                             }

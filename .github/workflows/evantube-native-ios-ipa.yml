@@ -59,6 +59,17 @@ jobs:
         id: settings_preview
         working-directory: native-ios
         run: |
+          mkdir -p "$RUNNER_TEMP/evantube-ui-diagnostics"
+          (
+            while sleep 60; do
+              app_pid=$(pgrep -f '/LovelyMusic.app/LovelyMusic$' | head -n 1 || true)
+              if [ -n "$app_pid" ]; then
+                sample "$app_pid" 2 -file "$RUNNER_TEMP/evantube-ui-diagnostics/sample-$(date +%s).txt" >/dev/null 2>&1 || true
+              fi
+            done
+          ) &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicUITests \
@@ -78,7 +89,9 @@ jobs:
         if: always() && steps.settings_preview.outcome != 'skipped'
         with:
           name: EvanTube-settings-previews
-          path: ${{ runner.temp }}/evantube-previews
+          path: |
+            ${{ runner.temp }}/evantube-previews
+            ${{ runner.temp }}/evantube-ui-diagnostics
           if-no-files-found: error
       - name: Package IPA
         if: success()
