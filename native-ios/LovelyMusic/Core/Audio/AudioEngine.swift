@@ -46,6 +46,7 @@ final class AudioEngine {
     private(set) var currentTrack: Song? {
         didSet {
             guard oldValue?.id != currentTrack?.id else { return }
+            PersonalMusicTaste.shared.begin(currentTrack)
             invalidateCrossfadePreparation(clearReservation: true)
         }
     }
@@ -75,12 +76,19 @@ final class AudioEngine {
             // every code path (interruption resume, stall recovery, end of
             // track, autoplay) without scattering manual sync calls.
             guard oldValue != isPlaying else { return }
+            if !isPlaying { PersonalMusicTaste.shared.suspend() }
             videoManager.setIsPlaying(isPlaying)
         }
     }
     private(set) var duration: TimeInterval = 0
-    private(set) var currentTime: TimeInterval = 0
-    private(set) var isBuffering: Bool = false
+    private(set) var currentTime: TimeInterval = 0 {
+        didSet {
+            PersonalMusicTaste.shared.sample(position: currentTime, playing: isPlaying && !isBuffering)
+        }
+    }
+    private(set) var isBuffering: Bool = false {
+        didSet { if isBuffering { PersonalMusicTaste.shared.suspend() } }
+    }
     private(set) var lastError: String?
     /// Classifies the most recent `lastError`. Permanent errors (e.g., the
     /// video is region-blocked or removed) should not be auto-retried by the
@@ -780,6 +788,7 @@ final class AudioEngine {
     }
 
     func play(song: Song, fromQueue: [Song] = []) {
+        PersonalMusicTaste.shared.begin(song)
         // Round 2 — Fix 1 (review.md M1 / review-codex MED #5):
         // Reset `lastError` at entry so consumers (e.g. CarPlay
         // `handleSongTap`) can detect a *new* failure when two consecutive
@@ -848,7 +857,8 @@ final class AudioEngine {
         )
     }
 
-    func next() {
+    func next(userInitiated: Bool = true) {
+        if userInitiated { PersonalMusicTaste.shared.skip() }
         shutdownGuardedSession(clearError: true)
         let reservedQueueIndex: Int?
         if let reservation = crossfadeReservation,
@@ -991,6 +1001,7 @@ final class AudioEngine {
     private var isSeeking: Bool = false
 
     func seek(to time: TimeInterval) {
+        PersonalMusicTaste.shared.suspend()
         // Seeking changes the playback timeline but not the selected next-track
         // candidate. Cancel any pending/active fade and allow a later trigger
         // to retry the same reservation.
@@ -3230,10 +3241,11 @@ final class AudioEngine {
 
         switch repeatMode {
         case .one:
+            PersonalMusicTaste.shared.begin(currentTrack)
             seek(to: 0)
             resumePlayer()
         case .all:
-            next()
+            next(userInitiated: false)
         case .off:
             if isPlayingFromAutoplay {
                 if !autoplayQueue.isEmpty {
@@ -3245,9 +3257,9 @@ final class AudioEngine {
                     isPlayingFromAutoplay = false
                 }
             } else if shuffleEnabled && queue.count > 1 {
-                next()
+                next(userInitiated: false)
             } else if currentIndex < queue.count - 1 {
-                next()
+                next(userInitiated: false)
             } else if !autoplayQueue.isEmpty {
                 playNextFromAutoplay()
             } else if onQueueExhausted != nil {

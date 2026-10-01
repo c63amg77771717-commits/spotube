@@ -43,6 +43,8 @@ struct RecommendationPolicyChecks {
         assert(taste.ranked([b, c], favorites: [a]).first?.id == c.id, "favorite artist affinity must rank related songs")
         taste.reset()
         assert(taste.seeds(favorites: []).isEmpty, "reset clears learned taste")
-        print("10 recommendation policy checks passed")
+        taste.dislike(a)
+        assert(taste.ranked([c, b], favorites: []).first?.id == b.id, "dislike reduces artist affinity too")
+        print("11 recommendation policy checks passed")
     }
 }

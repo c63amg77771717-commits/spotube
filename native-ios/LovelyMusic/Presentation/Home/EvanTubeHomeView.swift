@@ -62,6 +62,17 @@ struct EvanTubeHomeView: View {
     @State private var feeds = EvanTubeHomeFeeds()
     @State private var region = EvanTubeRegion.taiwan
     @State private var actionMessage: String?
+    @State private var personal = PersonalRecommendations()
+    @State private var preferenceRevision = 0
+    @State private var resetTasteConfirmation = false
+    @AppStorage("hideExplicitContent") private var hideExplicitContent = false
+    @Environment(\.isTabActive) private var isTabActive
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var recommendationRefreshKey: String {
+        "\(preferenceRevision)-\(hideExplicitContent)-\(isTabActive)-\(scenePhase == .active)-"
+            + recommendations.prefix(60).map(\.id).joined(separator: ",")
+    }
 
     private var recommendations: [Song] {
         var seen = Set<String>()
@@ -100,12 +111,29 @@ struct EvanTubeHomeView: View {
         .refreshable {
             viewModel.refresh()
             viewModel.loadRecentlyPlayed()
+            await refreshPersonal(force: true)
             await feeds.refresh(region: region.code)
         }
         .task {
             viewModel.loadHome()
             viewModel.loadRecentlyPlayed()
             await feeds.refresh(region: region.code)
+        }
+        .task(id: recommendationRefreshKey) {
+            guard isTabActive, scenePhase == .active else { return }
+            await refreshPersonal()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .personalTasteChanged)) { _ in
+            preferenceRevision += 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .favoritesChanged)) { _ in
+            preferenceRevision += 1
+        }
+        .confirmationDialog("重設聆聽偏好？收藏仍會影響推薦。", isPresented: $resetTasteConfirmation) {
+            Button("重設聆聽偏好", role: .destructive) {
+                personal.clear()
+                PersonalMusicTaste.shared.reset()
+            }
         }
     }
 
@@ -168,14 +196,56 @@ struct EvanTubeHomeView: View {
 
     private var nativeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionTitle("推薦音樂", subtitle: "LovelyMusic · 依目前音樂來源更新")
-            if recommendations.isEmpty {
-                emptyCard(viewModel.isLoading ? "正在載入推薦音樂…" : (viewModel.error ?? "目前沒有推薦歌曲"))
+            HStack(alignment: .top) {
+                sectionTitle("為你推薦", subtitle: personal.status)
+                Spacer()
+                Menu {
+                    Button("重新整理推薦", systemImage: "arrow.clockwise") {
+                        personal.clear()
+                        preferenceRevision += 1
+                    }
+                    Button("重設聆聽偏好", systemImage: "arrow.counterclockwise") {
+                        resetTasteConfirmation = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("推薦設定")
+            }
+            if personal.isLoading {
+                ProgressView("正在更新推薦…").font(.caption)
+            }
+            if personal.songs.isEmpty {
+                emptyCard(personal.isLoading || viewModel.isLoading ? "正在尋找你可能喜歡的歌曲…" : "暫時沒有推薦歌曲，請播放或收藏歌曲後下拉重新整理")
             } else {
-                ForEach(Array(recommendations.prefix(8))) { song in
-                    songRow(song)
+                ForEach(ContentPreferences.filteredSongs(personal.songs)) { song in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            songRow(song)
+                            Button {
+                                personal.dislike(song)
+                            } label: {
+                                Image(systemName: "hand.thumbsdown")
+                                    .foregroundStyle(Theme.Colors.brandGradient)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .accessibilityLabel("不喜歡 \(song.title)，減少這類推薦")
+                        }
+                        Text(personal.reasons[song.id] ?? "依你的歌手偏好與音源推薦挑選")
+                            .font(.caption2).foregroundStyle(Theme.Colors.textSecondary)
+                            .lineLimit(2).padding(.horizontal, 10)
+                    }
                 }
             }
+        }
+    }
+
+    @MainActor private func refreshPersonal(force: Bool = false) async {
+        guard let favorites = try? await container.manageFavoritesUseCase.getAllFavorites(), !Task.isCancelled else { return }
+        await personal.refresh(favorites: favorites, fallback: recommendations, force: force) { id in
+            try await container.getRelatedSongsUseCase.execute(videoId: id)
         }
     }
 

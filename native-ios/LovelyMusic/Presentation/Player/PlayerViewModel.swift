@@ -351,10 +351,10 @@ final class PlayerViewModel {
 
     /// Auto-skip on error — does NOT consume skip quota
     func autoNext() {
-        performNext()
+        performNext(userInitiated: false)
     }
 
-    private func performNext() {
+    private func performNext(userInitiated: Bool = true) {
         retryCount = 0
         // Only reset the consecutive-failure counter on *user-initiated* skips.
         // Auto-skip due to error must keep accumulating so we can break out of
@@ -362,7 +362,7 @@ final class PlayerViewModel {
         streamError = nil
         streamErrorCategory = nil
         bufferingTooLong = false
-        audioEngine.next()
+        audioEngine.next(userInitiated: userInitiated)
     }
 
     /// Reset the consecutive-failure counter when the user explicitly
