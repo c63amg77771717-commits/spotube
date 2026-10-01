@@ -115,6 +115,7 @@ struct AboutView: View {
         .font(Theme.Typography.body)
         .padding(Theme.Spacing.lg)
         .frame(minHeight: 52)
+        .contentShape(Rectangle())
     }
 }
 
