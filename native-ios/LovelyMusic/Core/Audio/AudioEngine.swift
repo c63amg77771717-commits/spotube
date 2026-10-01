@@ -4037,8 +4037,6 @@ final class AudioEngine {
         remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
         remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
-        remoteCommandManager.currentTime = { [weak self] in self?.currentTime ?? 0 }
-        remoteCommandManager.duration = { [weak self] in self?.duration ?? 0 }
         remoteCommandManager.setup()
     }
 

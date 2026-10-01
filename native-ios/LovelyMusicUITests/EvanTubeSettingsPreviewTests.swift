@@ -17,8 +17,15 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             return false
         }
         app.launch()
+        let search = app.buttons["tab_search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 30))
+        search.tap()
+        let searchField = app.textFields.firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
+        searchField.tap()
+        searchField.typeText("Arcadia\n")
         let demoSong = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH 'home_song_demo_'")
+            NSPredicate(format: "label BEGINSWITH 'Arcadia'")
         ).firstMatch
         XCTAssertTrue(demoSong.waitForExistence(timeout: 30))
         demoSong.tap()

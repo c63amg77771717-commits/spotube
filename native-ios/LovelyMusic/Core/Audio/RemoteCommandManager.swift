@@ -7,8 +7,6 @@ final class RemoteCommandManager {
     var onNext: (@MainActor () -> Void)?
     var onPrevious: (@MainActor () -> Void)?
     var onSeek: (@MainActor (TimeInterval) -> Void)?
-    var currentTime: (@MainActor () -> TimeInterval)?
-    var duration: (@MainActor () -> TimeInterval)?
 
     func setup() {
         let commandCenter = MPRemoteCommandCenter.shared()
@@ -65,39 +63,9 @@ final class RemoteCommandManager {
             return .success
         }
 
-        commandCenter.skipForwardCommand.isEnabled = true
-        commandCenter.skipForwardCommand.preferredIntervals = [15]
-        commandCenter.skipForwardCommand.addTarget { [weak self] event in
-            MainActor.assumeIsolated {
-                guard let self, let event = event as? MPSkipIntervalCommandEvent else {
-                    return
-                }
-                let current = self.currentTime?() ?? 0
-                let totalDuration = self.duration?() ?? 0
-                let newPosition = current + event.interval
-                if totalDuration > 0, newPosition >= totalDuration {
-                    self.onNext?()
-                } else {
-                    self.onSeek?(max(newPosition, 0))
-                }
-            }
-            return .success
-        }
-
-        commandCenter.skipBackwardCommand.isEnabled = true
-        commandCenter.skipBackwardCommand.preferredIntervals = [15]
-        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
-            MainActor.assumeIsolated {
-                guard let self, let event = event as? MPSkipIntervalCommandEvent else {
-                    return
-                }
-                let current = self.currentTime?() ?? 0
-                let totalDuration = self.duration?() ?? 0
-                let newPosition = current - event.interval
-                self.onSeek?(min(max(newPosition, 0), totalDuration))
-            }
-            return .success
-        }
+        // Track navigation is the lock-screen/control-center transport.
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
     }
 
     /// Removes all command center targets. Call on deallocation or when the
