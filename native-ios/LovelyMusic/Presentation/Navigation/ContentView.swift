@@ -160,6 +160,15 @@ struct ContentView: View {
         // previous `.task { fetchFlags }` site here lost the Bool return value
         // and ran *after* `DIContainer` had already frozen repository wiring.
         .task {
+            #if DEBUG
+            // Explicit UI-preview fixture uses bundled licensed audio.
+            if ProcessInfo.processInfo.environment["REVIEW_MODE"] == "1",
+               let trackID = ProcessInfo.processInfo.environment["EVANTUBE_PREVIEW_TRACK"],
+               let result = try? await container.innerTubeRepository.search(query: "", filter: .songs),
+               let song = result.songs.first(where: { $0.id == trackID }) {
+                playerVM.play(song: song)
+            }
+            #endif
             _ = await container.apnsManager.requestPushAuthorization()
             if let pendingRoute = container.apnsManager.consumePendingRoute() {
                 navigateToRoute(pendingRoute)

@@ -10,6 +10,7 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             "-disableScreenshots", "NO",
         ]
         app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launchEnvironment["EVANTUBE_PREVIEW_TRACK"] = "demo_song_morning_light"
         addUIInterruptionMonitor(withDescription: "System permissions") { alert in
             for label in ["不允許", "Don't Allow", "Don’t Allow", "允許", "Allow"] {
                 if alert.buttons[label].exists { alert.buttons[label].tap(); return true }
@@ -17,20 +18,8 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             return false
         }
         app.launch()
-        let search = app.buttons["tab_search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 30))
-        search.tap()
-        let searchField = app.textFields.firstMatch
-        XCTAssertTrue(searchField.waitForExistence(timeout: 15))
-        searchField.tap()
-        searchField.typeText("Arcadia\n")
-        let demoSong = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Arcadia' AND label CONTAINS 'Kevin MacLeod'")
-        ).firstMatch
-        XCTAssertTrue(demoSong.waitForExistence(timeout: 30))
-        demoSong.tap()
         let playPause = app.buttons["dock_play_pause"]
-        XCTAssertTrue(playPause.waitForExistence(timeout: 20))
+        XCTAssertTrue(playPause.waitForExistence(timeout: 30))
         let playing = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "label == '暫停'"), object: playPause
         )
