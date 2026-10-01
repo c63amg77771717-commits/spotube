@@ -64,13 +64,26 @@ jobs:
         run: |
           # Tests use fixtures and must never spend the production search quota.
           /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          # The simulator still requires a signed host with Keychain entitlements.
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'evantube-simulator.entitlements'
+          path.write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True,
+          }))
+          PY
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme EvanTubeTests \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:EvanTubeTests \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
             test
       - name: Capture Traditional Chinese settings previews
         id: settings_preview
@@ -94,7 +107,9 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests \
             -resultBundlePath "$RUNNER_TEMP/evantube-previews.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
             test
       - name: Export settings preview attachments
         if: always() && steps.settings_preview.outcome != 'skipped'
