@@ -39,14 +39,14 @@ final class RemoteCommandManagerTests: XCTestCase {
 
         manager.setup()
 
-        // Verify commands are enabled
+        // Enable music transport and seeking; interval-skip buttons stay hidden.
         XCTAssertTrue(commandCenter.playCommand.isEnabled)
         XCTAssertTrue(commandCenter.pauseCommand.isEnabled)
         XCTAssertTrue(commandCenter.nextTrackCommand.isEnabled)
         XCTAssertTrue(commandCenter.previousTrackCommand.isEnabled)
         XCTAssertTrue(commandCenter.changePlaybackPositionCommand.isEnabled)
-        XCTAssertTrue(commandCenter.skipForwardCommand.isEnabled)
-        XCTAssertTrue(commandCenter.skipBackwardCommand.isEnabled)
+        XCTAssertFalse(commandCenter.skipForwardCommand.isEnabled)
+        XCTAssertFalse(commandCenter.skipBackwardCommand.isEnabled)
 
         manager.tearDown()
     }
