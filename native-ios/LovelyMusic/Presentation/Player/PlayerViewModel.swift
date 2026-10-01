@@ -15,7 +15,8 @@ enum PlaybackErrorCategory: Equatable {
 
     static func classify(_ message: String) -> Self {
         let lower = message.lowercased()
-        if ["sign in", "login", "auth", "bot", "confirm your age", "private", "登入"]
+        if ["sign in", "login", "authentication required", "unauthorized", "bot",
+            "confirm your age", "private", "登入", "私人影片"]
             .contains(where: lower.contains) {
             return .authRequired
         }
@@ -23,12 +24,12 @@ enum PlaybackErrorCategory: Equatable {
             .contains(where: lower.contains) {
             return .noInternet
         }
-        if ["removed", "deleted", "not found", "已移除", "刪除"]
+        if ["removed", "deleted", "not found", "已移除", "音源移除", "刪除"]
             .contains(where: lower.contains) {
             return .songRemoved
         }
         // A missing stream or an unspecified unavailable video does not prove a region restriction.
-        if ["region", "country", "geoblock", "geo-block", "地區限制", "所在地區"]
+        if ["region", "country", "geoblock", "geo-block", "地區限制", "所在地區", "地區播放"]
             .contains(where: lower.contains) {
             return .regionBlocked
         }

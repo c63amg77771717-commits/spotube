@@ -77,16 +77,12 @@ struct YouTubeLoginWebView: UIViewRepresentable {
                 let ytCookies = cookies.filter {
                     $0.domain.contains("youtube.com") || $0.domain.contains("google.com")
                 }
-                let hasSAPISID = ytCookies.contains { $0.name == "SAPISID" }
-                let hasSID = ytCookies.contains { $0.name == "SID" }
-
-                // Require both key auth cookies; using || would allow partial auth state
-                guard hasSAPISID && hasSID else {
+                guard YouTubeAuthManager.hasActiveAuthCookies(ytCookies) else {
                     // Key auth cookies not yet set — wait for final music.youtube.com navigation
                     return
                 }
 
-                self.authManager.storeAuthCookies(ytCookies)
+                guard self.authManager.storeAuthCookies(ytCookies) else { return }
                 DispatchQueue.main.async { self.onComplete() }
             }
         }

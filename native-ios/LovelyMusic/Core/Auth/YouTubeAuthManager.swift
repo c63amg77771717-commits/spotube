@@ -19,14 +19,24 @@ final class YouTubeAuthManager {
 
     // MARK: - Cookie Management
 
-    func storeAuthCookies(_ cookies: [HTTPCookie]) {
+    static func hasActiveAuthCookies(_ cookies: [HTTPCookie], at now: Date = Date()) -> Bool {
+        let names = Set(cookies.filter {
+            !$0.value.isEmpty && ($0.expiresDate.map { $0 > now } ?? true)
+        }.map(\.name))
+        return names.isSuperset(of: ["SAPISID", "SID"])
+    }
+
+    @discardableResult
+    func storeAuthCookies(_ cookies: [HTTPCookie]) -> Bool {
         let authCookieNames: Set<String> = [
             "SAPISID", "SID", "HSID", "SSID", "APISID",
             "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID",
             "VISITOR_INFO1_LIVE"
         ]
-        let authCookies = cookies.filter { authCookieNames.contains($0.name) }
-        guard !authCookies.isEmpty else { return }
+        let authCookies = cookies.filter {
+            authCookieNames.contains($0.name) && ($0.expiresDate.map { $0 > Date() } ?? true)
+        }
+        guard Self.hasActiveAuthCookies(authCookies) else { return false }
 
         let cookieProperties = authCookies.map { $0.properties ?? [:] }
         guard let data = try? NSKeyedArchiver.archivedData(
@@ -34,12 +44,12 @@ final class YouTubeAuthManager {
             requiringSecureCoding: true
         ) else {
             Self.logger.error("Failed to archive auth cookies")
-            return
+            return false
         }
 
         guard saveToKeychain(data: data, key: "cookies") else {
             Self.logger.error("Failed to persist auth cookies to Keychain — user will appear signed in only for this session")
-            return
+            return false
         }
 
         if authCookies.contains(where: { $0.name == "LOGIN_INFO" }) {
@@ -50,6 +60,7 @@ final class YouTubeAuthManager {
         // Notify DIContainer to update InnerTubeAPI with the new auth cookies.
         // DIContainer observes .settingsChanged and calls innerTubeAPI.setCookie().
         NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        return true
     }
 
     func getAuthCookies() -> [HTTPCookie] {
@@ -62,11 +73,12 @@ final class YouTubeAuthManager {
             return []
         }
         return properties.compactMap { HTTPCookie(properties: $0) }
+            .filter { $0.expiresDate.map { $0 > Date() } ?? true }
     }
 
     func cookieHeaderString() -> String? {
         let cookies = getAuthCookies()
-        guard !cookies.isEmpty else { return nil }
+        guard Self.hasActiveAuthCookies(cookies) else { return nil }
         return cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
     }
 
@@ -156,9 +168,9 @@ final class YouTubeAuthManager {
                from: data
            ) as? [[HTTPCookiePropertyKey: Any]] {
             let cookies = properties.compactMap { HTTPCookie(properties: $0) }
-            isLoggedIn = !cookies.isEmpty
+            isLoggedIn = Self.hasActiveAuthCookies(cookies)
             Self.logger.info("Keychain auth cookies loaded: \(cookies.count, privacy: .public) cookies")
-            if cookies.contains(where: { $0.name == "LOGIN_INFO" }) {
+            if isLoggedIn && cookies.contains(where: { $0.name == "LOGIN_INFO" }) {
                 accountName = "YouTube User"
             }
         } else {

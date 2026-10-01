@@ -62,7 +62,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/evantube-ui-diagnostics"
           (
             while sleep 60; do
-              app_pid=$(pgrep -f '/LovelyMusic.app/LovelyMusic$' | head -n 1 || true)
+              app_pid=$(pgrep -x LovelyMusic | head -n 1 || true)
               if [ -n "$app_pid" ]; then
                 sample "$app_pid" 2 -file "$RUNNER_TEMP/evantube-ui-diagnostics/sample-$(date +%s).txt" >/dev/null 2>&1 || true
               fi

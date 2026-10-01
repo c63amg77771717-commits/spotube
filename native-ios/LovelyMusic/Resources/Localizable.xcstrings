@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Error details" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "錯誤詳情"
+          }
+        }
+      }
+    },
+    "Sign in again to YouTube" : {
+      "localizations" : {
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新登入 YouTube"
+          }
+        }
+      }
+    },
     "" : {
       "localizations" : {
         "zh-Hant" : {

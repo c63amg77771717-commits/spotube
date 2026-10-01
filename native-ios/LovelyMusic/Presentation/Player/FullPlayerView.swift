@@ -439,20 +439,26 @@ struct FullPlayerView: View {
                             .font(Theme.Typography.subheadline)
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .multilineTextAlignment(.center)
-                        #if DEBUG
                         if let rawError = playerVM.playbackError {
-                            Text("DEBUG: \(rawError)")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.red)
-                                .multilineTextAlignment(.center)
+                            DisclosureGroup("Error details") {
+                                Text(rawError)
+                                    .font(Theme.Typography.caption)
+                                    .textSelection(.enabled)
+                            }
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
                         }
-                        #endif
                         if playerVM.streamErrorCategory == .authRequired,
-                           featureFlags.isYouTubeAuthEnabled && !container.authManager.isLoggedIn {
+                           featureFlags.isYouTubeAuthEnabled {
                             Button {
                                 showYouTubeLogin = true
                             } label: {
-                                Label("Sign in to YouTube", systemImage: "person.crop.circle.badge.plus")
+                                Label(
+                                    container.authManager.isLoggedIn
+                                        ? LocalizationManager.text("Sign in again to YouTube")
+                                        : LocalizationManager.text("Sign in to YouTube"),
+                                    systemImage: "person.crop.circle.badge.plus"
+                                )
                                     .font(Theme.Typography.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, Theme.Spacing.xl)
