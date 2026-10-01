@@ -857,7 +857,7 @@ final class AudioEngine {
         )
     }
 
-    func next(userInitiated: Bool = true) {
+    func next(userInitiated: Bool) {
         if userInitiated { PersonalMusicTaste.shared.skip() }
         shutdownGuardedSession(clearError: true)
         let reservedQueueIndex: Int?
@@ -4035,7 +4035,7 @@ final class AudioEngine {
     private func setupRemoteCommands() {
         remoteCommandManager.onPlay = { [weak self] in self?.playPause() }
         remoteCommandManager.onPause = { [weak self] in self?.playPause() }
-        remoteCommandManager.onNext = { [weak self] in self?.next() }
+        remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
         remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
         remoteCommandManager.currentTime = { [weak self] in self?.currentTime ?? 0 }
@@ -4208,6 +4208,9 @@ final class AudioEngine {
 // MARK: - PlaybackRecoveryDelegate
 
 extension AudioEngine: PlaybackRecoveryDelegate {
+    /// Recovery is automatic and must never count as a dislike.
+    func next() { next(userInitiated: false) }
+
     // `duration`, `isPlaying`, `isBuffering`, `currentTime` are already declared on AudioEngine.
     var currentTrackID: String? { currentTrack?.id }
 
