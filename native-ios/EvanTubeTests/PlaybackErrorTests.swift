@@ -45,4 +45,33 @@ final class PlaybackErrorTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+
+    func testMissingFallbackKeysPreserveTheSourcePlayabilityReason() async throws {
+        for reason in ["Sign in to confirm you're not a bot", "This video is not available in your country"] {
+            let repository = PlayerRepository(api: PlayabilityFailureAPI(reason: reason))
+            do {
+                _ = try await repository.resolveStreamDescriptor(videoId: "reason-check", quality: .medium, requestHeaders: [:])
+                XCTFail("The source rejected playback")
+            } catch InnerTubeError.videoUnavailable(let actualReason) {
+                XCTAssertEqual(actualReason, reason)
+            } catch {
+                XCTFail("The original source reason was replaced: \(error)")
+            }
+        }
+    }
+}
+
+private struct PlayabilityFailureAPI: PlayerAPIClient {
+    var reason = "Sign in required"
+
+    func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {
+        try JSONSerialization.data(withJSONObject: ["playabilityStatus": ["status": "UNPLAYABLE", "reason": reason]])
+    }
+    func player(client: YouTubeClient, videoId: String, playlistId: String?) async throws -> Data {
+        throw InnerTubeError.sourceNotConfigured
+    }
+    func playerWithVisionOS(videoId: String) async throws -> Data {
+        throw InnerTubeError.noStreamAvailable
+    }
+    func resetSession() async {}
 }

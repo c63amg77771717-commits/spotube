@@ -613,13 +613,12 @@ struct SearchView: View {
 
     // MARK: - Search Results
 
-    /// Songs filtered to exclude permanently unavailable, episodes, and invalid items.
+    /// Hide episodes and invalid items; a playback failure must not hide a song.
     private var playableSongs: [Song] {
         viewModel.results.songs.filter { song in
             song.hasYouTubeOrigin
                 && !song.isEpisode
                 && (song.duration ?? 0) > 0
-                && !playerVM.unavailableSongIds.contains(song.id)
         }
     }
 

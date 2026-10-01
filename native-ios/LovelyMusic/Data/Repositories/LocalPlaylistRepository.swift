@@ -58,17 +58,16 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
     }
 
     func addSongToPlaylist(song: Song, playlistId: String) async throws {
-        try mutate { playlists in
-            guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return }
-            if !playlists[index].songs.contains(where: { $0.id == song.id }) {
-                playlists[index].songs.append(song)
-            }
-        }
+        _ = try await addSongsToPlaylist(songs: [song], playlistId: playlistId)
     }
 
     func addSongsToPlaylist(songs: [Song], playlistId: String) async throws -> Int {
         try mutate { playlists in
-            guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else { return 0 }
+            guard let index = playlists.firstIndex(where: { $0.id == playlistId }) else {
+                throw NSError(domain: "EvanTube.Playlist", code: 404, userInfo: [
+                    NSLocalizedDescriptionKey: LocalizationManager.text("Playlist not found. Please select it again.")
+                ])
+            }
             var existingIDs = Set(playlists[index].songs.map(\.id))
             let additions = songs.filter { existingIDs.insert($0.id).inserted }
             playlists[index].songs.append(contentsOf: additions)

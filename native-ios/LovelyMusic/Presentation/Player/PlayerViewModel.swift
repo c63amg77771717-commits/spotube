@@ -145,19 +145,6 @@ final class PlayerViewModel {
     private(set) var isLoadingAutoplay = false
     private(set) var isVideoMode = false
 
-    /// Song IDs that permanently failed audio stream resolution (region-blocked,
-    /// removed, no AAC stream). Used by the UI to hide unplayable items from lists.
-    /// Persisted to UserDefaults so failed videos stay filtered across app restarts.
-    private(set) var unavailableSongIds: Set<String> = [] {
-        didSet {
-            if unavailableSongIds != oldValue {
-                UserDefaults.standard.set(
-                    Array(unavailableSongIds),
-                    forKey: "unavailableSongIds"
-                )
-            }
-        }
-    }
     var isFullPlayerPresented: Bool = false
     var isQueuePresented: Bool = false
     var isLyricsVisible: Bool = false
@@ -256,9 +243,6 @@ final class PlayerViewModel {
         self.telemetryManager = telemetryManager
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
-        if let stored = UserDefaults.standard.stringArray(forKey: "unavailableSongIds") {
-            self.unavailableSongIds = Set(stored)
-        }
         observeAudioEngineErrors()
         observeBufferingState()
         observeTrackChanges()
@@ -661,10 +645,6 @@ final class PlayerViewModel {
             // the same song is pointless. Count it against the consecutive
             // failure budget and either auto-skip immediately or halt the loop.
             if isPermanent {
-                // Mark this song as permanently unavailable so UI can filter it
-                if let songId = audioEngine.lastFailedSongId {
-                    unavailableSongIds.insert(songId)
-                }
                 self.consecutiveAutoSkipFailures += 1
                 if self.consecutiveAutoSkipFailures >= maxConsecutiveAutoSkipFailures {
                     Log.player.error(

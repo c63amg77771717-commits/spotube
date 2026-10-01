@@ -48,7 +48,7 @@ enum SecretsProvider {
     }
 
     static var hasPlayerSourceConfiguration: Bool {
-        [innerTubeKeyIOS, innerTubeKeyWebRemix, innerTubeKeyAndroidVR].contains { !$0.isEmpty }
+        [innerTubeKeyIOS, innerTubeKeyWebRemix].contains { !$0.isEmpty }
     }
 
     // MARK: - AdMob

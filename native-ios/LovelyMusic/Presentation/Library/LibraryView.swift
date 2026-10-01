@@ -61,7 +61,7 @@ struct LibraryView: View {
             }
         }
         .background(Theme.Colors.backgroundPrimary)
-        .navigationTitle("為你而來")
+        .navigationTitle("媒體庫")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: Route.settings) {

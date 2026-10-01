@@ -31,8 +31,8 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         library.tap()
         let gear = app.buttons["library_settings"]
         XCTAssertTrue(gear.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.navigationBars["為你而來"].exists)
-        save(app, name: "01-為你而來-設定齒輪")
+        XCTAssertTrue(app.navigationBars["媒體庫"].exists)
+        save(app, name: "01-媒體庫-設定齒輪")
 
         gear.tap()
         let playlistImport = app.buttons["settings_playlist_import"]

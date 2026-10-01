@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var viewModel: SettingsViewModel
+    @Bindable var viewModel: SettingsViewModel
     @Environment(DIContainer.self) private var container
     @State private var showPlaylistImport = false
     @State private var showDriveSync = false
@@ -13,16 +13,6 @@ struct SettingsView: View {
     // Haptic feedback triggers (SwiftUI native, replacing UIKit imperative calls)
     @State private var mediumHapticTrigger = false
     @Namespace private var qualityNamespace
-
-    init(
-        authManager: YouTubeAuthManager, themeManager: ThemeManager,
-        audioCacheManager: AudioCacheManager
-    ) {
-        let vm = SettingsViewModel(authManager: authManager)
-        vm.audioCacheManager = audioCacheManager
-        _viewModel = State(initialValue: vm)
-        self.themeManager = themeManager
-    }
 
     var body: some View {
         ZStack(alignment: .top) {

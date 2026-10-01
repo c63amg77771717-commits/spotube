@@ -7,6 +7,9 @@ struct AddToPlaylistSheet: View {
     @State private var playlists: [Playlist] = []
     @State private var isLoading = true
     @State private var addedMessage: String?
+    @State private var isAdding = false
+    @State private var showError = false
+    @State private var errorMessage = ""
 
     var body: some View {
         NavigationStack {
@@ -27,11 +30,18 @@ struct AddToPlaylistSheet: View {
                 } else {
                     List(playlists) { playlist in
                         Button {
+                            isAdding = true
                             Task {
-                                try? await managePlaylistUseCase.addSong(song, to: playlist.id)
-                                addedMessage = LocalizationManager.text("Added to \(playlist.title)")
-                                try? await Task.sleep(for: .seconds(0.8))
-                                dismiss()
+                                defer { isAdding = false }
+                                do {
+                                    try await managePlaylistUseCase.addSong(song, to: playlist.id)
+                                    addedMessage = LocalizationManager.text("Added to \(playlist.title)")
+                                    try? await Task.sleep(for: .seconds(0.8))
+                                    dismiss()
+                                } catch {
+                                    errorMessage = error.localizedDescription
+                                    showError = true
+                                }
                             }
                         } label: {
                             HStack(spacing: Theme.Spacing.md) {
@@ -54,6 +64,7 @@ struct AddToPlaylistSheet: View {
                         .listRowBackground(Theme.Colors.backgroundSecondary)
                     }
                     .listStyle(.plain)
+                    .disabled(isAdding)
                 }
             }
             .navigationTitle("Add to Playlist")
@@ -75,12 +86,19 @@ struct AddToPlaylistSheet: View {
                 }
             }
             .animation(Theme.AnimationPresets.gentle, value: addedMessage)
+            .alert("Error", isPresented: $showError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text(errorMessage)
+            }
         }
         .task {
             do {
                 playlists = try await managePlaylistUseCase.getAllPlaylists()
             } catch {
                 Log.ui.error("Failed to load playlists: \(error, privacy: .public)")
+                errorMessage = error.localizedDescription
+                showError = true
             }
             isLoading = false
         }

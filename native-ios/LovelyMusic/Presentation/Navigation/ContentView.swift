@@ -240,8 +240,7 @@ struct ContentView: View {
             DownloadsView()
         case .settings:
             SettingsView(
-                authManager: container.authManager, themeManager: container.themeManager,
-                audioCacheManager: container.audioCacheManager)
+                viewModel: container.settingsViewModel, themeManager: container.themeManager)
         }
     }
 }
@@ -265,7 +264,7 @@ enum AppTab: String, Hashable, CaseIterable, Identifiable {
         switch self {
         case .home: return "首頁"
         case .search: return "搜尋"
-        case .library: return "為你而來"
+        case .library: return "媒體庫"
         }
     }
 }

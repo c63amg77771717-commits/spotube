@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Error" : {
+      "localizations" : {
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "發生錯誤" } }
+      }
+    },
+    "Playlist not found. Please select it again." : {
+      "localizations" : {
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "找不到這個歌單，請重新選擇。" } }
+      }
+    },
     "Online source is not configured" : {
       "localizations" : {
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未設定線上音源" } }
@@ -5623,7 +5633,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "為你而來"
+            "value" : "媒體庫"
           }
         }
       }
@@ -13495,7 +13505,7 @@
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "為你而來"
+            "value" : "媒體庫"
           }
         }
       }

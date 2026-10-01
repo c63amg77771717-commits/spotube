@@ -59,6 +59,7 @@ final class DIContainer {
     let homeViewModel: HomeViewModel
     let searchViewModel: SearchViewModel
     let libraryViewModel: LibraryViewModel
+    let settingsViewModel: SettingsViewModel
 
     // Cache invalidation closures for pull-to-refresh
     let invalidateHomeCache: () async -> Void
@@ -166,6 +167,10 @@ final class DIContainer {
         self.downloadManager = DownloadManager()
         self.equalizerManager = EqualizerManager()
         self.audioCacheManager = AudioCacheManager()
+        let settingsViewModel = SettingsViewModel(
+            authManager: authManager, playbackQualitySettings: qualitySettings)
+        settingsViewModel.audioCacheManager = audioCacheManager
+        self.settingsViewModel = settingsViewModel
         self.localizationManager = LocalizationManager()
         let premiumManager = PremiumManager(featureFlagManager: flagManager)
         self.premiumManager = premiumManager

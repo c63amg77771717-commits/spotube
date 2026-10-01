@@ -209,7 +209,7 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                 )
             } catch let error as InnerTubeError {
                 if case .sourceNotConfigured = error {
-                    if !SecretsProvider.hasPlayerSourceConfiguration { throw error }
+                    if !SecretsProvider.hasPlayerSourceConfiguration, playabilityReason == nil { throw error }
                     return nil
                 }
                 if case .httpError(let code) = error {

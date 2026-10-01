@@ -182,6 +182,26 @@ final class DrivePlaylistJournalTests: XCTestCase {
         XCTAssertEqual(try DrivePlaylistJournal.decode(store.ownJournalData()), pending)
     }
 
+    func testAddingToAMissingPlaylistFailsWithoutChangingStoredSongs() async throws {
+        let (defaults, store) = storage()
+        let repository = LocalPlaylistRepository(defaults: defaults, journal: store)
+        let playlist = try await repository.createPlaylist(title: "Local")
+        try await repository.addSongToPlaylist(song: song("aaaaaaaaaaa"), playlistId: playlist.id)
+        for batch in [false, true] {
+            do {
+                if batch {
+                    _ = try await repository.addSongsToPlaylist(songs: [song("bbbbbbbbbbb")], playlistId: "missing")
+                } else {
+                    try await repository.addSongToPlaylist(song: song("bbbbbbbbbbb"), playlistId: "missing")
+                }
+                XCTFail("A missing playlist must not report a successful addition")
+            } catch { }
+        }
+        let restarted = LocalPlaylistRepository(defaults: defaults, journal: DrivePlaylistJournalStore(defaults: defaults))
+        let values = try await restarted.getAllPlaylists()
+        XCTAssertEqual(values.first?.songs.map(\.id), ["aaaaaaaaaaa"])
+    }
+
     func testRejectedLocalMutationPreservesLibraryAndJournal() async throws {
         let (defaults, store) = storage()
         let repository = LocalPlaylistRepository(defaults: defaults, journal: store)
