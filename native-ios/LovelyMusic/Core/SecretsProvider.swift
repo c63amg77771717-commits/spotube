@@ -18,33 +18,37 @@ enum SecretsProvider {
     // MARK: - MicroCMS
 
     static var microCMSAPIKey: String? {
-        secrets["MICROCMS_API_KEY"]
+        nonEmpty(secrets["MICROCMS_API_KEY"])
     }
 
     // MARK: - YouTube InnerTube
 
     static var innerTubeKeyWebRemix: String {
-        secrets["INNERTUBE_KEY_WEB_REMIX"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_WEB_REMIX"]) ?? ""
     }
 
     static var innerTubeKeyIOS: String {
-        secrets["INNERTUBE_KEY_IOS"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_IOS"]) ?? ""
     }
 
     static var innerTubeKeyTVHTML5: String {
-        secrets["INNERTUBE_KEY_TVHTML5"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_TVHTML5"]) ?? ""
     }
 
     static var innerTubeKeyAndroidMusic: String {
-        secrets["INNERTUBE_KEY_ANDROID_MUSIC"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_ANDROID_MUSIC"]) ?? ""
     }
 
     static var innerTubeKeyWeb: String {
-        secrets["INNERTUBE_KEY_WEB"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_WEB"]) ?? ""
     }
 
     static var innerTubeKeyAndroidVR: String {
-        secrets["INNERTUBE_KEY_ANDROID_VR"] ?? ""
+        nonEmpty(secrets["INNERTUBE_KEY_ANDROID_VR"]) ?? ""
+    }
+
+    static var hasPlayerSourceConfiguration: Bool {
+        [innerTubeKeyIOS, innerTubeKeyWebRemix, innerTubeKeyAndroidVR].contains { !$0.isEmpty }
     }
 
     // MARK: - AdMob

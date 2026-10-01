@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Online source is not configured" : {
+      "localizations" : {
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "尚未設定線上音源" } }
+      }
+    },
+    "This test build needs source configuration for online playback." : {
+      "localizations" : {
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "此測試版仍需要有效的音源設定，才能使用相關線上播放功能。" } }
+      }
+    },
     "Error details" : {
       "localizations" : {
         "zh-Hant" : {

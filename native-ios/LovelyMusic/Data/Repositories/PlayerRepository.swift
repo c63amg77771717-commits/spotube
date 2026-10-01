@@ -208,6 +208,10 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                     "[\(label, privacy: .public)] Descriptor validation failed on attempt \(attempt + 1)"
                 )
             } catch let error as InnerTubeError {
+                if case .sourceNotConfigured = error {
+                    if !SecretsProvider.hasPlayerSourceConfiguration { throw error }
+                    return nil
+                }
                 if case .httpError(let code) = error {
                     if code == 429 {
                         Log.player.warning(

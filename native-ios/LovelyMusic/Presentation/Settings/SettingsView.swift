@@ -566,6 +566,7 @@ struct SettingsView: View {
             y: Theme.Shadows.small.y
         )
         .onAppear {
+            guard viewModel.isLoggedIn else { return }
             withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
                 avatarRingRotation = 360
             }

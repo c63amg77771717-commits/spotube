@@ -138,6 +138,7 @@ actor InnerTubeAPI {
         setLogin: Bool = false,
         customURL: URL? = nil
     ) throws -> URLRequest {
+        guard !client.apiKey.isEmpty else { throw InnerTubeError.sourceNotConfigured }
         let url = customURL ?? baseURL.appendingPathComponent(endpoint)
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             throw InnerTubeError.invalidURL
@@ -1025,6 +1026,7 @@ private struct IOSPlayerBody: Encodable {
 }
 
 enum InnerTubeError: Error, LocalizedError {
+    case sourceNotConfigured
     case httpError(statusCode: Int)
     case decodingError(Error)
     case invalidURL
@@ -1036,6 +1038,7 @@ enum InnerTubeError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
+        case .sourceNotConfigured: return LocalizationManager.text("Online source is not configured")
         case .httpError(let code): return LocalizationManager.text("HTTP error: \(code)")
         case .decodingError(let err): return LocalizationManager.text("Decoding error: \(err.localizedDescription)")
         case .invalidURL: return LocalizationManager.text("Invalid URL")

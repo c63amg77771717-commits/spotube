@@ -13,6 +13,7 @@ final class PlaybackErrorTests: XCTestCase {
         XCTAssertEqual(PlaybackErrorCategory.classify("無法在你的地區播放"), .regionBlocked)
         XCTAssertEqual(PlaybackErrorCategory.classify("這首歌已從音源移除"), .songRemoved)
         XCTAssertEqual(PlaybackErrorCategory.classify("Network error: TLS authentication failed"), .noInternet)
+        XCTAssertEqual(PlaybackErrorCategory.classify("尚未設定線上音源"), .sourceNotConfigured)
     }
 
     @MainActor func testExpiredOrVisitorCookiesDoNotMeanSignedIn() {
@@ -28,5 +29,20 @@ final class PlaybackErrorTests: XCTestCase {
         XCTAssertFalse(YouTubeAuthManager.hasActiveAuthCookies([cookie("VISITOR_INFO1_LIVE", expires: future)], at: now))
         XCTAssertFalse(YouTubeAuthManager.hasActiveAuthCookies([cookie("SAPISID", expires: past), cookie("SID", expires: future)], at: now))
         XCTAssertTrue(YouTubeAuthManager.hasActiveAuthCookies([cookie("SAPISID", expires: future), cookie("SID", expires: future)], at: now))
+    }
+
+    func testMissingClientKeyStopsBeforeSendingRequest() async throws {
+        let client = YouTubeClient(
+            clientName: "TEST", clientId: "0", clientVersion: "1", apiKey: "",
+            userAgent: "EvanTube-configuration-check"
+        )
+        do {
+            _ = try await InnerTubeAPI().player(client: client, videoId: "configuration-check")
+            XCTFail("A request with no source key must fail locally")
+        } catch InnerTubeError.sourceNotConfigured {
+            // Missing configuration is distinct from account or region restrictions.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
     }
 }

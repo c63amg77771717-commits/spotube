@@ -30,11 +30,11 @@ jobs:
         working-directory: native-ios
         run: |
           brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
           xcodegen generate
       - name: Build unsigned iOS app
         working-directory: native-ios
         run: |
-          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusic \

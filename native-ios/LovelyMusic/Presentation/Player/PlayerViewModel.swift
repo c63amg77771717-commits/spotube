@@ -11,10 +11,14 @@ enum PlaybackErrorCategory: Equatable {
     case songRemoved
     case serverError
     case authRequired
+    case sourceNotConfigured
     case unknown
 
     static func classify(_ message: String) -> Self {
         let lower = message.lowercased()
+        if lower.contains("online source is not configured") || lower.contains("尚未設定線上音源") {
+            return .sourceNotConfigured
+        }
         if ["sign in", "login", "authentication required", "unauthorized", "bot",
             "confirm your age", "private", "登入", "私人影片"]
             .contains(where: lower.contains) {
@@ -47,6 +51,7 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return "trash.circle"
         case .serverError: return "exclamationmark.icloud"
         case .authRequired: return "person.crop.circle.badge.exclamationmark"
+        case .sourceNotConfigured: return "gearshape"
         case .unknown: return "exclamationmark.triangle"
         }
     }
@@ -58,6 +63,7 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return LocalizationManager.text("Song No Longer Available")
         case .serverError: return LocalizationManager.text("Server Error")
         case .authRequired: return LocalizationManager.text("Sign In Required")
+        case .sourceNotConfigured: return LocalizationManager.text("Online source is not configured")
         case .unknown: return LocalizationManager.text("Playback Error")
         }
     }
@@ -69,6 +75,7 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return LocalizationManager.text("This song has been removed from the catalog")
         case .serverError: return LocalizationManager.text("Please try again later")
         case .authRequired: return LocalizationManager.text("Sign in to YouTube to access this content")
+        case .sourceNotConfigured: return LocalizationManager.text("This test build needs source configuration for online playback.")
         case .unknown: return LocalizationManager.text("Something went wrong")
         }
     }
@@ -637,6 +644,11 @@ final class PlayerViewModel {
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
 
+            if streamErrorCategory == .sourceNotConfigured {
+                autoSkipTask?.cancel()
+                return
+            }
+
             // Auth required: halt auto-skip and trigger login prompt so the user
             // can authenticate rather than skipping the remainder of the queue.
             if streamErrorCategory == .authRequired {
@@ -852,6 +864,8 @@ final class PlayerViewModel {
             return PlaybackErrorCategory.songRemoved.action
         case .serverError:
             return PlaybackErrorCategory.serverError.action
+        case .sourceNotConfigured:
+            return PlaybackErrorCategory.sourceNotConfigured.action
         case .unknown:
             return LocalizationManager.text("Unable to load this song. The stream may be unavailable.")
         }
