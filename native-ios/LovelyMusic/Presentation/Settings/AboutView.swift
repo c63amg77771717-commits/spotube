@@ -126,7 +126,24 @@ private struct EvanTubeCreditsView: View {
                     .foregroundStyle(Theme.Colors.brandGradient)
                 Text("EvanTube 的原始碼基礎為 LovelyMusic，依 Apache License 2.0 使用。保留原專案著作權與授權聲明；修改與新增內容由 Evan Liao 維護。")
                 externalLink("LovelyMusic 原專案", "https://github.com/iletai/LovelyMusic-iOS")
-                externalLink("Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0")
+                NavigationLink {
+                    ScrollView {
+                        Text(verbatim: apacheLicense)
+                            .font(Theme.Typography.body)
+                            .foregroundStyle(Theme.Colors.textPrimary)
+                            .textSelection(.enabled)
+                            .padding(Theme.Spacing.lg)
+                    }
+                    .background(Theme.Colors.backgroundPrimary)
+                    .dockSafeBottom()
+                    .navigationTitle("Apache License 2.0")
+                    .navigationBarTitleDisplayMode(.inline)
+                } label: {
+                    Label("Apache License 2.0（完整授權）", systemImage: "doc.text")
+                        .frame(minHeight: 44, alignment: .leading)
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                }
+                .accessibilityIdentifier("credits_apache_license")
                 Text("歌單與媒體庫操作的功能設計參考：Beans Music。")
                 externalLink("Beans Music", "https://github.com/XIaodou0416/Beans-Music")
 
@@ -169,5 +186,13 @@ private struct EvanTubeCreditsView: View {
                 .foregroundStyle(Theme.Colors.brandGradient)
             }
         }
+    }
+
+    private var apacheLicense: String {
+        guard let url = Bundle.main.url(forResource: "LovelyMusic-LICENSE", withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return "授權文件無法載入。請查看 LovelyMusic 原專案內的 LICENSE 文件。"
+        }
+        return text
     }
 }

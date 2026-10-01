@@ -104,6 +104,18 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         )).firstMatch.exists)
         save(app, name: "05-隱私權政策")
         verifyDocumentFooter(app, above: dock)
+        app.buttons["legal_back"].tap()
+        let credits = app.buttons["about_credits"]
+        for _ in 0..<4 where !credits.isHittable { app.swipeUp() }
+        XCTAssertTrue(credits.isHittable)
+        credits.tap()
+        XCTAssertTrue(app.navigationBars["授權與致謝"].waitForExistence(timeout: 10))
+        save(app, name: "07-授權與致謝")
+        app.buttons["credits_apache_license"].tap()
+        XCTAssertTrue(app.navigationBars["Apache License 2.0"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:
+            "label CONTAINS 'TERMS AND CONDITIONS'"
+        )).firstMatch.exists)
     }
 
     @MainActor func testLaunchBrandingPreview() {
