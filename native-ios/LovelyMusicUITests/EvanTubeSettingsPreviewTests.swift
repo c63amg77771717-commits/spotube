@@ -73,7 +73,7 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
 
         footer.tap()
         XCTAssertTrue(app.navigationBars["使用條款"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format:
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:
             "label CONTAINS 'Evan Liao' AND label CONTAINS '生效日期'"
         )).firstMatch.exists)
         save(app, name: "06-使用條款")
@@ -99,7 +99,7 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(privacy.isHittable)
         privacy.tap()
         XCTAssertTrue(app.navigationBars["隱私權政策"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format:
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format:
             "label CONTAINS 'c63amg77771717@gmail.com' AND label CONTAINS '生效日期'"
         )).firstMatch.exists)
         save(app, name: "05-隱私權政策")
