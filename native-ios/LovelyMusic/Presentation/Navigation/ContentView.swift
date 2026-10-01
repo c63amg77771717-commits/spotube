@@ -90,10 +90,7 @@ struct ContentView: View {
             .onChange(of: searchPath.count) { _, _ in scrollTracker.resetToVisible() }
             .onChange(of: libraryPath.count) { _, _ in scrollTracker.resetToVisible() }
             .background(Theme.Colors.backgroundPrimary)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                Color.clear
-                    .frame(height: bottomInsetValue)
-            }
+            .environment(\.dockBottomInset, bottomInsetValue)
 
             // Banner ad + floating dock — sits at the bottom of the ZStack.
             // No Spacer needed: `ZStack(alignment: .bottom)` handles

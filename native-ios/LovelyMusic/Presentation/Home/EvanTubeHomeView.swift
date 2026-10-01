@@ -106,6 +106,7 @@ struct EvanTubeHomeView: View {
             .padding(.top, 14)
             .padding(.bottom, 22)
         }
+        .dockSafeBottom()
         .background(Theme.Colors.backgroundPrimary)
         .toolbar(.hidden, for: .navigationBar)
         .refreshable {

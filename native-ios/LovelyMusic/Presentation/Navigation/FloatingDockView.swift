@@ -57,6 +57,8 @@ struct FloatingDockView: View {
         .padding(.horizontal, hasSong ? Theme.Spacing.lg : Theme.Spacing.xl)
         .padding(.bottom, Theme.Spacing.sm)
         .animation(Theme.AnimationPresets.smooth, value: hasSong)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("floating_dock")
     }
 }
 

@@ -64,6 +64,11 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         save(app, name: "02-設定-歌單與同步")
         app.swipeUp()
         app.swipeUp()
+        let footer = app.staticTexts["settings_footer_note"]
+        let dock = app.descendants(matching: .any)["floating_dock"].firstMatch
+        XCTAssertTrue(footer.exists)
+        XCTAssertTrue(dock.exists)
+        XCTAssertLessThan(footer.frame.maxY, dock.frame.minY - 8)
         save(app, name: "03-設定-音訊語言隱私")
     }
 

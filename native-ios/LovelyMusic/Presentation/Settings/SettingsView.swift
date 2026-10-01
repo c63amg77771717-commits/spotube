@@ -81,7 +81,7 @@ struct SettingsView: View {
                         LanguageRegionSettingsView(viewModel: viewModel)
                     } label: {
                         settingsNavCard(
-                            icon: "globe.asia.fill",
+                            icon: "globe",
                             accentColor: .blue,
                             title: "Language & Region",
                             subtitle: languageSubtitle,
@@ -367,6 +367,7 @@ struct SettingsView: View {
             Text("Made with ♪ in Vietnam")
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Colors.textTertiary.opacity(0.6))
+                .accessibilityIdentifier("settings_footer_note")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, Theme.Spacing.xxxl)
