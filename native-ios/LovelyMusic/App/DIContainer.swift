@@ -81,6 +81,7 @@ final class DIContainer {
     /// To pick up a CMS toggle on the next cold launch, the live `fetchFlags()` call
     /// in `ContentView` updates the cache so the next `init()` reads the new value.
     init(featureFlagManager: FeatureFlagManager? = nil) {
+        PlaybackStatePersistence.registerBuild9Defaults()
         // Feature flags — must be populated BEFORE repository & theme selection.
         let flagManager = featureFlagManager ?? FeatureFlagManager()
         self.featureFlagManager = flagManager
@@ -212,6 +213,11 @@ final class DIContainer {
         self.audioEngine.audioCacheManager = self.audioCacheManager
         self.audioEngine.equalizerManager = self.equalizerManager
         self.audioEngine.playbackStatePersistence = self.playbackStatePersistence
+        self.audioEngine.onPlaybackStarted = { song in
+            guard !UserDefaults.standard.bool(forKey: "pauseListenHistory") else { return }
+            do { try playlistRepo.recordPlayback(song: song) }
+            catch { Log.player.error("Playback history write failed: \((error as NSError).code)") }
+        }
 
         PlaybackQualityWiring.installExplicitDownloadResolverFactory(
             on: downloadManager,

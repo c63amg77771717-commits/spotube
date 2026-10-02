@@ -16,7 +16,7 @@ enum AudioSessionManager {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, options: [])
         } catch {
-            Log.audioSession.error("setCategory failed: \(error, privacy: .public)")
+            Log.audioSession.error("setCategory failed, code=\((error as NSError).code)")
         }
     }
 
@@ -30,7 +30,7 @@ enum AudioSessionManager {
             try AVAudioSession.sharedInstance().setActive(true)
             Log.audioSession.info("Audio session activated for playback")
         } catch {
-            Log.audioSession.error("Activation failed: \(error, privacy: .public)")
+            Log.audioSession.error("Activation failed, code=\((error as NSError).code)")
         }
     }
 

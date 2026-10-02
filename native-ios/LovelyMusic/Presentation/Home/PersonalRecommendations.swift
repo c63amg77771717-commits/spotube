@@ -14,6 +14,7 @@ final class PersonalRecommendations {
     init(taste: PersonalMusicTaste? = nil) { self.taste = taste ?? .shared }
 
     func refresh(favorites: [Song], fallback: [Song], force: Bool = false,
+                 discover: ((Song) async throws -> [Song])? = nil,
                  related: (String) async throws -> [Song]) async {
         let request = UUID()
         generation = request
@@ -27,19 +28,50 @@ final class PersonalRecommendations {
         var candidates: [Song] = []
         var descriptions: [String: String] = [:]
         var groups: [[Song]] = []
+        var sourceFailed = false
+        var retainedRelated = false
         for seed in seeds {
             guard !Task.isCancelled, generation == request else { return }
             let results: [Song]
-            if !force, let cached = cachedRelated[seed.id], Date().timeIntervalSince(cached.date) < 900 {
-                results = cached.songs
+            if !force, let cached = cachedRelated[seed.id], Date().timeIntervalSince(cached.date) < 900,
+               !ContentPreferences.filteredSongs(cached.songs).isEmpty {
+                results = ContentPreferences.filteredSongs(cached.songs)
             } else {
+                var fetched: [Song] = []
+                var sourceError: Error?
                 do {
-                    results = Array(try await related(seed.id).prefix(30))
-                    guard !Task.isCancelled, generation == request else { return }
-                    if cachedRelated.count >= 12 { cachedRelated.removeAll() }
-                    cachedRelated[seed.id] = (Date(), results)
+                    fetched = try await related(seed.id)
                 } catch {
-                    continue
+                    sourceError = error
+                }
+                guard !Task.isCancelled, generation == request else { return }
+                fetched = ContentPreferences.filteredSongs(fetched).filter {
+                    $0.id != seed.id && EvanTubeOnlineSongResolver.isPlayable($0)
+                }
+                if fetched.isEmpty, let discover {
+                    do {
+                        fetched = try await discover(seed)
+                        sourceError = nil
+                    } catch {
+                        sourceError = error
+                    }
+                }
+                guard !Task.isCancelled, generation == request else { return }
+                let fetchedSongs = Array(ContentPreferences.filteredSongs(fetched).filter {
+                    $0.id != seed.id && EvanTubeOnlineSongResolver.isPlayable($0)
+                }.prefix(30))
+                if fetchedSongs.isEmpty, sourceError != nil {
+                    sourceFailed = true
+                    results = ContentPreferences.filteredSongs(cachedRelated[seed.id]?.songs ?? [])
+                    retainedRelated = retainedRelated || !results.isEmpty
+                } else {
+                    results = fetchedSongs
+                    if results.isEmpty {
+                        cachedRelated.removeValue(forKey: seed.id)
+                    } else {
+                        if cachedRelated.count >= 12 { cachedRelated.removeAll() }
+                        cachedRelated[seed.id] = (Date(), results)
+                    }
                 }
             }
             let filtered = ContentPreferences.filteredSongs(results).filter { $0.id != seed.id }
@@ -53,7 +85,6 @@ final class PersonalRecommendations {
         for index in 0..<(groups.map(\.count).max() ?? 0) {
             for group in groups where index < group.count { candidates.append(group[index]) }
         }
-        let hasRelated = !candidates.isEmpty
         candidates += ContentPreferences.filteredSongs(fallback)
         let ranked = taste.ranked(candidates, favorites: favorites)
         var artistCounts: [String: Int] = [:]
@@ -64,8 +95,19 @@ final class PersonalRecommendations {
             return true
         }.prefix(12))
         reasons = descriptions
-        status = seeds.isEmpty ? "先播放或收藏歌曲；目前顯示音源推薦"
-            : (hasRelated ? "依常聽歌手、收藏與相關歌曲推薦" : "暫時無法取得相關歌曲；先依你的歌手偏好排列音源推薦")
+        if seeds.isEmpty {
+            status = songs.isEmpty ? "先播放或收藏歌曲，建立你的聆聽偏好" : "先播放或收藏歌曲；目前顯示音源推薦"
+        } else if retainedRelated, !songs.isEmpty {
+            status = "暫時無法更新推薦；保留上次的相關歌曲"
+        } else if songs.contains(where: { descriptions[$0.id] != nil }) {
+            status = "依常聽歌手、收藏與線上歌曲推薦"
+        } else if sourceFailed {
+            status = songs.isEmpty ? "暫時無法取得相關歌曲；請檢查連線或下拉重新整理"
+                : "暫時無法取得相關歌曲；先依你的歌手偏好排列音源推薦"
+        } else {
+            status = songs.isEmpty ? "目前沒有新的相關歌曲；可先查看線上榜單"
+                : "目前沒有新的相關歌曲；先依你的歌手偏好排列音源推薦"
+        }
     }
 
     func clear() {

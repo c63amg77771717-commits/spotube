@@ -108,4 +108,59 @@ final class PlaylistOrderingHistoryTests: XCTestCase {
         XCTAssertEqual(reopened.map(\.id), songs.reversed().map(\.id),
                        "The complete history playlist must not discard songs after fifty plays")
     }
+
+    func testSynchronousPlaybackRecordingKeepsCallbackOrderAndPreservesCorruptStorage() async throws {
+        let (defaults, store) = storage()
+        try store.recordPlayback(song: song("aaaaaaaaaaa"))
+        try store.recordPlayback(song: song("bbbbbbbbbbb"))
+        try store.recordPlayback(song: song("aaaaaaaaaaa"))
+        let history = try await repository(defaults).getRecentlyPlayed()
+        XCTAssertEqual(history.map(\.id), ["aaaaaaaaaaa", "bbbbbbbbbbb"])
+
+        let corrupt = Data("corrupt history".utf8)
+        defaults.set(corrupt, forKey: "recently_played")
+        XCTAssertThrowsError(try store.recordPlayback(song: song("ccccccccccc")))
+        XCTAssertEqual(defaults.data(forKey: "recently_played"), corrupt)
+    }
+
+    @MainActor
+    func testLibraryExposesHistorySeparatelyFromEditablePlaylists() async throws {
+        let (defaults, store) = storage()
+        try await store.addToHistory(song: song("aaaaaaaaaaa"))
+        try await store.addToHistory(song: song("bbbbbbbbbbb"))
+        let model = LibraryViewModel(
+            managePlaylistUseCase: ManagePlaylistUseCase(repository: repository(defaults)),
+            manageFavoritesUseCase: ManageFavoritesUseCase(repository: LocalFavoritesRepository()))
+
+        await model.loadLibrary()
+
+        XCTAssertNil(model.error)
+        XCTAssertTrue(model.playlists.isEmpty)
+        XCTAssertEqual(model.playbackHistory.id, Playlist.playbackHistoryID)
+        XCTAssertEqual(model.playbackHistory.songs.map(\.id), ["bbbbbbbbbbb", "aaaaaaaaaaa"])
+        XCTAssertFalse(model.playbackHistory.isLocal, "Playback history is read-only")
+    }
+
+    @MainActor
+    func testHistoryPlaylistDetailLoadsAllPersistedSongsWithoutRemoteLookup() async throws {
+        let (defaults, store) = storage()
+        let songs = (0..<51).map { song(String(format: "%011d", $0)) }
+        for song in songs { try await store.addToHistory(song: song) }
+        let model = PlaylistDetailViewModel(
+            getPlaylistUseCase: GetPlaylistUseCase(repository: InnerTubeRepository(api: InnerTubeAPI())),
+            managePlaylistUseCase: ManagePlaylistUseCase(repository: repository(defaults)))
+
+        model.loadPlaylist(playlistId: Playlist.playbackHistoryID)
+        let deadline = Date().addingTimeInterval(2)
+        while model.playlist == nil && model.error == nil && Date() < deadline { await Task.yield() }
+
+        XCTAssertNil(model.error)
+        XCTAssertEqual(model.playlist?.id, Playlist.playbackHistoryID)
+        XCTAssertEqual(model.filteredSongs.map(\.id), songs.reversed().map(\.id))
+        XCTAssertEqual(model.playlist?.songCount, songs.count)
+        XCTAssertEqual(model.playlist?.isLocal, false)
+        XCTAssertFalse(model.hasMoreSongs)
+        model.startRename()
+        XCTAssertFalse(model.isRenamingPlaylist)
+    }
 }

@@ -14,8 +14,10 @@ final class PlaybackStatePersistence {
         let shuffleEnabled: Bool
         let repeatMode: String  // RepeatMode raw value
         let savedAt: Date
+        let currentSong: Song?
+        let isPlayingFromAutoplay: Bool
 
-        // Backward-compatible decoding: autoplayQueue may be missing in old data
+        // Older snapshots may omit autoplay metadata.
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             queue = try container.decode([Song].self, forKey: .queue)
@@ -26,12 +28,15 @@ final class PlaybackStatePersistence {
             shuffleEnabled = try container.decode(Bool.self, forKey: .shuffleEnabled)
             repeatMode = try container.decode(String.self, forKey: .repeatMode)
             savedAt = try container.decode(Date.self, forKey: .savedAt)
+            currentSong = try container.decodeIfPresent(Song.self, forKey: .currentSong)
+            isPlayingFromAutoplay = try container.decodeIfPresent(Bool.self, forKey: .isPlayingFromAutoplay) ?? false
         }
 
         init(
             queue: [Song], autoplayQueue: [Song], currentIndex: Int,
             currentTime: TimeInterval, wasPlaying: Bool,
-            shuffleEnabled: Bool, repeatMode: String, savedAt: Date
+            shuffleEnabled: Bool, repeatMode: String, savedAt: Date,
+            currentSong: Song? = nil, isPlayingFromAutoplay: Bool = false
         ) {
             self.queue = queue
             self.autoplayQueue = autoplayQueue
@@ -41,11 +46,21 @@ final class PlaybackStatePersistence {
             self.shuffleEnabled = shuffleEnabled
             self.repeatMode = repeatMode
             self.savedAt = savedAt
+            self.currentSong = currentSong
+            self.isPlayingFromAutoplay = isPlayingFromAutoplay
         }
     }
 
     private static let storageKey = "persisted_playback_state"
     private static let settingKey = "persistentQueue"
+
+    static func registerBuild9Defaults(_ defaults: UserDefaults = .standard) {
+        defaults.register(defaults: [settingKey: true])
+        let migrationKey = "build9PlaybackRestorationEnabled"
+        guard !defaults.bool(forKey: migrationKey) else { return }
+        defaults.set(true, forKey: settingKey)
+        defaults.set(true, forKey: migrationKey)
+    }
 
     /// Whether the user has enabled persistent queue in settings
     var isEnabled: Bool {
@@ -60,9 +75,11 @@ final class PlaybackStatePersistence {
         currentTime: TimeInterval,
         isPlaying: Bool,
         shuffleEnabled: Bool,
-        repeatMode: String
+        repeatMode: String,
+        currentSong: Song? = nil,
+        isPlayingFromAutoplay: Bool = false
     ) {
-        guard isEnabled, !queue.isEmpty else { return }
+        guard isEnabled, !queue.isEmpty || currentSong != nil else { return }
 
         let state = PersistedPlaybackState(
             queue: queue,
@@ -72,15 +89,12 @@ final class PlaybackStatePersistence {
             wasPlaying: isPlaying,
             shuffleEnabled: shuffleEnabled,
             repeatMode: repeatMode,
-            savedAt: Date()
+            savedAt: Date(), currentSong: currentSong, isPlayingFromAutoplay: isPlayingFromAutoplay
         )
 
-        // Encode and write on background thread to avoid blocking the main actor
-        let key = Self.storageKey
-        Task.detached(priority: .utility) {
-            guard let data = try? JSONEncoder().encode(state) else { return }
-            UserDefaults.standard.set(data, forKey: key)
-        }
+        // ponytail: synchronous snapshots preserve ordering; use a serial writer if large queues cause measured UI delay.
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: Self.storageKey)
     }
 
     /// Restore persisted state. Returns nil if nothing saved or expired (>7 days).

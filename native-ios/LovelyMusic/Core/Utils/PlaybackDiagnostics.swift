@@ -5,6 +5,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
     enum Phase: String, Codable, Sendable {
         case watchSession, visitor, playerResponse, streamResolved, engineReady, enginePlaying, engineError, authChanged
         case playbackSelection, playbackMode
+        case remotePlay, remotePause, interruptionBegan, interruptionEnded
+        case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
     enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, musicRefresh, persisted, generated, appFallback }
@@ -42,6 +44,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let queueCount: Int?
         let currentIndex: Int?
         let autoplayCount: Int?
+        let positionSeconds: TimeInterval?
+        let isPlaying: Bool?
+        let isBuffering: Bool?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
@@ -49,6 +54,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
              hlsAvailable: Bool? = nil, formatCount: Int? = nil, transportErrorCode: Int? = nil,
              shuffleEnabled: Bool? = nil, repeatMode: String? = nil, queueSource: QueueSource? = nil,
              queueCount: Int? = nil, currentIndex: Int? = nil, autoplayCount: Int? = nil,
+              positionSeconds: TimeInterval? = nil, isPlaying: Bool? = nil, isBuffering: Bool? = nil,
              timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
@@ -72,6 +78,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.queueCount = queueCount
             self.currentIndex = currentIndex
             self.autoplayCount = autoplayCount
+            self.positionSeconds = positionSeconds.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+            self.isPlaying = isPlaying
+            self.isBuffering = isBuffering
         }
 
         var sanitized: Self {
@@ -81,7 +90,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 hlsAvailable: hlsAvailable, formatCount: formatCount,
                 transportErrorCode: transportErrorCode, shuffleEnabled: shuffleEnabled,
                 repeatMode: repeatMode, queueSource: queueSource, queueCount: queueCount,
-                currentIndex: currentIndex, autoplayCount: autoplayCount, timestamp: timestamp)
+                currentIndex: currentIndex, autoplayCount: autoplayCount,
+                positionSeconds: positionSeconds, isPlaying: isPlaying, isBuffering: isBuffering,
+                timestamp: timestamp)
         }
     }
     struct Report: Codable {

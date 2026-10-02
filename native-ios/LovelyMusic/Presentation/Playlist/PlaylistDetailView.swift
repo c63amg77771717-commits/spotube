@@ -175,6 +175,11 @@ struct PlaylistDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: .playlistsChanged)) { _ in
                 viewModel.loadPlaylist(playlistId: playlistId)
             }
+            .onReceive(NotificationCenter.default.publisher(for: .recentlyPlayedChanged)) { _ in
+                if playlistId == Playlist.playbackHistoryID {
+                    viewModel.loadPlaylist(playlistId: playlistId)
+                }
+            }
     }
 
     private func scrollBody(topInset: CGFloat) -> some View {

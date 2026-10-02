@@ -70,7 +70,7 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
             }
             var existingIDs = Set(playlists[index].songs.map(\.id))
             let additions = songs.filter { existingIDs.insert($0.id).inserted }
-            playlists[index].songs.append(contentsOf: additions)
+            playlists[index].songs.insert(contentsOf: additions, at: 0)
             return additions.count
         }
     }
@@ -105,38 +105,32 @@ final class LocalPlaylistRepository: PlaylistRepositoryProtocol {
     }
 
     func getRecentlyPlayed() async throws -> [Song] {
-        guard let data = defaults.data(forKey: historyKey) else { return [] }
-        do {
-            return try Self.decoder.decode([Song].self, from: data)
-        } catch {
-            Log.playlist.error("Failed to decode recently played: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
+        try locked { try loadHistory() }
     }
 
     func addToHistory(song: Song) async throws {
-        var history: [Song]
-        do {
-            history = try await getRecentlyPlayed()
-        } catch {
-            Log.playlist.error("Failed to load history for addToHistory: \(error.localizedDescription, privacy: .public)")
-            history = []
-        }
-        history.removeAll { $0.id == song.id }
-        history.insert(song, at: 0)
-        if history.count > 50 { history = Array(history.prefix(50)) }
-        do {
+        try recordPlayback(song: song)
+    }
+
+    func recordPlayback(song: Song) throws {
+        try locked {
+            var history = try loadHistory()
+            history.removeAll { $0.id == song.id }
+            history.insert(song, at: 0)
             let data = try Self.encoder.encode(history)
             defaults.set(data, forKey: historyKey)
             Task { @MainActor in
                 NotificationCenter.default.post(name: .recentlyPlayedChanged, object: nil)
             }
-        } catch {
-            Log.playlist.error("Failed to encode history: \(error.localizedDescription, privacy: .public)")
         }
     }
 
     // MARK: - Private
+
+    private func loadHistory() throws -> [Song] {
+        guard let data = defaults.data(forKey: historyKey) else { return [] }
+        return try Self.decoder.decode([Song].self, from: data)
+    }
 
     private func loadPlaylists() throws -> [Playlist] {
         guard let data = defaults.data(forKey: playlistsKey) else { return [] }

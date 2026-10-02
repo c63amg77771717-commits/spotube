@@ -50,6 +50,18 @@ struct RecommendationPolicyChecks {
         assert(taste.seeds(favorites: []).isEmpty, "reset clears learned taste")
         taste.dislike(a)
         assert(taste.ranked([c, b], favorites: []).first?.id == b.id, "dislike reduces artist affinity too")
-        print("12 recommendation policy checks passed")
+        let homeURL = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("LovelyMusic/Presentation/Home/EvanTubeHomeView.swift")
+        guard let home = try? String(contentsOf: homeURL, encoding: .utf8),
+              let start = home.range(of: "Button(\"重新整理推薦\","),
+              let end = home.range(of: "Button(\"重設聆聽偏好\"", range: start.upperBound..<home.endIndex) else {
+            fatalError("The recommendation refresh menu caller must be checked")
+        }
+        // ponytail: source check covers this private SwiftUI action; service tests cover forced-refresh retention.
+        let refreshMenu = home[start.upperBound..<end.lowerBound]
+        assert(refreshMenu.contains("refreshPersonal(force: true)"), "menu refresh must bypass the successful cache")
+        assert(!refreshMenu.contains("personal.clear()"), "menu refresh must retain the last valid shelf and cache")
+        assert(home.components(separatedBy: "personal.clear()").count == 2, "only resetting taste may clear recommendations")
+        print("Recommendation policy and home refresh caller checks passed")
     }
 }

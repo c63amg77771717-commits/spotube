@@ -46,6 +46,7 @@ final class AudioEngine {
     private(set) var currentTrack: Song? {
         didSet {
             guard oldValue?.id != currentTrack?.id else { return }
+            hasReportedPlaybackStart = false
             lastFailedSongId = nil
             PersonalMusicTaste.shared.begin(currentTrack)
             invalidateCrossfadePreparation(clearReservation: true)
@@ -88,7 +89,10 @@ final class AudioEngine {
         }
     }
     private(set) var isBuffering: Bool = false {
-        didSet { if isBuffering { PersonalMusicTaste.shared.suspend() } }
+        didSet {
+            if isBuffering { PersonalMusicTaste.shared.suspend() }
+            if oldValue != isBuffering { recordPlaybackDiagnostic(.engineBuffering) }
+        }
     }
     private(set) var lastError: String? {
         didSet {
@@ -223,6 +227,11 @@ final class AudioEngine {
     private var endOfTrackObserver: NSObjectProtocol?
     private var streamResolvedAt: Date?
     private var userInitiatedPause: Bool = false
+    private var isInterrupted = false
+    private var resumeAfterInterruption = false
+    private var hasReportedPlaybackStart = false
+    private var recoveryPosition: TimeInterval?
+    var onPlaybackStarted: ((Song) -> Void)?
     private var pendingSeekTime: TimeInterval?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
@@ -299,6 +308,8 @@ final class AudioEngine {
 
     // Stream-first playback: stream fMP4 immediately, download+remux in background
     private var resolveTask: Task<Void, Never>?
+    private var streamRecoveryTask: Task<Void, Never>?
+    private var loadGeneration: UInt64 = 0
     private(set) var isStreamingMode: Bool = false
     private var backgroundRemuxTask: Task<Void, Never>?
 
@@ -379,16 +390,22 @@ final class AudioEngine {
 
     private let nowPlayingManager = NowPlayingManager()
     private let remoteCommandManager = RemoteCommandManager()
+    private let recoveryClock: (any PlaybackRecoveryClock)?
+    private let recoveryScheduler: (any PlaybackRecoveryScheduling)?
     @ObservationIgnored
     private lazy var recoveryService: PlaybackRecoveryService = {
-        PlaybackRecoveryService(eventSink: { [weak self] event in
+        PlaybackRecoveryService(clock: recoveryClock, scheduler: recoveryScheduler, eventSink: { [weak self] event in
             self?.receivePlaybackRecoveryEvent(event)
         })
     }()
     private static let maxStreamRecoveryAttempts = 2
     private var streamRecoveryAttemptCount: Int = 0
+    private var loadingRecoveryAttemptCount = 0
 
-    init() {
+    init(recoveryClock: (any PlaybackRecoveryClock)? = nil,
+         recoveryScheduler: (any PlaybackRecoveryScheduling)? = nil) {
+        self.recoveryClock = recoveryClock
+        self.recoveryScheduler = recoveryScheduler
         let savedSpeed = UserDefaults.standard.float(forKey: "playbackSpeed")
         playbackSpeed = savedSpeed > 0 ? savedSpeed : 1.0
         recoveryService.delegate = self
@@ -396,8 +413,9 @@ final class AudioEngine {
         setupInterruptionHandling()
         setupAudioProcessingObservers()
         AudioSessionManager.onResume = { [weak self] in
-            self?.resumePlayer()
-            self?.isPlaying = true
+            guard let self, self.resumeAfterInterruption, !self.userInitiatedPause else { return }
+            self.isInterrupted = false
+            self.setPlaybackIntent(true)
         }
     }
 
@@ -758,8 +776,37 @@ final class AudioEngine {
 
     func receivePlaybackRecoveryEvent(_ event: PlaybackRecoveryEvent) {
         switch event {
-        case .stallDetected(let trackID, _):
+        case .loadingTimedOut(let trackID):
+            guard currentTrack?.id == trackID, player?.currentItem == nil,
+                  isPlaying, !userInitiatedPause, !isInterrupted,
+                  let song = currentTrack else { return }
+            recordPlaybackDiagnostic(.engineLoadingTimeout)
+            if loadingRecoveryAttemptCount == 0 {
+                loadingRecoveryAttemptCount += 1
+                var freshSong = song
+                freshSong.streamURL = nil
+                freshSong.streamContentLength = nil
+                currentTrack = freshSong
+                updateQueuedStream(songID: song.id, streamURL: nil, contentLength: nil)
+                loadAndPlay(song: freshSong, seekTo: currentTime, isLoadingRecovery: true)
+            } else {
+                loadGeneration &+= 1
+                resolveTask?.cancel()
+                resolveTask = nil
+                backgroundRemuxTask?.cancel()
+                backgroundRemuxTask = nil
+                isPlaying = false
+                isBuffering = false
+                lastFailedSongId = song.id
+                lastErrorKind = .transient
+                lastError = "播放載入逾時，請按播放重試。"
+                nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
+                savePlaybackState()
+            }
+        case .stallDetected(let trackID, let position):
             guard currentTrack?.id == trackID else { return }
+            recoveryPosition = position.isFinite ? max(0, position) : currentTime
+            recordPlaybackDiagnostic(.engineStall)
             if let coordinator = guardedCoordinator {
                 pauseInstalledGuardedArtifactIfNeeded()
                 guardedPlaybackError = .legacyTransportFailed
@@ -791,6 +838,12 @@ final class AudioEngine {
     }
 
     func stop() {
+        userInitiatedPause = true
+        resumeAfterInterruption = false
+        loadGeneration &+= 1
+        streamRecoveryTask?.cancel()
+        streamRecoveryTask = nil
+        recoveryPosition = nil
         shutdownGuardedSession(clearError: true)
         resolveTask?.cancel()
         backgroundRemuxTask?.cancel()
@@ -801,6 +854,7 @@ final class AudioEngine {
     }
 
     func play(song: Song, fromQueue: [Song] = []) {
+        hasReportedPlaybackStart = false
         let continuingCurrentSong = fromQueue.isEmpty && currentTrack?.id == song.id
         PersonalMusicTaste.shared.begin(song)
         // Round 2 — Fix 1 (review.md M1 / review-codex MED #5):
@@ -832,35 +886,47 @@ final class AudioEngine {
     }
 
     func playPause() {
+        setPlaybackIntent(!isPlaying)
+    }
+
+    private func setPlaybackIntent(_ shouldPlay: Bool) {
+        guard !shouldPlay || currentTrack != nil else { return }
+        if shouldPlay && isPlaying { return }
+        if !shouldPlay && !isPlaying && userInitiatedPause { return }
+        userInitiatedPause = !shouldPlay
+        if !shouldPlay { resumeAfterInterruption = false }
+        if isInterrupted {
+            resumeAfterInterruption = shouldPlay
+            isPlaying = false
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
+            return
+        }
         if let coordinator = guardedCoordinator,
             coordinator.state.phase != .idle
         {
-            if coordinator.state.desiredPlaybackIntent == .playing {
+            if !shouldPlay {
                 coordinator.send(.userPaused)
-                userInitiatedPause = true
                 player?.pause()
                 isPlaying = false
             } else {
                 coordinator.send(.userPlayed)
-                userInitiatedPause = false
                 if player?.currentItem != nil {
-                    resumePlayer()
                     isPlaying = true
+                    resumePlayer()
                 }
             }
-            return
-        }
-        guard let player else { return }
-        if isPlaying {
+        } else if !shouldPlay {
             invalidateCrossfadePreparation(clearReservation: false)
-            userInitiatedPause = true
-            player.pause()
+            player?.pause()
             isPlaying = false
             savePlaybackState()
         } else {
-            userInitiatedPause = false
-            resumePlayer()
             isPlaying = true
+            if let item = player?.currentItem, item.status != .failed {
+                resumePlayer()
+            } else if resolveTask == nil, backgroundRemuxTask == nil, let song = currentTrack {
+                loadAndPlay(song: song, seekTo: currentTime)
+            }
         }
         // The `isPlaying` didSet above mirrors playback state onto the
         // muted video layer — no manual sync needed here.
@@ -872,6 +938,9 @@ final class AudioEngine {
     }
 
     func next(userInitiated: Bool) {
+        hasReportedPlaybackStart = false
+        streamRecoveryTask?.cancel()
+        streamRecoveryTask = nil
         if userInitiated { PersonalMusicTaste.shared.skip() }
         shutdownGuardedSession(clearError: true)
         let reservedQueueIndex: Int?
@@ -961,9 +1030,6 @@ final class AudioEngine {
                 duration = TimeInterval(songDuration)
             }
             nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
-
-            // Lazy-activate the audio session (D-1).
-            AudioSessionManager.activate()
 
             resumePlayer()
             applyAudioProcessing()
@@ -1061,7 +1127,7 @@ final class AudioEngine {
         isBuffering = true
         Log.audio.debug("Seeking to \(time)s")
 
-        guard let player = player, player.currentItem != nil else {
+        guard let player = player, let seekingItem = player.currentItem else {
             Log.audio.warning("No player or item for seek")
             isBuffering = false
             return
@@ -1079,9 +1145,8 @@ final class AudioEngine {
         player.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero) {
             [weak self] finished in
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                // Skip if this seek was superseded by a newer one (finished=false)
-                guard finished else { return }
+                guard let self, finished, self.player === player,
+                      player.currentItem === seekingItem else { return }
                 self.isSeeking = false
                 self.currentTime = time
                 Log.audio.debug("Seek completed: finished=\(finished, privacy: .public)")
@@ -1216,6 +1281,8 @@ final class AudioEngine {
     }
 
     func resumePlayer() {
+        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
+        AudioSessionManager.activate()
         player?.rate = playbackSpeed
     }
 
@@ -1228,12 +1295,15 @@ final class AudioEngine {
             currentTime: currentTime,
             isPlaying: isPlaying,
             shuffleEnabled: shuffleEnabled,
-            repeatMode: repeatMode.rawValue
+            repeatMode: repeatMode.rawValue,
+            currentSong: currentTrack,
+            isPlayingFromAutoplay: isPlayingFromAutoplay
         )
     }
 
     /// Restore queue and position from persisted state (does NOT auto-play)
     func restorePlaybackState(_ state: PlaybackStatePersistence.PersistedPlaybackState) {
+        stop()
         self.queue = state.queue
         self.autoplayQueue = state.autoplayQueue
         self.currentIndex = state.currentIndex
@@ -1246,8 +1316,22 @@ final class AudioEngine {
         }
         if shuffleEnabled { generateShuffledOrder() }
         // Set current track so the UI shows the restored song, but don't trigger playback
-        if state.currentIndex >= 0, state.currentIndex < state.queue.count {
+        if let song = state.currentSong {
+            isPlayingFromAutoplay = state.isPlayingFromAutoplay
+            currentTrack = song
+        } else if state.currentIndex >= 0, state.currentIndex < state.queue.count {
+            isPlayingFromAutoplay = false
             self.currentTrack = state.queue[state.currentIndex]
+        } else {
+            isPlayingFromAutoplay = false
+            currentTrack = nil
+        }
+        if currentTrack != nil {
+            duration = TimeInterval(max(0, currentTrack?.duration ?? 0))
+            currentTime = state.currentTime.isFinite ? max(0, state.currentTime) : 0
+            if duration > 0 { currentTime = min(currentTime, duration) }
+            nowPlayingManager.updateNowPlayingInfo(song: currentTrack, duration: duration)
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
         }
     }
 
@@ -1395,11 +1479,24 @@ final class AudioEngine {
             shuffleEnabled: shuffleEnabled, repeatMode: repeatMode.rawValue,
             queueSource: isPlayingFromAutoplay ? .autoplay : .userQueue,
             queueCount: queue.count, currentIndex: isPlayingFromAutoplay ? nil : currentIndex,
-            autoplayCount: autoplayQueue.count))
+            autoplayCount: autoplayQueue.count, positionSeconds: currentTime,
+            isPlaying: isPlaying, isBuffering: isBuffering))
     }
 
-    private func loadAndPlay(song: Song) {
+    private func loadAndPlay(song: Song, seekTo initialSeek: TimeInterval? = nil,
+                             isLoadingRecovery: Bool = false) {
+        if !isLoadingRecovery { loadingRecoveryAttemptCount = 0 }
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        streamRecoveryTask?.cancel()
+        streamRecoveryTask = nil
+        recoveryPosition = nil
+        userInitiatedPause = false
         shutdownGuardedSession(clearError: true)
+        cleanupPlayer()
+        currentTime = initialSeek ?? 0
+        pendingSeekTime = initialSeek
+        isPlaying = !isInterrupted
         var songToPlay = song
         lastError = nil
         lastFailedSongId = nil
@@ -1441,35 +1538,40 @@ final class AudioEngine {
             Log.audio.info(
                 "Offline-first: using local file for \(songToPlay.id, privacy: .public) (downloaded=\(hasDownloadedFile), cached=\(hasCachedFile), bundled=\(hasBundledFile))"
             )
-            performLoadAndPlay(song: songToPlay)
+            performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
             return
         }
 
         if guardedConfiguration != nil {
-            startGuardedPlayback(song: songToPlay, initialPosition: 0)
+            startGuardedPlayback(song: songToPlay, initialPosition: initialSeek ?? 0)
             return
         }
 
         if songToPlay.streamURL == nil, let resolver = streamURLResolver {
             resolveTask?.cancel()
+            isBuffering = true
+            recoveryService.startLoadingDetection()
             resolveTask = Task { [weak self] in
                 guard let self else { return }
+                defer { if !Task.isCancelled, self.loadGeneration == generation { self.resolveTask = nil } }
                 do {
                     self.isBuffering = true
                     Log.audio.info("Resolving stream URL for: \(songToPlay.id, privacy: .public)")
                     let result = try await resolver(songToPlay.id)
-                    guard !Task.isCancelled else { return }
-                    Log.audio.info("Got stream URL: \(result.url.prefix(80), privacy: .public)...")
+                    guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    Log.audio.info("Stream resolution completed")
                     songToPlay.streamURL = result.url
                     songToPlay.streamContentLength = result.contentLength
                     self.streamResolvedAt = Date()
                     self.currentTrack = songToPlay
                     self.updateQueuedStream(songID: songToPlay.id,
                         streamURL: result.url, contentLength: result.contentLength)
-                    self.performLoadAndPlay(song: songToPlay)
+                    self.performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    self.recoveryService.stopStallDetection()
                     self.isBuffering = false
+                    self.isPlaying = false
                     self.lastFailedSongId = songToPlay.id
                     if let innerTubeError = error as? InnerTubeError, innerTubeError.isPermanent {
                         self.lastErrorKind = .permanent
@@ -1478,14 +1580,14 @@ final class AudioEngine {
                     }
                     self.lastError = error.localizedDescription
                     Log.audio.error(
-                        "Resolving stream URL for \(songToPlay.id, privacy: .public): \(error, privacy: .public)"
+                        "Stream resolution failed, code=\((error as NSError).code)"
                     )
                     #if DEBUG
                     #endif
                 }
             }
         } else {
-            performLoadAndPlay(song: songToPlay)
+            performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
         }
     }
 
@@ -2377,9 +2479,9 @@ final class AudioEngine {
     }
 
     fileprivate func playGuardedHostArtifact() {
-        AudioSessionManager.activate()
-        resumePlayer()
+        userInitiatedPause = false
         isPlaying = true
+        resumePlayer()
     }
 
     fileprivate func pauseGuardedHostArtifact() {
@@ -2405,9 +2507,8 @@ final class AudioEngine {
         }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
         if autoplay {
-            AudioSessionManager.activate()
-            resumePlayer()
             isPlaying = true
+            resumePlayer()
         } else {
             player?.pause()
             isPlaying = false
@@ -2434,8 +2535,7 @@ final class AudioEngine {
            let url = URL(string: streamURL) {
             cleanupPlayer()
             isBuffering = true
-            isPlaying = true
-            userInitiatedPause = false
+            isPlaying = !userInitiatedPause && !isInterrupted
             Log.audio.info("HLS stream: using direct AVPlayer for \(song.title, privacy: .public)")
             // For YouTube HLS, signed URLs work without custom headers —
             // AVURLAssetHTTPHeaderFieldsKey can interfere with HLS sub-requests.
@@ -2476,6 +2576,7 @@ final class AudioEngine {
         guard let streamURL = song.streamURL, let url = URL(string: streamURL) else {
             lastError = "Invalid stream URL"
             isBuffering = false
+            isPlaying = false
             Log.audio.error("Invalid or nil stream URL for \(song.title, privacy: .public)")
             return
         }
@@ -2493,10 +2594,12 @@ final class AudioEngine {
         cleanupPlayer()
 
         isBuffering = true
-        isPlaying = true
-        userInitiatedPause = false
+        isPlaying = !userInitiatedPause && !isInterrupted
 
         Log.audio.info("Download-and-play for: \(song.title, privacy: .public)")
+        currentTime = initialSeek ?? 0
+        pendingSeekTime = initialSeek
+        recoveryService.startLoadingDetection()
 
         let headers: [String: String] =
             streamHeaders.isEmpty ? AppConstants.youtubeStreamHeaders : streamHeaders
@@ -2516,8 +2619,7 @@ final class AudioEngine {
 
         isStreamingMode = false
         isBuffering = true
-        isPlaying = true
-        userInitiatedPause = false
+        isPlaying = !userInitiatedPause && !isInterrupted
 
         self.localFileURL = fileURL
         let asset = AVURLAsset(url: fileURL)
@@ -2543,8 +2645,6 @@ final class AudioEngine {
         self.nowPlayingManager.updateNowPlayingInfo(song: song, duration: self.duration)
 
         // Activate the audio session immediately before playback begins (D-1).
-        AudioSessionManager.activate()
-
         self.resumePlayer()
         self.applyAudioProcessing()
         self.recoveryService.startStallDetection()
@@ -2593,7 +2693,7 @@ final class AudioEngine {
         Log.audio.info("Downloading audio for \(videoId, privacy: .public)...")
         let task = URLSession.shared.downloadTask(with: request) { tempURL, response, error in
             if let error {
-                Log.audio.error("Download error: \(error.localizedDescription, privacy: .public)")
+                Log.audio.error("Download failed, code=\((error as NSError).code)")
                 completion(nil)
                 return
             }
@@ -2611,7 +2711,7 @@ final class AudioEngine {
                 try? FileManager.default.removeItem(at: rawURL)
                 try FileManager.default.moveItem(at: tempURL, to: rawURL)
             } catch {
-                Log.audio.error("Failed to move raw file: \(error, privacy: .public)")
+                Log.audio.error("Failed to move raw file, code=\((error as NSError).code)")
                 completion(nil)
                 return
             }
@@ -2661,7 +2761,6 @@ final class AudioEngine {
         setupPlayerItemObserver(playerItem)
         if let d = song.duration, d > 0 { duration = TimeInterval(d) }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
-        AudioSessionManager.activate()
         resumePlayer()
         applyAudioProcessing()
         recoveryService.startStallDetection()
@@ -2675,8 +2774,10 @@ final class AudioEngine {
     private func startDownloadThenPlay(
         url: URL, headers: [String: String], song: Song, seekTo initialSeek: TimeInterval? = nil
     ) {
+        let generation = loadGeneration
         backgroundRemuxTask = Task { [weak self] in
             guard let self else { return }
+            defer { if !Task.isCancelled, self.loadGeneration == generation { self.backgroundRemuxTask = nil } }
 
             let cacheManager = self.audioCacheManager
             let cacheDir = FileManager.default.temporaryDirectory
@@ -2719,6 +2820,8 @@ final class AudioEngine {
                 var headerReq = baseRequest
                 headerReq.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
                 let (headerData, headerResp) = try await URLSession.shared.data(for: headerReq)
+                guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                if !headerData.isEmpty { self.recoveryService.recordLoadingProgress() }
                 guard (headerResp as? HTTPURLResponse)?.statusCode ?? -1 == 206 else {
                     throw URLError(.badServerResponse)
                 }
@@ -2740,6 +2843,8 @@ final class AudioEngine {
                     var fallbackReq = baseRequest
                     fallbackReq.setValue("bytes=0-399999", forHTTPHeaderField: "Range")
                     let (d, _) = try await URLSession.shared.data(for: fallbackReq)
+                    guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    if !d.isEmpty { self.recoveryService.recordLoadingProgress() }
                     fileHandle.write(d)
                 } else {
                     // Full header may be > 4096 bytes — re-request if needed.
@@ -2749,6 +2854,8 @@ final class AudioEngine {
                         var fullHeaderReq = baseRequest
                         fullHeaderReq.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
                         let (hd, _) = try await URLSession.shared.data(for: fullHeaderReq)
+                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                        if !hd.isEmpty { self.recoveryService.recordLoadingProgress() }
                         fileHandle.write(hd)
                     }
                     // Step 3: Download each segment by exact byte range.
@@ -2758,6 +2865,7 @@ final class AudioEngine {
                     var currentSegRequest = baseRequest
                     var segsThisURL = 0
                     for segSize in segSizes {
+                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         if segsThisURL >= 5,
                            let resolved = try? await self.streamURLResolver?(song.id),
                            let freshURL = URL(string: resolved.url) {
@@ -2768,10 +2876,13 @@ final class AudioEngine {
                             currentSegRequest = refreshed
                             segsThisURL = 0
                         }
+                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         let segEnd = segOffset + segSize - 1
                         var segReq = currentSegRequest
                         segReq.setValue("bytes=\(segOffset)-\(segEnd)", forHTTPHeaderField: "Range")
                         let (segData, segResp) = try await URLSession.shared.data(for: segReq)
+                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                        if !segData.isEmpty { self.recoveryService.recordLoadingProgress() }
                         let code = (segResp as? HTTPURLResponse)?.statusCode ?? -1
                         if code == 206 || code == 200 {
                             fileHandle.write(segData)
@@ -2825,8 +2936,6 @@ final class AudioEngine {
                 self.nowPlayingManager.updateNowPlayingInfo(song: song, duration: self.duration)
 
                 // Activate the audio session immediately before playback begins (D-1).
-                AudioSessionManager.activate()
-
                 self.resumePlayer()
                 self.applyAudioProcessing()
                 self.recoveryService.startStallDetection()
@@ -2860,12 +2969,13 @@ final class AudioEngine {
                     try? FileManager.default.removeItem(at: remuxedURL)
                 }
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                self.recoveryService.stopStallDetection()
                 self.isBuffering = false
                 self.isPlaying = false
                 self.lastError = "Download failed"
                 Log.audio.error(
-                    "Download failed for \(song.id, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                    "Download failed, code=\((error as NSError).code)"
                 )
                 #if DEBUG
                 #endif
@@ -2939,10 +3049,10 @@ final class AudioEngine {
             player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero) {
                 [weak self] finished in
                 Task { @MainActor [weak self] in
-                    guard let self else { return }
+                    guard finished, let self, self.player?.currentItem === playerItem else { return }
                     self.currentTime = targetTime
                     self.isBuffering = false
-                    if wasPlaying {
+                    if wasPlaying && self.isPlaying && !self.userInitiatedPause {
                         self.resumePlayer()
                     }
                     self.syncVideoToAudioTime(targetTime)
@@ -3015,13 +3125,13 @@ final class AudioEngine {
 
         guard reader.startReading() else {
             Log.audio.error(
-                "Remux: reader failed to start: \(reader.error?.localizedDescription ?? "?", privacy: .public)"
+                "Remux: reader failed to start"
             )
             return false
         }
         guard writer.startWriting() else {
             Log.audio.error(
-                "Remux: writer failed to start: \(writer.error?.localizedDescription ?? "?", privacy: .public)"
+                "Remux: writer failed to start"
             )
             return false
         }
@@ -3045,7 +3155,7 @@ final class AudioEngine {
 
         guard reader.status == .completed else {
             Log.audio.error(
-                "Remux: reader ended with status \(reader.status.rawValue): \(reader.error?.localizedDescription ?? "?", privacy: .public)"
+                "Remux: reader ended with status \(reader.status.rawValue)"
             )
             return false
         }
@@ -3054,7 +3164,7 @@ final class AudioEngine {
         let success = writer.status == .completed
         if !success {
             Log.audio.error(
-                "Remux: writer finish error: \(writer.error?.localizedDescription ?? "?", privacy: .public)"
+                "Remux: writer ended with status \(writer.status.rawValue)"
             )
         }
         return success
@@ -3066,6 +3176,7 @@ final class AudioEngine {
             [weak self] time in
             MainActor.assumeIsolated {
                 guard let self else { return }
+                guard self.player?.currentItem != nil, time.seconds.isFinite else { return }
                 // Suppress updates while a pending seek is queued to prevent
                 // the scrubber from flickering between actual and desired position
                 guard self.pendingSeekTime == nil else { return }
@@ -3103,7 +3214,7 @@ final class AudioEngine {
         // playback).
         let statusObs = item.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.player?.currentItem === item else { return }
                 switch item.status {
                 case .readyToPlay:
                     PlaybackDiagnostics.shared.record(.init(phase: .engineReady, videoID: diagnosticVideoID))
@@ -3128,7 +3239,7 @@ final class AudioEngine {
                         self.player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
                         { [weak self] finished in
                             Task { @MainActor [weak self] in
-                                guard let self else { return }
+                                guard let self, finished, self.player?.currentItem === item else { return }
                                 self.currentTime = seekTime
                                 Log.audio.debug(
                                     "Deferred seek completed: finished=\(finished, privacy: .public)"
@@ -3168,9 +3279,10 @@ final class AudioEngine {
                         self.recoveryService.retryPlayback(for: currentSong)
                     } else {
                         self.isBuffering = false
+                    self.isPlaying = false
                         self.lastError = item.error?.localizedDescription ?? "Playback failed"
                         Log.audio.error(
-                            "AVPlayerItem FAILED (no retry): \(item.error?.localizedDescription ?? "unknown", privacy: .public)"
+                            "AVPlayerItem failed after retry"
                         )
                     }
                 default:
@@ -3184,7 +3296,7 @@ final class AudioEngine {
         let bufferEmptyObs = item.observe(\.isPlaybackBufferEmpty, options: [.new, .initial]) {
             [weak self] item, _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.player?.currentItem === item else { return }
                 if item.isPlaybackBufferEmpty {
                     self.isBuffering = true
                     Log.audio.debug("Buffer empty")
@@ -3197,7 +3309,7 @@ final class AudioEngine {
         let bufferKeepUpObs = item.observe(\.isPlaybackLikelyToKeepUp, options: [.new, .initial]) {
             [weak self] item, _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.player?.currentItem === item else { return }
                 if item.isPlaybackLikelyToKeepUp && self.isBuffering {
                     self.isBuffering = false
                     if self.isPlaying {
@@ -3244,7 +3356,7 @@ final class AudioEngine {
                     }
                     for event in log.events {
                         Log.audio.error(
-                            "ErrorLog: status=\(event.serverAddress ?? "?", privacy: .public) code=\(event.errorStatusCode) domain=\(event.errorDomain, privacy: .public) comment=\(event.errorComment ?? "none", privacy: .public)"
+                            "Media request failed, status=\(event.errorStatusCode)"
                         )
 
                         // Detect stream URL expiry: HTTP 403 (Forbidden) or 410 (Gone)
@@ -3273,7 +3385,7 @@ final class AudioEngine {
                 guard self != nil else { return }
                 if let log = item.accessLog(), let event = log.events.last {
                     Log.audio.debug(
-                        "AccessLog: uri=\(event.uri?.prefix(60) ?? "?", privacy: .public) bytesTransferred=\(event.numberOfBytesTransferred) stalls=\(event.numberOfStalls)"
+                        "Media transfer: bytes=\(event.numberOfBytesTransferred) stalls=\(event.numberOfStalls)"
                     )
                 }
             }
@@ -3369,14 +3481,12 @@ final class AudioEngine {
             "Stream recovery: attempt \(self.streamRecoveryAttemptCount)/\(Self.maxStreamRecoveryAttempts) for \(song.id, privacy: .public) at \(savedPosition)s"
         )
 
-        Task { [weak self] in
+        streamRecoveryTask?.cancel()
+        streamRecoveryTask = Task { [weak self] in
             guard let self else { return }
             do {
                 let result = try await resolver(song.id)
-                guard self.currentTrack?.id == song.id else {
-                    self.isReconnecting = false
-                    return
-                }
+                guard !Task.isCancelled, self.currentTrack?.id == song.id else { return }
 
                 Log.audio.info("Stream recovery: got fresh URL, resuming at \(savedPosition)s")
 
@@ -3391,12 +3501,9 @@ final class AudioEngine {
                 self.isReconnecting = false
                 self.performLoadAndPlay(song: recoveredSong, seekTo: savedPosition)
             } catch {
-                guard self.currentTrack?.id == song.id else {
-                    self.isReconnecting = false
-                    return
-                }
+                guard !Task.isCancelled, self.currentTrack?.id == song.id else { return }
                 Log.audio.error(
-                    "Stream recovery attempt \(self.streamRecoveryAttemptCount) failed: \(error.localizedDescription, privacy: .public)"
+                    "Stream recovery attempt \(self.streamRecoveryAttemptCount) failed, code=\((error as NSError).code)"
                 )
                 self.isReconnecting = false
 
@@ -3438,10 +3545,10 @@ final class AudioEngine {
     // MARK: - Time Control Status
 
     private func setupTimeControlObserver() {
-        timeControlObserver = player?.observe(\.timeControlStatus, options: [.new]) {
+        timeControlObserver = player?.observe(\.timeControlStatus, options: [.new, .initial]) {
             [weak self] player, _ in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, self.player === player else { return }
                 switch player.timeControlStatus {
                 case .paused:
                     // Skip recovery if player has no item (song transition in progress)
@@ -3469,8 +3576,14 @@ final class AudioEngine {
                     self.isBuffering = true
                     Log.audio.debug("Waiting to play at specified rate")
                 case .playing:
+                    guard self.isPlaying, !self.userInitiatedPause, !self.isInterrupted,
+                          let song = self.currentTrack else { return }
                     self.isBuffering = false
-                    PlaybackDiagnostics.shared.record(.init(phase: .enginePlaying, videoID: self.currentTrack?.id))
+                    self.recordPlaybackDiagnostic(.enginePlaying)
+                    if !self.hasReportedPlaybackStart {
+                        self.hasReportedPlaybackStart = true
+                        self.onPlaybackStarted?(song)
+                    }
                 @unknown default:
                     Log.audio.warning("Unexpected state encountered")
                 }
@@ -3479,6 +3592,7 @@ final class AudioEngine {
     }
 
     private func cleanupPlayer() {
+        isSeeking = false
         pendingSeekTime = nil
         isReconnecting = false
         streamRecoveryAttemptCount = 0
@@ -3503,8 +3617,8 @@ final class AudioEngine {
         itemObservations.forEach { $0.invalidate() }
         itemObservations.removeAll()
         recoveryService.stopStallDetection()
-        // Suppress watchdog before pausing — cleanupPlayer is intentional, not a stall.
-        userInitiatedPause = true
+        // Suppress watchdog without discarding the user's playback intent.
+        isPlaying = false
         // Reset stale state from previous song
         isStreamingMode = false
         localFileURL = nil
@@ -3729,7 +3843,7 @@ final class AudioEngine {
             } catch {
                 guard self.isCrossfadeTokenValid(token) else { return }
                 Log.audio.error(
-                    "Crossfade: failed to prepare next track: \(error.localizedDescription, privacy: .public)"
+                    "Crossfade: preparation failed, code=\((error as NSError).code)"
                 )
             }
         }
@@ -4075,9 +4189,15 @@ final class AudioEngine {
         }
     }
 
-    func handleRemotePlay() { playPause() }
+    func handleRemotePlay() {
+        recordPlaybackDiagnostic(.remotePlay)
+        setPlaybackIntent(true)
+    }
 
-    func handleRemotePause() { playPause() }
+    func handleRemotePause() {
+        recordPlaybackDiagnostic(.remotePause)
+        setPlaybackIntent(false)
+    }
 
     private func setupRemoteCommands() {
         remoteCommandManager.onPlay = { [weak self] in self?.handleRemotePlay() }
@@ -4213,22 +4333,25 @@ final class AudioEngine {
 
         switch type {
         case .began:
+            recordPlaybackDiagnostic(.interruptionBegan)
+            resumeAfterInterruption = isPlaying && !userInitiatedPause
+            isInterrupted = true
             invalidateCrossfadePreparation(clearReservation: false)
             if isPlaying {
                 // Mark as user-initiated so the watchdog doesn't fire recovery loops
                 // while the system holds the audio session (phone call, Siri, etc.)
-                userInitiatedPause = true
                 player?.pause()
                 isPlaying = false
             }
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
         case .ended:
-            userInitiatedPause = false
+            isInterrupted = false
             let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            if options.contains(.shouldResume) {
-                resumePlayer()
-                isPlaying = true
-            }
+            let shouldResume = resumeAfterInterruption && !userInitiatedPause && options.contains(.shouldResume)
+            resumeAfterInterruption = false
+            if shouldResume { setPlaybackIntent(true) }
+            recordPlaybackDiagnostic(.interruptionEnded)
         @unknown default:
             Log.audio.warning("Unexpected state encountered")
         }
@@ -4243,6 +4366,8 @@ final class AudioEngine {
         if reason == .oldDeviceUnavailable {
             invalidateCrossfadePreparation(clearReservation: false)
             if isPlaying {
+                userInitiatedPause = true
+                resumeAfterInterruption = false
                 player?.pause()
                 isPlaying = false
             }
@@ -4261,7 +4386,11 @@ extension AudioEngine: PlaybackRecoveryDelegate {
 
     /// Protocol-required entry point (delegates to the full overload).
     func performRecoveryLoadAndPlay(song: Song) {
-        performLoadAndPlay(song: song, seekTo: nil)
+        let observed = player?.currentTime().seconds ?? currentTime
+        let position = recoveryPosition ?? (observed.isFinite ? max(0, observed) : currentTime)
+        recoveryPosition = nil
+        recordPlaybackDiagnostic(.engineRecovery)
+        performLoadAndPlay(song: song, seekTo: position)
     }
 
     func updateRetryState(song: Song, streamURL: String, contentLength: Int64?) {
@@ -4269,6 +4398,7 @@ extension AudioEngine: PlaybackRecoveryDelegate {
         if streamURL.isEmpty {
             // Retry failed or no resolver
             isBuffering = false
+            isPlaying = false
             lastError =
                 streamURLResolver == nil
                 ? "No stream URL resolver available for retry"

@@ -112,4 +112,59 @@ final class PersonalRecommendationsTests: XCTestCase {
         ]) { _ in [] }
         XCTAssertEqual(model.songs.map(\.id), [playable.id], "Resolve catalog items through online search before recommending a playable Song")
     }
+
+    @MainActor func testUnavailableRelatedSourceUsesAndCachesOnlineArtistDiscovery() async {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = PersonalRecommendations(taste: PersonalMusicTaste(defaults: defaults))
+        let seed = song("aaaaaaaaaaa"), candidate = song("bbbbbbbbbbb")
+        await model.refresh(favorites: [seed], fallback: [], discover: { requestedSeed in
+            XCTAssertEqual(requestedSeed.id, seed.id)
+            return [seed, candidate, song("1234567890")]
+        }) { _ in throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(model.songs.map(\.id), [candidate.id])
+        XCTAssertTrue(model.reasons[candidate.id]?.contains(seed.title) == true)
+        XCTAssertFalse(model.status.contains("無法取得"))
+        await model.refresh(favorites: [seed], fallback: [], discover: { _ in
+            XCTFail("Successful nonempty online discovery should be cached")
+            return []
+        }) { _ in
+            XCTFail("A cached discovery should avoid another related-source request")
+            return []
+        }
+        XCTAssertEqual(model.songs.map(\.id), [candidate.id])
+    }
+
+    @MainActor func testSuccessfulEmptyOnlineDiscoveryClearsRelatedSourceFailureState() async {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = PersonalRecommendations(taste: PersonalMusicTaste(defaults: defaults))
+        await model.refresh(favorites: [song("aaaaaaaaaaa")], fallback: [], discover: { _ in [] }) { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+        XCTAssertTrue(model.songs.isEmpty)
+        XCTAssertFalse(model.status.contains("無法取得"), "The fallback source answered successfully with no new songs")
+    }
+
+    @MainActor func testFailedForcedRefreshKeepsLastSuccessfulRecommendationsAndCache() async {
+        let name = UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        let model = PersonalRecommendations(taste: PersonalMusicTaste(defaults: defaults))
+        let seed = song("aaaaaaaaaaa"), candidate = song("bbbbbbbbbbb")
+        await model.refresh(favorites: [seed], fallback: []) { _ in [candidate] }
+        await model.refresh(favorites: [seed], fallback: [], force: true, discover: { _ in
+            throw URLError(.notConnectedToInternet)
+        }) { _ in throw URLError(.notConnectedToInternet) }
+        XCTAssertEqual(model.songs.map(\.id), [candidate.id], "A transport failure must not clear the last valid shelf")
+        XCTAssertTrue(model.status.contains("無法"), "Retained results must not be presented as a successful update")
+        await model.refresh(favorites: [seed], fallback: []) { _ in
+            XCTFail("A failed forced request must preserve the last successful cache")
+            return []
+        }
+        XCTAssertEqual(model.songs.map(\.id), [candidate.id])
+        XCTAssertFalse(model.isLoading)
+    }
 }

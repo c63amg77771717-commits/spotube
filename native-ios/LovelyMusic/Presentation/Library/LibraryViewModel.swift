@@ -18,6 +18,8 @@ final class LibraryViewModel {
     private(set) var error: String?
     private(set) var favoritesCount: Int = 0
 
+    var playbackHistory: Playlist { .playbackHistory(recentlyPlayed) }
+
     // Create playlist
     var isCreatingPlaylist = false
     var newPlaylistName = ""

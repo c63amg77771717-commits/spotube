@@ -102,7 +102,7 @@ final class SettingsViewModel {
         }
     }
 
-    var persistentQueue: Bool = false {
+    var persistentQueue: Bool = true {
         didSet { UserDefaults.standard.set(persistentQueue, forKey: "persistentQueue") }
     }
 
@@ -174,7 +174,7 @@ final class SettingsViewModel {
             ?? .off
         self.skipSilence = UserDefaults.standard.bool(forKey: "skipSilence")
         self.audioNormalization = UserDefaults.standard.bool(forKey: "audioNormalization")
-        self.persistentQueue = UserDefaults.standard.bool(forKey: "persistentQueue")
+        self.persistentQueue = UserDefaults.standard.object(forKey: "persistentQueue") as? Bool ?? true
         self.autoSkipOnError =
             UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
         self.autoplayRelatedSongs =
@@ -330,7 +330,7 @@ final class SettingsViewModel {
         sleepTimer = .off
         skipSilence = false
         audioNormalization = false
-        persistentQueue = false
+        persistentQueue = true
         autoSkipOnError = true
         autoplayRelatedSongs = true
         crossfadeDuration = 0

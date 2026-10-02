@@ -85,9 +85,18 @@ struct DrivePlaylistJournal: Codable {
                 guard let song = event.song?.localSong else { continue }
                 if let position = playlists[index].songs.firstIndex(where: { $0.id == song.id }) {
                     playlists[index].songs[position] = song
-                } else { playlists[index].songs.append(song) }
+                } else { playlists[index].songs.insert(song, at: 0) }
             case "removeSong": playlists[index].songs.removeAll { $0.id == event.songId }
-            case "orderSongs": playlists[index].songs = reordered(playlists[index].songs, order: event.order ?? [], id: { $0.id })
+            case "orderSongs":
+                let songs = playlists[index].songs
+                let order = event.order ?? []
+                let listed = Set(order)
+                var sorted = reordered(songs.filter { listed.contains($0.id) }, order: order, id: { $0.id })
+                // ponytail: O(n²) array inserts retain concurrent additions; indexed merge if large journals need it.
+                for (position, song) in songs.enumerated() where !listed.contains(song.id) {
+                    sorted.insert(song, at: min(position, sorted.count))
+                }
+                playlists[index].songs = sorted
             default: break
             }
         }

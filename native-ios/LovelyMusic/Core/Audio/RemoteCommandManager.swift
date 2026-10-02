@@ -23,7 +23,7 @@ final class RemoteCommandManager {
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.onPlay?()
             }
             return .success
@@ -31,7 +31,7 @@ final class RemoteCommandManager {
 
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.onPause?()
             }
             return .success
@@ -39,7 +39,7 @@ final class RemoteCommandManager {
 
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.onNext?()
             }
             return .success
@@ -47,7 +47,7 @@ final class RemoteCommandManager {
 
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            MainActor.assumeIsolated {
+            Task { @MainActor in
                 self?.onPrevious?()
             }
             return .success
@@ -55,10 +55,10 @@ final class RemoteCommandManager {
 
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
-            MainActor.assumeIsolated {
-                if let event = event as? MPChangePlaybackPositionCommandEvent {
-                    self?.onSeek?(event.positionTime)
-                }
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            let position = event.positionTime
+            Task { @MainActor in
+                self?.onSeek?(position)
             }
             return .success
         }

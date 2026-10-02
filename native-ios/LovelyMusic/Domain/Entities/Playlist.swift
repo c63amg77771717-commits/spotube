@@ -1,6 +1,13 @@
 import Foundation
 
 struct Playlist: Identifiable, Hashable {
+    static let playbackHistoryID = "evantube-playback-history"
+
+    static func playbackHistory(_ songs: [Song]) -> Playlist {
+        Playlist(id: playbackHistoryID, title: "播放紀錄", songCount: songs.count,
+                 songs: songs, isLocal: false)
+    }
+
     let id: String
     var title: String
     let thumbnailURL: String?

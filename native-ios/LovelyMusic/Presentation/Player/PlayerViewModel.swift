@@ -285,16 +285,6 @@ final class PlayerViewModel {
             audioEngine.setVideoMode(false)
         }
 
-        Task { [managePlaylistUseCase] in
-            guard !UserDefaults.standard.bool(forKey: "pauseListenHistory") else { return }
-            do {
-                try await managePlaylistUseCase.addToHistory(song)
-            } catch {
-                Log.player.error(
-                    "Failed to add song to history: \(error.localizedDescription, privacy: .public)"
-                )
-            }
-        }
         Task { [weak self] in await self?.loadLyrics(for: song) }
     }
 

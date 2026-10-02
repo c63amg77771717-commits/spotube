@@ -48,6 +48,15 @@ final class PlaylistDetailViewModel {
             error = nil
             do {
                 if let manageUseCase = managePlaylistUseCase {
+                    if playlistId == Playlist.playbackHistoryID {
+                        let history = try await manageUseCase.getRecentlyPlayed()
+                        guard !Task.isCancelled else { return }
+                        self.playlist = .playbackHistory(history)
+                        self.songsContinuation = nil
+                        self.updateFilteredSongs()
+                        isLoading = false
+                        return
+                    }
                     let allPlaylists = try await manageUseCase.getAllPlaylists()
                     guard !Task.isCancelled else { return }
                     if let localPlaylist = allPlaylists.first(where: { $0.id == playlistId }) {

@@ -33,25 +33,71 @@ private struct EvanTubeRegion: Identifiable, Hashable {
 }
 
 @MainActor @Observable
-private final class EvanTubeHomeFeeds {
+final class EvanTubeHomeFeeds {
     var chart: EvanTubeOnlineFeed?
     var weekly: EvanTubeOnlineFeed?
     var releases: EvanTubeOnlineFeed?
+    var chartError: String?
+    var weeklyError: String?
+    var releaseError: String?
     var isLoading = false
+    var isLoadingChart = false
+    private var generation = UUID()
+    private var chartGeneration = UUID()
 
-    func refresh(region: String) async {
+    func refresh(region: String,
+                 loadChart: @MainActor (String) async throws -> EvanTubeOnlineFeed = { try await EvanTubeOnlineFeedService.chart(region: $0) },
+                 loadWeekly: @MainActor () async throws -> EvanTubeOnlineFeed = { try await EvanTubeOnlineFeedService.weekly() },
+                 loadReleases: @MainActor () async throws -> EvanTubeOnlineFeed = { try await EvanTubeOnlineFeedService.releases() }) async {
+        let request = UUID()
+        generation = request
+        chartGeneration = request
         isLoading = true
-        async let chartRequest: EvanTubeOnlineFeed? = try? await EvanTubeOnlineFeedService.chart(region: region)
-        async let weeklyRequest: EvanTubeOnlineFeed? = try? await EvanTubeOnlineFeedService.weekly()
-        async let releaseRequest: EvanTubeOnlineFeed? = try? await EvanTubeOnlineFeedService.releases()
-        chart = await chartRequest
-        weekly = await weeklyRequest
-        releases = await releaseRequest
-        isLoading = false
+        isLoadingChart = false
+        defer { if generation == request { isLoading = false } }
+        async let chartRequest = Self.fetch { try await loadChart(region) }
+        async let weeklyRequest = Self.fetch { try await loadWeekly() }
+        async let releaseRequest = Self.fetch { try await loadReleases() }
+        let chartResult = await chartRequest
+        guard !Task.isCancelled, generation == request else { return }
+        if chartGeneration == request {
+            switch chartResult {
+            case .success(let feed): chart = feed; chartError = nil
+            case .failure: chartError = "無法取得 Apple Music 榜單；請檢查連線後重試。"
+            }
+        }
+        let weeklyResult = await weeklyRequest
+        guard !Task.isCancelled, generation == request else { return }
+        switch weeklyResult {
+        case .success(let feed): weekly = feed; weeklyError = nil
+        case .failure: weeklyError = "無法取得 ListenBrainz 週榜；請檢查連線後重試。"
+        }
+        let releaseResult = await releaseRequest
+        guard !Task.isCancelled, generation == request else { return }
+        switch releaseResult {
+        case .success(let feed): releases = feed; releaseError = nil
+        case .failure: releaseError = "無法取得最新發行來源；請檢查連線後重試。"
+        }
     }
 
     func changeRegion(_ region: String) async {
-        chart = try? await EvanTubeOnlineFeedService.chart(region: region)
+        let request = UUID()
+        chartGeneration = request
+        chart = nil
+        chartError = nil
+        isLoadingChart = true
+        defer { if chartGeneration == request { isLoadingChart = false } }
+        let result = await Self.fetch { try await EvanTubeOnlineFeedService.chart(region: region) }
+        guard !Task.isCancelled, chartGeneration == request else { return }
+        switch result {
+        case .success(let feed): chart = feed
+        case .failure: chartError = "無法取得 Apple Music 榜單；請檢查連線後重試。"
+        }
+    }
+
+    private static func fetch(_ source: @MainActor () async throws -> EvanTubeOnlineFeed) async -> Result<EvanTubeOnlineFeed, Error> {
+        do { return .success(try await source()) }
+        catch { return .failure(error) }
     }
 }
 
@@ -62,6 +108,7 @@ struct EvanTubeHomeView: View {
     @State private var feeds = EvanTubeHomeFeeds()
     @State private var region = EvanTubeRegion.taiwan
     @State private var actionMessage: String?
+    @State private var resolutionID = UUID()
     @State private var personal = PersonalRecommendations()
     @State private var preferenceRevision = 0
     @State private var resetTasteConfirmation = false
@@ -82,6 +129,12 @@ struct EvanTubeHomeView: View {
         }
     }
 
+    private var onlineRecommendations: EvanTubeOnlineFeed? {
+        if let chart = feeds.chart, !chart.items.isEmpty { return chart }
+        if let weekly = feeds.weekly, !weekly.items.isEmpty { return weekly }
+        return nil
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 28) {
@@ -97,10 +150,10 @@ struct EvanTubeHomeView: View {
                 }
                 recentSection
                 nativeSection
-                onlineSection(title: "最近熱門", subtitle: "Apple Music · \(region.label) 即時榜", items: Array((feeds.chart?.items ?? []).prefix(6)), source: feeds.chart)
+                onlineSection(title: "最近熱門", subtitle: "Apple Music · \(region.label) 即時榜", items: Array((feeds.chart?.items ?? []).prefix(6)), source: feeds.chart, error: feeds.chartError)
                 chartSection
-                onlineSection(title: "本週精選", subtitle: "ListenBrainz 社群週榜", items: feeds.weekly?.items ?? [], source: feeds.weekly)
-                onlineSection(title: "最新發行", subtitle: "ListenBrainz · MusicBrainz · 最近 7 天", items: Array((feeds.releases?.items ?? []).prefix(20)), source: feeds.releases)
+                onlineSection(title: "本週精選", subtitle: "ListenBrainz 社群週榜", items: feeds.weekly?.items ?? [], source: feeds.weekly, error: feeds.weeklyError)
+                onlineSection(title: "最新發行", subtitle: "ListenBrainz · MusicBrainz · 最近 7 天", items: Array((feeds.releases?.items ?? []).prefix(20)), source: feeds.releases, error: feeds.releaseError)
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)
@@ -202,8 +255,7 @@ struct EvanTubeHomeView: View {
                 Spacer()
                 Menu {
                     Button("重新整理推薦", systemImage: "arrow.clockwise") {
-                        personal.clear()
-                        preferenceRevision += 1
+                        Task { await refreshPersonal(force: true) }
                     }
                     Button("重設聆聽偏好", systemImage: "arrow.counterclockwise") {
                         resetTasteConfirmation = true
@@ -219,7 +271,16 @@ struct EvanTubeHomeView: View {
                 ProgressView("正在更新推薦…").font(.caption)
             }
             if personal.songs.isEmpty {
-                emptyCard(personal.isLoading || viewModel.isLoading ? "正在尋找你可能喜歡的歌曲…" : "暫時沒有推薦歌曲，請播放或收藏歌曲後下拉重新整理")
+                if let feed = onlineRecommendations {
+                    Text("先聽線上榜單推薦；播放或收藏後會更貼近你的喜好")
+                        .font(.caption).foregroundStyle(Theme.Colors.textSecondary)
+                    sourceLabel(feed)
+                    ForEach(Array(feed.items.prefix(12))) { item in onlineRow(item) }
+                } else {
+                    emptyCard(personal.isLoading || viewModel.isLoading || feeds.isLoading || feeds.isLoadingChart
+                              ? "正在尋找你可能喜歡的歌曲…"
+                              : (feeds.chartError ?? feeds.weeklyError ?? "目前沒有推薦歌曲；播放或收藏後下拉重新整理"))
+                }
             } else {
                 ForEach(ContentPreferences.filteredSongs(personal.songs)) { song in
                     VStack(alignment: .leading, spacing: 4) {
@@ -244,8 +305,13 @@ struct EvanTubeHomeView: View {
     }
 
     @MainActor private func refreshPersonal(force: Bool = false) async {
-        guard let favorites = try? await container.manageFavoritesUseCase.getAllFavorites(), !Task.isCancelled else { return }
-        await personal.refresh(favorites: favorites, fallback: recommendations, force: force) { id in
+        let favorites = (try? await container.manageFavoritesUseCase.getAllFavorites()) ?? []
+        guard !Task.isCancelled else { return }
+        await personal.refresh(favorites: favorites, fallback: recommendations, force: force, discover: { seed in
+            let artist = seed.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+            let query = artist.isEmpty ? seed.title : "\(artist) music"
+            return try await container.searchMusicUseCase.executeOnline(query: query, filter: .songs).songs
+        }) { id in
             try await container.getRelatedSongsUseCase.execute(videoId: id)
         }
     }
@@ -269,24 +335,26 @@ struct EvanTubeHomeView: View {
                         .lineLimit(1)
                 }
             }
+            if let error = feeds.chartError { emptyCard(error) }
             if let chart = feeds.chart, !chart.items.isEmpty {
                 sourceLabel(chart)
                 ForEach(chart.items) { item in onlineRow(item) }
-            } else {
-                emptyCard(feeds.isLoading ? "正在載入 \(region.label) 榜單…" : "暫時無法取得 \(region.label) 榜單；下拉重新整理")
+            } else if feeds.chartError == nil {
+                emptyCard(feeds.isLoading || feeds.isLoadingChart ? "正在載入 \(region.label) 榜單…" : "目前 \(region.label) 榜單沒有歌曲；下拉重新整理")
             }
         }
     }
 
     private func onlineSection(
-        title: String, subtitle: String, items: [EvanTubeOnlineItem], source: EvanTubeOnlineFeed?
+        title: String, subtitle: String, items: [EvanTubeOnlineItem], source: EvanTubeOnlineFeed?, error: String?
     ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle(title, subtitle: subtitle)
+            if let error { emptyCard(error) }
             if let source, !items.isEmpty {
                 sourceLabel(source)
                 ForEach(items) { item in onlineRow(item) }
-            } else {
+            } else if error == nil {
                 emptyCard(feeds.isLoading ? "正在載入…" : "目前沒有可顯示的線上資料；下拉重新整理")
             }
         }
@@ -360,21 +428,25 @@ struct EvanTubeHomeView: View {
     }
 
     private func resolveAndOpen(_ item: EvanTubeOnlineItem) async {
-        let query = "\(item.title) \(item.artist)".trimmingCharacters(in: .whitespaces)
+        let request = UUID()
+        resolutionID = request
+        actionMessage = "正在尋找「\(item.title)」的線上版本…"
         do {
             if item.kind == .release {
-                let result = try await container.searchMusicUseCase.execute(query: query, filter: .albums)
-                guard let album = result.albums.first(where: { titlesMatch($0.title, item.title) }) else {
-                    actionMessage = "找不到「\(item.title)」的可開啟專輯版本。"
+                let resolved = try await EvanTubeOnlineAlbumResolver.resolve(item, searchUseCase: container.searchMusicUseCase)
+                guard !Task.isCancelled, resolutionID == request else { return }
+                guard let album = resolved else {
+                    actionMessage = "目前音源找不到「\(item.title)」的可開啟專輯版本；可到搜尋找這張專輯的歌曲。"
                     return
                 }
+                actionMessage = nil
                 NotificationCenter.default.post(name: .navigateToAlbum, object: nil, userInfo: ["browseId": album.id])
             } else {
-                let result = try await container.searchMusicUseCase.execute(query: query, filter: .songs)
-                guard let song = result.songs.first(where: {
-                    titlesMatch($0.title, item.title) &&
-                    (item.artist.isEmpty || titlesMatch($0.artistName, item.artist))
-                }) else {
+                let resolved = try await EvanTubeOnlineSongResolver.resolve(item) { query in
+                    try await container.searchMusicUseCase.executeOnline(query: query, filter: .songs).songs
+                }
+                guard !Task.isCancelled, resolutionID == request else { return }
+                guard let song = resolved else {
                     actionMessage = "找不到「\(item.title)」的可播放版本。"
                     return
                 }
@@ -382,13 +454,9 @@ struct EvanTubeHomeView: View {
                 playerVM.play(song: song)
             }
         } catch {
+            guard !Task.isCancelled, resolutionID == request else { return }
             actionMessage = "無法搜尋可播放版本：\(error.localizedDescription)"
         }
     }
 
-    private func titlesMatch(_ candidate: String, _ expected: String) -> Bool {
-        let lhs = candidate.lowercased().filter { $0.isLetter || $0.isNumber }
-        let rhs = expected.lowercased().filter { $0.isLetter || $0.isNumber }
-        return !rhs.isEmpty && (lhs == rhs || (rhs.count > 5 && lhs.contains(rhs)))
-    }
 }

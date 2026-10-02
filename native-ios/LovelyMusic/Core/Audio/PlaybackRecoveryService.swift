@@ -3,6 +3,7 @@ import os
 
 enum PlaybackRecoveryEvent: Equatable, Sendable {
     case stallDetected(trackID: String, position: TimeInterval)
+    case loadingTimedOut(trackID: String)
 }
 
 @MainActor
@@ -78,6 +79,8 @@ final class PlaybackRecoveryService {
     private(set) var hasAttemptedRetry: Bool = false
     private var lastObservedTime: TimeInterval = 0
     private var lastTimeChangeInstant: TimeInterval = 0
+    private var isWaitingForItem = false
+    private var retryTask: Task<Void, Never>?
 
     // MARK: - Dependencies
 
@@ -99,6 +102,8 @@ final class PlaybackRecoveryService {
     // MARK: - Lifecycle
 
     func resetRetry() {
+        retryTask?.cancel()
+        retryTask = nil
         hasAttemptedRetry = false
     }
 
@@ -119,17 +124,19 @@ final class PlaybackRecoveryService {
             return
         }
 
-        Task { [weak self, weak delegate] in
+        retryTask?.cancel()
+        retryTask = Task { [weak self, weak delegate] in
             guard let self, let delegate else { return }
+            defer { if !Task.isCancelled { self.retryTask = nil } }
             Log.audio.info("Retry: Re-resolving stream URL for: \(song.id, privacy: .public)")
             do {
                 let result = try await resolver(song.id)
                 // Guard: if user skipped to a different song during resolve, discard stale result
-                guard delegate.currentTrackID == song.id else {
+                guard !Task.isCancelled, delegate.currentTrackID == song.id else {
                     Log.audio.info("Retry: Song changed during resolve, discarding result for \(song.id, privacy: .public)")
                     return
                 }
-                Log.audio.info("Retry: Got fresh stream URL: \(result.url.prefix(80), privacy: .public)...")
+                Log.audio.info("Retry: stream resolution completed")
                 var retrySong = song
                 retrySong.streamURL = result.url
                 retrySong.streamContentLength = result.contentLength
@@ -140,13 +147,28 @@ final class PlaybackRecoveryService {
                 )
                 delegate.performRecoveryLoadAndPlay(song: retrySong)
             } catch {
+                guard !Task.isCancelled, delegate.currentTrackID == song.id else { return }
                 delegate.updateRetryState(song: song, streamURL: "", contentLength: nil)
-                Log.audio.error("Retry failed for \(song.id, privacy: .public): \(error, privacy: .public)")
+                Log.audio.error("Retry failed, code=\((error as NSError).code)")
             }
         }
     }
 
     // MARK: - Stall Detection
+
+    func startLoadingDetection() {
+        stopStallDetection()
+        isWaitingForItem = true
+        lastTimeChangeInstant = clock.now
+        scheduler.scheduleRepeating(every: 5) { [weak self] in
+            self?.checkForStall()
+        }
+    }
+
+    func recordLoadingProgress() {
+        guard isWaitingForItem else { return }
+        lastTimeChangeInstant = clock.now
+    }
 
     func startStallDetection() {
         stopStallDetection()
@@ -159,19 +181,32 @@ final class PlaybackRecoveryService {
 
     func stopStallDetection() {
         scheduler.cancelRepeating()
+        isWaitingForItem = false
+        retryTask?.cancel()
+        retryTask = nil
     }
 
     private func checkForStall() {
         guard let delegate else { return }
         let currentTime = delegate.currentTime
 
-        guard delegate.isPlaying, !delegate.isBuffering else {
+        guard delegate.isPlaying else {
             lastObservedTime = currentTime
             lastTimeChangeInstant = clock.now
             return
         }
 
         // At EOF (partial file ended) — not a network stall, skip recovery.
+        if isWaitingForItem {
+            // Native download requests allow 60 seconds. Give resolution and
+            // each segment more time, while bounding a dependency that never returns.
+            guard clock.now - lastTimeChangeInstant > 90,
+                  let trackID = delegate.currentTrackID else { return }
+            stopStallDetection()
+            eventSink(.loadingTimedOut(trackID: trackID))
+            return
+        }
+
         let dur = delegate.duration
         if dur > 0, currentTime >= dur - 1.0 { return }
 

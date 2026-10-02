@@ -106,13 +106,14 @@ jobs:
           ui_status=0
           # Each case gets a fresh simulator process; app data survives the reboot.
           for test in \
-            testLibraryGearAndSettingsPreview \
-            testLaunchBrandingPreview \
-            testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow \
-            testLibrarySearchAndSongRowTap \
-            testAppearanceChoicesApplyAndPersist \
-            testSearchKeyboardHidesAndRestoresNowPlaying \
-            testPlaybackDiagnosticsCanBeOpenedAndExported; do
+            EvanTubeSettingsPreviewTests/testLibraryGearAndSettingsPreview \
+            EvanTubeSettingsPreviewTests/testLaunchBrandingPreview \
+            EvanTubeSettingsPreviewTests/testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow \
+            EvanTubeSettingsPreviewTests/testLibrarySearchAndSongRowTap \
+            EvanTubeSettingsPreviewTests/testAppearanceChoicesApplyAndPersist \
+            EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
+            EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
+            EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory; do
             xcrun simctl shutdown all
             xcrun simctl bootstatus "$simulator_id" -b
             xcodebuild \
@@ -121,8 +122,8 @@ jobs:
               -configuration Debug \
               -destination "platform=iOS Simulator,id=$simulator_id" \
               -parallel-testing-enabled NO \
-              -only-testing:"LovelyMusicUITests/EvanTubeSettingsPreviewTests/$test" \
-              -resultBundlePath "$RUNNER_TEMP/evantube-previews-$test.xcresult" \
+              -only-testing:"LovelyMusicUITests/$test" \
+              -resultBundlePath "$RUNNER_TEMP/evantube-previews-${test//\//-}.xcresult" \
               -retry-tests-on-failure \
               -test-iterations 2 \
               CODE_SIGNING_ALLOWED=YES \

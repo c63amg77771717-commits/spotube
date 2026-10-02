@@ -372,6 +372,13 @@ struct LibraryView: View {
                     .accessibilityLabel("Liked Songs, \(viewModel.favoritesCount) songs")
                     .accessibilityIdentifier("library_liked_songs")
 
+                    NavigationLink(value: Route.playlist(playlistId: Playlist.playbackHistoryID)) {
+                        playlistRowContent(playlist: viewModel.playbackHistory)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, Theme.Spacing.lg)
+                    .accessibilityIdentifier("library_playback_history")
+
                     // Downloads row
                     if featureFlags.isDownloadEnabled {
                         NavigationLink(value: Route.downloads) {
