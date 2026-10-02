@@ -53,8 +53,44 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         let store = PlaybackDiagnostics(fileURL: file)
         store.record(.init(phase: .engineReady, videoID: "4DARsEmUxMg"))
         XCTAssertEqual(store.events.count, 1)
+        let exported = try store.exportReport()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.path))
         try store.clear()
         XCTAssertTrue(store.events.isEmpty)
         XCTAssertTrue(PlaybackDiagnostics(fileURL: file).events.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.path))
+    }
+
+    func testSourceResponseCaptureNeverRetainsRawReasonsOrStreamURLs() throws {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        let response = Data(#"{"playabilityStatus":{"status":"LOGIN_REQUIRED","reason":"Sign in to confirm you're not a bot SECRET_COOKIE"},"streamingData":{"hlsManifestUrl":"https://example.com/SECRET_URL","formats":[{"url":"SECRET_URL"}],"adaptiveFormats":[{"url":"SECRET_URL"}]},"headers":{"Cookie":"SECRET_COOKIE"}}"#.utf8)
+        store.recordPlayerResponse(response, httpStatus: 200, client: .iosSession,
+            videoID: "4DARsEmUxMg", hasAuth: true, sessionAgeSeconds: 30, visitorSource: .watchPage)
+        XCTAssertEqual(store.events.first?.reason, .verificationRequired)
+        XCTAssertEqual(store.events.first?.formatCount, 2)
+        XCTAssertEqual(store.events.first?.hasAuth, true)
+        XCTAssertEqual(store.events.first?.sessionAgeSeconds, 30)
+        let exported = try store.exportReport()
+        let data = try Data(contentsOf: exported)
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("SECRET_"))
+        XCTAssertEqual(try exported.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    func testRelaunchSanitizesUnexpectedPersistedStringsBeforeExport() throws {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        store.record(.init(phase: .playerResponse, videoID: "4DARsEmUxMg", playabilityStatus: "OK"))
+        var json = String(decoding: try Data(contentsOf: file), as: UTF8.self)
+        json = json.replacingOccurrences(of: "4DARsEmUxMg", with: "SECRET_COOKIE")
+            .replacingOccurrences(of: "OK", with: "SECRET_KEY")
+        try Data(json.utf8).write(to: file)
+        let restored = PlaybackDiagnostics(fileURL: file)
+        XCTAssertEqual(restored.events.count, 1)
+        XCTAssertNil(restored.events.first?.videoID)
+        XCTAssertEqual(restored.events.first?.playabilityStatus, "OTHER")
+        XCTAssertFalse(String(decoding: try restored.reportData(), as: UTF8.self).contains("SECRET_"))
     }
 }

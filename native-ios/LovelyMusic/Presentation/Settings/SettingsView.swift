@@ -80,6 +80,15 @@ struct SettingsView: View {
                     .buttonStyle(.bouncy)
                     .accessibilityIdentifier("settings_online_search")
 
+                    NavigationLink {
+                        PlaybackDiagnosticsView()
+                    } label: {
+                        settingsNavCard(icon: "stethoscope", accentColor: Theme.Colors.brandGradientStart,
+                            title: "播放診斷", subtitle: "保留近期播放結果與匯出紀錄", badge: nil)
+                    }
+                    .buttonStyle(.bouncy)
+                    .accessibilityIdentifier("settings_playback_diagnostics")
+
                     // Language & Region
                     NavigationLink {
                         LanguageRegionSettingsView(viewModel: viewModel)

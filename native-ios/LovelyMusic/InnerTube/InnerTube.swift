@@ -20,6 +20,7 @@ actor InnerTubeAPI {
     private var sessionCookies: [HTTPCookie] = []
     private var hasInitializedSession = false
     private var sessionInitTime: Date?
+    private var playerVisitorSource: PlaybackDiagnostics.VisitorSource = .appFallback
 
     // Visitor data TTL tracking for browse/search freshness
     private var visitorDataTimestamp: Date?
@@ -70,6 +71,7 @@ actor InnerTubeAPI {
     func setCookie(_ cookieString: String?) {
         guard cookie != cookieString else { return }
         self.cookie = cookieString
+        PlaybackDiagnostics.shared.record(.init(phase: .authChanged, hasAuth: cookieString?.isEmpty == false))
         resetSession()
         for stored in HTTPCookieStorage.shared.cookies ?? []
         where YouTubeAuthManager.isYouTubeDomain(stored.domain)
@@ -279,15 +281,44 @@ actor InnerTubeAPI {
             videoId: videoId,
             playlistId: playlistId
         )
-        let request = try buildRequest(
-            endpoint: "player", client: client, body: body, setLogin: true)
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode)
-        else {
-            throw InnerTubeError.httpError(
-                statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1
-            )
+        let diagnosticClient: PlaybackDiagnostics.Client = client.clientName == "IOS" ? .ios
+            : client.clientName == "WEB_REMIX" ? .webRemix : .other
+        let request: URLRequest
+        do {
+            request = try buildRequest(endpoint: "player", client: client, body: body, setLogin: true)
+        } catch {
+            let reason: PlaybackDiagnostics.Reason
+            if case InnerTubeError.sourceNotConfigured = error { reason = .sourceNotConfigured }
+            else { reason = .other }
+            PlaybackDiagnostics.shared.record(.init(phase: .playerResponse, client: diagnosticClient,
+                videoID: videoId, reason: reason, hasAuth: cookie?.isEmpty == false))
+            throw error
+        }
+        return try await executePlayerRequest(request, videoID: videoId, client: diagnosticClient,
+            hasAuth: cookie?.isEmpty == false, visitorSource: .appFallback)
+    }
+
+    /// Observe the same response used by playback without retaining request or response secrets.
+    private func executePlayerRequest(_ request: URLRequest, videoID: String,
+        client: PlaybackDiagnostics.Client, hasAuth: Bool,
+        visitorSource: PlaybackDiagnostics.VisitorSource?) async throws -> Data {
+        let age = sessionInitTime.map { Int(max(0, Date().timeIntervalSince($0))) }
+        let result: (Data, URLResponse)
+        do { result = try await session.data(for: request) }
+        catch {
+            PlaybackDiagnostics.shared.record(.init(phase: .playerResponse, client: client,
+                videoID: videoID,
+                reason: error is CancellationError || (error as NSError).code == NSURLErrorCancelled ? .cancelled : .network,
+                hasAuth: hasAuth, sessionAgeSeconds: age,
+                visitorSource: visitorSource, transportErrorCode: (error as NSError).code))
+            throw error
+        }
+        let (data, response) = result
+        let code = (response as? HTTPURLResponse)?.statusCode
+        PlaybackDiagnostics.shared.recordPlayerResponse(data, httpStatus: code, client: client,
+            videoID: videoID, hasAuth: hasAuth, sessionAgeSeconds: age, visitorSource: visitorSource)
+        guard let code, (200...299).contains(code) else {
+            throw InnerTubeError.httpError(statusCode: code ?? -1)
         }
         return data
     }
@@ -773,8 +804,18 @@ actor InnerTubeAPI {
         )
         watchRequest.setValue("\(locale.hl),en-US;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
         watchRequest.setValue(cookieHeaderString(), forHTTPHeaderField: "Cookie")
+        let watchHasAuth = cookie?.isEmpty == false
 
-        let (data, response) = try await session.data(for: watchRequest)
+        let result: (Data, URLResponse)
+        do { result = try await session.data(for: watchRequest) }
+        catch {
+            PlaybackDiagnostics.shared.record(.init(phase: .watchSession, client: .iosSession,
+                videoID: videoId,
+                reason: error is CancellationError || (error as NSError).code == NSURLErrorCancelled ? .cancelled : .network,
+                hasAuth: watchHasAuth, transportErrorCode: (error as NSError).code))
+            throw error
+        }
+        let (data, response) = result
 
         if let httpResponse = response as? HTTPURLResponse {
             Log.innerTube.info("Watch page HTTP status: \(httpResponse.statusCode)")
@@ -795,6 +836,7 @@ actor InnerTubeAPI {
                 if let endRange = html[start...].range(of: "\"") {
                     let extracted = String(html[start..<endRange.lowerBound])
                     self.visitorData = extracted
+                    self.playerVisitorSource = .watchPage
                     self.visitorDataTimestamp = Date()
                     persistVisitorData(extracted)
                     refreshFailureCount = 0
@@ -809,6 +851,9 @@ actor InnerTubeAPI {
 
         hasInitializedSession = true
         sessionInitTime = Date()
+        PlaybackDiagnostics.shared.record(.init(phase: .watchSession, client: .iosSession,
+            videoID: videoId, httpStatus: (response as? HTTPURLResponse)?.statusCode,
+            hasAuth: watchHasAuth, visitorSource: playerVisitorSource))
         Log.innerTube.info("Session initialized successfully")
     }
 
@@ -891,16 +936,8 @@ actor InnerTubeAPI {
         request.httpBody = try encoder.encode(body)
 
         Log.innerTube.info("Player request for \(videoId, privacy: .public) with IOS")
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode)
-        else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            Log.innerTube.error("Player HTTP error: \(code)")
-            throw InnerTubeError.httpError(statusCode: code)
-        }
-        return data
+        return try await executePlayerRequest(request, videoID: videoId, client: .iosSession,
+            hasAuth: cookie?.isEmpty == false, visitorSource: playerVisitorSource)
     }
 
     /// Fetches player data using VISIONOS client — returns hlsManifestUrl + direct URLs
@@ -910,10 +947,13 @@ actor InnerTubeAPI {
 
         // Get visitorData from youtube.com/tv (VISIONOS requires TV visitorData)
         let visitorForHeader: String
+        let visitorSource: PlaybackDiagnostics.VisitorSource
         if let tvVisitorData = await fetchTVVisitorData() {
             visitorForHeader = tvVisitorData
+            visitorSource = .tvPage
         } else {
             visitorForHeader = effectiveVisitorData()
+            visitorSource = .appFallback
         }
 
         guard var components = URLComponents(string: "https://www.youtube.com/youtubei/v1/player")
@@ -953,16 +993,8 @@ actor InnerTubeAPI {
         )
         request.httpBody = try encoder.encode(body)
         Log.innerTube.info("Player request for \(videoId, privacy: .public) with VISIONOS")
-
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-            (200...299).contains(httpResponse.statusCode)
-        else {
-            let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            Log.innerTube.error("VISIONOS player HTTP error: \(code)")
-            throw InnerTubeError.httpError(statusCode: code)
-        }
-        return data
+        return try await executePlayerRequest(request, videoID: videoId, client: .visionOS,
+            hasAuth: false, visitorSource: visitorSource)
     }
 
     /// Fetch visitorData from https://www.youtube.com/tv — required for VISIONOS client.
@@ -972,13 +1004,23 @@ actor InnerTubeAPI {
         req.setValue(YouTubeClient.userAgentVisionOS, forHTTPHeaderField: "User-Agent")
         req.setValue("SOCS=CAI", forHTTPHeaderField: "Cookie")
         req.timeoutInterval = 10
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let html = String(data: data, encoding: .utf8) else { return nil }
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              let html = String(data: data, encoding: .utf8) else {
+            PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
+                reason: .network, hasAuth: false, visitorSource: .appFallback))
+            return nil
+        }
         // Extract visitorData from ytInitialData or yt.setConfig
         if let range = html.range(of: "\"visitorData\":\""),
            let end = html[range.upperBound...].range(of: "\"") {
+            PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
+                httpStatus: (response as? HTTPURLResponse)?.statusCode,
+                hasAuth: false, visitorSource: .tvPage))
             return String(html[range.upperBound..<end.lowerBound])
         }
+        PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
+            httpStatus: (response as? HTTPURLResponse)?.statusCode,
+            hasAuth: false, visitorSource: .appFallback))
         return nil
     }
 }

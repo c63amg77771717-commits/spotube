@@ -256,6 +256,32 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         save(app, name: "13-搜尋-鍵盤收起")
     }
 
+    @MainActor func testPlaybackDiagnosticsCanBeOpenedAndExported() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
+            "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-evantubeSettingsPreview"]
+        app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launch()
+        XCTAssertTrue(app.buttons["tab_library"].waitForExistence(timeout: 30))
+        app.buttons["tab_library"].tap()
+        app.buttons["library_settings"].tap()
+        let diagnostics = app.buttons["settings_playback_diagnostics"]
+        for _ in 0..<5 where !diagnostics.isHittable { app.swipeUp() }
+        XCTAssertTrue(diagnostics.isHittable)
+        diagnostics.tap()
+        XCTAssertTrue(app.navigationBars["播放診斷"].waitForExistence(timeout: 10))
+        let export = app.buttons["playback_diagnostic_export"]
+        XCTAssertTrue(export.isHittable)
+        XCTAssertTrue(app.buttons["playback_diagnostic_clear"].exists)
+        save(app, name: "14-播放診斷")
+        export.tap()
+        let file = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "EvanTube-播放診斷")).firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 10), "Export must open the system share sheet with a diagnostic file")
+        XCTAssertFalse(app.alerts["無法匯出播放診斷"].exists)
+        save(app, name: "15-匯出播放診斷")
+    }
+
     @MainActor private func verifyDocumentFooter(
         _ app: XCUIApplication, above dock: XCUIElement, footerIdentifier: String = "legal_footer"
     ) {

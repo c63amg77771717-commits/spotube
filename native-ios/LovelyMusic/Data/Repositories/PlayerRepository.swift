@@ -89,6 +89,8 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
             // Priority 0: VISIONOS — returns HLS manifest for full-song streaming
             if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
+                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
+                    videoID: videoId, hlsAvailable: true))
                 Log.player.info("[VISIONOS] HLS stream resolved for \(videoId, privacy: .public)")
                 return hlsDesc
             }
@@ -188,6 +190,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                     return nil
                 }
                 if let result {
+                    PlaybackDiagnostics.shared.record(.init(phase: .streamResolved,
+                        client: useSession ? .iosSession : client?.clientName == "WEB_REMIX" ? .webRemix : .ios,
+                        videoID: videoId, hlsAvailable: result.mimeType == "application/x-mpegURL"))
                     Log.player.info(
                         "[\(label, privacy: .public)] Stream resolved on attempt \(attempt + 1)")
                     return result

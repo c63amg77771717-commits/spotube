@@ -407,6 +407,7 @@ struct FullPlayerView: View {
                             .font(Theme.Typography.subheadline)
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .multilineTextAlignment(.center)
+                        PlaybackDiagnosticsExportButton()
                         if error.isRecoverable {
                             Button {
                                 playerVM.retryGuardedPlayback()
@@ -449,6 +450,7 @@ struct FullPlayerView: View {
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                         }
+                        PlaybackDiagnosticsExportButton()
                         if playerVM.streamErrorCategory == .authRequired,
                            featureFlags.isYouTubeAuthEnabled {
                             Button {

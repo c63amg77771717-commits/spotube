@@ -89,7 +89,13 @@ final class AudioEngine {
     private(set) var isBuffering: Bool = false {
         didSet { if isBuffering { PersonalMusicTaste.shared.suspend() } }
     }
-    private(set) var lastError: String?
+    private(set) var lastError: String? {
+        didSet {
+            guard let lastError, lastError != oldValue else { return }
+            PlaybackDiagnostics.shared.record(.init(phase: .engineError,
+                videoID: lastFailedSongId ?? currentTrack?.id, reason: .classify(lastError)))
+        }
+    }
     /// Classifies the most recent `lastError`. Permanent errors (e.g., the
     /// video is region-blocked or removed) should not be auto-retried by the
     /// presentation layer because the result will not change.
@@ -3079,6 +3085,7 @@ final class AudioEngine {
                 guard let self else { return }
                 switch item.status {
                 case .readyToPlay:
+                    PlaybackDiagnostics.shared.record(.init(phase: .engineReady, videoID: self.currentTrack?.id))
                     // Refine duration from the player item only if it provides a
                     // valid finite value. We may have already populated duration
                     // from Song.duration (D-3) — don't clobber it with NaN/0.
@@ -3116,6 +3123,12 @@ final class AudioEngine {
                         self.isBuffering = false
                     }
                 case .failed:
+                    let mediaStatus = item.errorLog()?.events.last?.errorStatusCode
+                    PlaybackDiagnostics.shared.record(.init(phase: .engineError,
+                        videoID: self.currentTrack?.id,
+                        httpStatus: mediaStatus.flatMap { (100...599).contains($0) ? $0 : nil },
+                        reason: .classify(item.error?.localizedDescription ?? "Playback failed"),
+                        transportErrorCode: (item.error as NSError?)?.code))
                     if self.guardedCoordinator != nil {
                         self.reportPlaybackItemFailure()
                         return
@@ -3437,6 +3450,7 @@ final class AudioEngine {
                     Log.audio.debug("Waiting to play at specified rate")
                 case .playing:
                     self.isBuffering = false
+                    PlaybackDiagnostics.shared.record(.init(phase: .enginePlaying, videoID: self.currentTrack?.id))
                 @unknown default:
                     Log.audio.warning("Unexpected state encountered")
                 }
