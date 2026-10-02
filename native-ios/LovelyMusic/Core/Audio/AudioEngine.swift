@@ -4075,9 +4075,13 @@ final class AudioEngine {
         }
     }
 
+    func handleRemotePlay() { playPause() }
+
+    func handleRemotePause() { playPause() }
+
     private func setupRemoteCommands() {
-        remoteCommandManager.onPlay = { [weak self] in self?.playPause() }
-        remoteCommandManager.onPause = { [weak self] in self?.playPause() }
+        remoteCommandManager.onPlay = { [weak self] in self?.handleRemotePlay() }
+        remoteCommandManager.onPause = { [weak self] in self?.handleRemotePause() }
         remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
         remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
