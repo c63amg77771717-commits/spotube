@@ -121,7 +121,7 @@ final class PersonalRecommendationsTests: XCTestCase {
         let seed = song("aaaaaaaaaaa"), candidate = song("bbbbbbbbbbb")
         await model.refresh(favorites: [seed], fallback: [], discover: { requestedSeed in
             XCTAssertEqual(requestedSeed.id, seed.id)
-            return [seed, candidate, song("1234567890")]
+            return [seed, candidate, self.song("1234567890")]
         }) { _ in throw URLError(.notConnectedToInternet) }
         XCTAssertEqual(model.songs.map(\.id), [candidate.id])
         XCTAssertTrue(model.reasons[candidate.id]?.contains(seed.title) == true)
