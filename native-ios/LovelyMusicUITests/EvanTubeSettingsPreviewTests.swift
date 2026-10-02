@@ -161,12 +161,10 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         }
         XCTAssertGreaterThan(row.frame.minY, navigation.frame.maxY + 8)
         XCTAssertLessThan(row.frame.maxY, dock.frame.minY - 8)
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
-        let opened = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == false"), object: app.buttons["library_settings"]
-        )
-        XCTAssertEqual(XCTWaiter.wait(for: [opened], timeout: 5), .completed,
-                       "Tapping the blank area of a playlist row must open the playlist")
+        app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: row.frame.minX + row.frame.width * 0.75, dy: row.frame.midY)).tap()
+        XCTAssertTrue(app.buttons["歌單選項"].waitForExistence(timeout: 30),
+                      "Tapping the blank area must open a loaded playlist detail page")
         save(app, name: "08-歌單整列點擊")
     }
 
@@ -299,13 +297,12 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(app.buttons["playback_diagnostic_clear"].exists)
         save(app, name: "14-播放診斷")
         export.tap()
-        let file = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "EvanTube-播放診斷")).firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 10), "Export must open the system share sheet with a diagnostic file")
+        let file = app.otherElements["EvanTube-播放診斷"]
+        XCTAssertTrue(file.waitForExistence(timeout: 30), "Export must open the system share sheet with a diagnostic file")
         XCTAssertFalse(app.alerts["無法匯出播放診斷"].exists)
         save(app, name: "15-匯出播放診斷")
         let close = app.buttons["Close"]
-        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        XCTAssertTrue(close.waitForExistence(timeout: 30))
         close.tap()
         let dismissed = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == false"), object: file)

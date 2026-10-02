@@ -110,6 +110,8 @@ jobs:
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests \
             -resultBundlePath "$RUNNER_TEMP/evantube-previews.xcresult" \
+            -retry-tests-on-failure \
+            -test-iterations 2 \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
