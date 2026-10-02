@@ -105,17 +105,22 @@ final class OnlineFeedRegressionTests: XCTestCase {
     }
 
     func testAlbumLookupUsesTheAlbumCapableRepositoryEvenWhenOfficialSearchIsConfigured() async throws {
-        let repository = DemoContentRepository()
-        let albums = try await repository.search(query: "", filter: .albums).albums
-        let expected = try XCTUnwrap(albums.first)
+        let expected = Album(id: "MPREb_fixture_album", title: "Fixture Album", artistName: "Fixture Artist",
+                             artistId: nil, year: nil, thumbnailURL: nil, songs: [])
+        let repository = MockInnerTubeRepository()
+        repository.searchResult = SearchResult(songs: [], albums: [expected], artists: [], playlists: [], continuation: nil)
         let keyStore = YouTubeSearchKeyStore(service: "EvanTube.album-fixture.\(UUID())")
         defer { try? keyStore.remove() }
         try keyStore.save("fixture-key")
         let useCase = SearchMusicUseCase(repository: repository, youtubeKeyStore: keyStore)
+        XCTAssertTrue(useCase.isOnlineConfigured)
         let release = EvanTubeOnlineItem(id: "release-id", title: expected.title, artist: "",
                                          artworkURL: nil, kind: .release, releaseDate: nil)
         let resolved = try await EvanTubeOnlineAlbumResolver.resolve(release, searchUseCase: useCase)
         XCTAssertEqual(resolved?.id, expected.id)
+        XCTAssertEqual(resolved?.title, expected.title)
+        XCTAssertEqual(repository.searchCallCount, 1, "Use the album-capable repository even when official video search is configured")
+        XCTAssertEqual(repository.lastSearchFilter, .albums)
     }
 
     @MainActor func testOverlappingFeedRefreshIgnoresOldResultsAndKeepsNewRequestLoading() async {
