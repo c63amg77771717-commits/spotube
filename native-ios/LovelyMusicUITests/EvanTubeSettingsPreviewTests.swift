@@ -268,14 +268,20 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         app.buttons["library_settings"].tap()
         let diagnostics = app.buttons["settings_playback_diagnostics"]
         let dock = app.descendants(matching: .any)["floating_dock"].firstMatch
+        let navigation = app.navigationBars.firstMatch
+        XCTAssertTrue(diagnostics.exists)
         for _ in 0..<7 {
-            if diagnostics.isHittable && diagnostics.frame.maxY < dock.frame.minY - 8 { break }
-            app.swipeUp()
+            if diagnostics.frame.minY > navigation.frame.maxY + 8 &&
+                diagnostics.frame.maxY < dock.frame.minY - 8 { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+                .press(forDuration: 0.05, thenDragTo:
+                    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)))
         }
-        XCTAssertTrue(diagnostics.isHittable)
+        XCTAssertGreaterThan(diagnostics.frame.minY, navigation.frame.maxY + 8)
         XCTAssertLessThan(diagnostics.frame.maxY, dock.frame.minY - 8,
                           "Scroll the card clear of the floating controls before tapping")
-        diagnostics.tap()
+        app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: diagnostics.frame.midX, dy: diagnostics.frame.midY)).tap()
         XCTAssertTrue(app.navigationBars["播放診斷"].waitForExistence(timeout: 10))
         let export = app.buttons["playback_diagnostic_export"]
         XCTAssertTrue(export.isHittable)
