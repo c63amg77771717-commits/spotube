@@ -20,7 +20,7 @@ actor InnerTubeAPI {
     private var sessionCookies: [HTTPCookie] = []
     private var hasInitializedSession = false
     private var sessionInitTime: Date?
-    private var playerVisitorSource: PlaybackDiagnostics.VisitorSource = .appFallback
+    private var playerVisitorSource: PlaybackDiagnostics.VisitorSource = .generated
 
     // Visitor data TTL tracking for browse/search freshness
     private var visitorDataTimestamp: Date?
@@ -137,6 +137,7 @@ actor InnerTubeAPI {
                 let age = Date().timeIntervalSince1970 - storedAt
                 if age >= 0 && age < Self.visitorDataPersistenceTTL {
                     self.visitorData = stored
+                    self.playerVisitorSource = .persisted
                 }
             }
         }
@@ -295,7 +296,7 @@ actor InnerTubeAPI {
             throw error
         }
         return try await executePlayerRequest(request, videoID: videoId, client: diagnosticClient,
-            hasAuth: cookie?.isEmpty == false, visitorSource: .appFallback)
+            hasAuth: cookie?.isEmpty == false, visitorSource: effectiveVisitorSource)
     }
 
     /// Observe the same response used by playback without retaining request or response secrets.
@@ -497,6 +498,7 @@ actor InnerTubeAPI {
         Log.innerTube.warning("All network sources failed, using locally generated visitorData")
         let generated = VisitorDataGenerator.generate()
         self.visitorData = generated
+        self.playerVisitorSource = .generated
         refreshFailureCount += 1
         if refreshFailureCount >= 2 {
             setDegraded(true)
@@ -507,6 +509,7 @@ actor InnerTubeAPI {
     /// timestamps, and persists to UserDefaults.
     private func applyVisitorData(_ token: String) {
         self.visitorData = token
+        self.playerVisitorSource = .musicRefresh
         self.visitorDataTimestamp = Date()
         persistVisitorData(token)
         refreshFailureCount = 0
@@ -702,6 +705,10 @@ actor InnerTubeAPI {
             return Self.defaultVisitorData
         }
         return visitorData
+    }
+
+    private var effectiveVisitorSource: PlaybackDiagnostics.VisitorSource {
+        degradedVisitorState ? .generated : playerVisitorSource
     }
 
     /// Writes the last-good visitorData and timestamp to UserDefaults so the next
@@ -937,7 +944,7 @@ actor InnerTubeAPI {
 
         Log.innerTube.info("Player request for \(videoId, privacy: .public) with IOS")
         return try await executePlayerRequest(request, videoID: videoId, client: .iosSession,
-            hasAuth: cookie?.isEmpty == false, visitorSource: playerVisitorSource)
+            hasAuth: cookie?.isEmpty == false, visitorSource: effectiveVisitorSource)
     }
 
     /// Fetches player data using VISIONOS client — returns hlsManifestUrl + direct URLs
@@ -953,7 +960,7 @@ actor InnerTubeAPI {
             visitorSource = .tvPage
         } else {
             visitorForHeader = effectiveVisitorData()
-            visitorSource = .appFallback
+            visitorSource = effectiveVisitorSource
         }
 
         guard var components = URLComponents(string: "https://www.youtube.com/youtubei/v1/player")

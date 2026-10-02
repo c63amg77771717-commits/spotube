@@ -46,8 +46,10 @@ final class AudioEngine {
     private(set) var currentTrack: Song? {
         didSet {
             guard oldValue?.id != currentTrack?.id else { return }
+            lastFailedSongId = nil
             PersonalMusicTaste.shared.begin(currentTrack)
             invalidateCrossfadePreparation(clearReservation: true)
+            recordPlaybackDiagnostic(.playbackSelection)
         }
     }
     private(set) var queue: [Song] = [] {
@@ -143,6 +145,7 @@ final class AudioEngine {
                 recentlyPlayedIndices = []
             }
             savePlaybackState()
+            recordPlaybackDiagnostic(.playbackMode)
         }
     }
     var repeatMode: RepeatMode = RepeatMode(rawValue:
@@ -153,6 +156,7 @@ final class AudioEngine {
             playbackPolicyRevision &+= 1
             invalidateCrossfadePreparation(clearReservation: true)
             savePlaybackState()
+            recordPlaybackDiagnostic(.playbackMode)
         }
     }
 
@@ -1375,11 +1379,21 @@ final class AudioEngine {
 
     // MARK: - Private
 
+    private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase) {
+        PlaybackDiagnostics.shared.record(.init(phase: phase, videoID: currentTrack?.id,
+            shuffleEnabled: shuffleEnabled, repeatMode: repeatMode.rawValue,
+            queueSource: isPlayingFromAutoplay ? .autoplay : .userQueue,
+            queueCount: queue.count, currentIndex: isPlayingFromAutoplay ? nil : currentIndex,
+            autoplayCount: autoplayQueue.count))
+    }
+
     private func loadAndPlay(song: Song) {
         shutdownGuardedSession(clearError: true)
         var songToPlay = song
         lastError = nil
+        lastFailedSongId = nil
         lastErrorKind = .transient
+        recordPlaybackDiagnostic(.playbackSelection)
         isReconnecting = false
         streamRecoveryAttemptCount = 0
         recoveryService.resetRetry()
@@ -3075,6 +3089,7 @@ final class AudioEngine {
     }
 
     private func setupPlayerItemObserver(_ item: AVPlayerItem) {
+        let diagnosticVideoID = currentTrack?.id
         // Status observer with retry logic.
         // `.initial` ensures we receive the current value at attach time so we
         // don't miss `.readyToPlay` if the item transitioned synchronously
@@ -3085,7 +3100,7 @@ final class AudioEngine {
                 guard let self else { return }
                 switch item.status {
                 case .readyToPlay:
-                    PlaybackDiagnostics.shared.record(.init(phase: .engineReady, videoID: self.currentTrack?.id))
+                    PlaybackDiagnostics.shared.record(.init(phase: .engineReady, videoID: diagnosticVideoID))
                     // Refine duration from the player item only if it provides a
                     // valid finite value. We may have already populated duration
                     // from Song.duration (D-3) — don't clobber it with NaN/0.
@@ -3124,11 +3139,8 @@ final class AudioEngine {
                     }
                 case .failed:
                     let mediaStatus = item.errorLog()?.events.last?.errorStatusCode
-                    PlaybackDiagnostics.shared.record(.init(phase: .engineError,
-                        videoID: self.currentTrack?.id,
-                        httpStatus: mediaStatus.flatMap { (100...599).contains($0) ? $0 : nil },
-                        reason: .classify(item.error?.localizedDescription ?? "Playback failed"),
-                        transportErrorCode: (item.error as NSError?)?.code))
+                    PlaybackDiagnostics.shared.recordMediaFailure(videoID: diagnosticVideoID,
+                        statusCode: mediaStatus, errorCode: (item.error as NSError?)?.code)
                     if self.guardedCoordinator != nil {
                         self.reportPlaybackItemFailure()
                         return
@@ -3220,6 +3232,10 @@ final class AudioEngine {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 if let log = item.errorLog() {
+                    if let event = log.events.last {
+                        PlaybackDiagnostics.shared.recordMediaFailure(videoID: diagnosticVideoID,
+                            statusCode: event.errorStatusCode)
+                    }
                     for event in log.events {
                         Log.audio.error(
                             "ErrorLog: status=\(event.serverAddress ?? "?", privacy: .public) code=\(event.errorStatusCode) domain=\(event.errorDomain, privacy: .public) comment=\(event.errorComment ?? "none", privacy: .public)"

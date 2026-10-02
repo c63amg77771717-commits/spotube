@@ -4,9 +4,11 @@ import Foundation
 final class PlaybackDiagnostics: @unchecked Sendable {
     enum Phase: String, Codable, Sendable {
         case watchSession, visitor, playerResponse, streamResolved, engineReady, enginePlaying, engineError, authChanged
+        case playbackSelection, playbackMode
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
-    enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, appFallback }
+    enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, musicRefresh, persisted, generated, appFallback }
+    enum QueueSource: String, Codable, Sendable { case userQueue, autoplay }
     enum Reason: String, Codable, Sendable {
         case verificationRequired, signInRequired, regionRestricted, unavailable, sourceNotConfigured, cancelled, network, other
 
@@ -34,11 +36,19 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let hlsAvailable: Bool?
         let formatCount: Int?
         let transportErrorCode: Int?
+        let shuffleEnabled: Bool?
+        let repeatMode: String?
+        let queueSource: QueueSource?
+        let queueCount: Int?
+        let currentIndex: Int?
+        let autoplayCount: Int?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
              hasAuth: Bool? = nil, sessionAgeSeconds: Int? = nil, visitorSource: VisitorSource? = nil,
              hlsAvailable: Bool? = nil, formatCount: Int? = nil, transportErrorCode: Int? = nil,
+             shuffleEnabled: Bool? = nil, repeatMode: String? = nil, queueSource: QueueSource? = nil,
+             queueCount: Int? = nil, currentIndex: Int? = nil, autoplayCount: Int? = nil,
              timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
@@ -56,6 +66,12 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.hlsAvailable = hlsAvailable
             self.formatCount = formatCount
             self.transportErrorCode = transportErrorCode
+            self.shuffleEnabled = shuffleEnabled
+            self.repeatMode = repeatMode.flatMap { ["off", "all", "one"].contains($0) ? $0 : nil }
+            self.queueSource = queueSource
+            self.queueCount = queueCount
+            self.currentIndex = currentIndex
+            self.autoplayCount = autoplayCount
         }
 
         var sanitized: Self {
@@ -63,7 +79,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 playabilityStatus: playabilityStatus, reason: reason, hasAuth: hasAuth,
                 sessionAgeSeconds: sessionAgeSeconds, visitorSource: visitorSource,
                 hlsAvailable: hlsAvailable, formatCount: formatCount,
-                transportErrorCode: transportErrorCode, timestamp: timestamp)
+                transportErrorCode: transportErrorCode, shuffleEnabled: shuffleEnabled,
+                repeatMode: repeatMode, queueSource: queueSource, queueCount: queueCount,
+                currentIndex: currentIndex, autoplayCount: autoplayCount, timestamp: timestamp)
         }
     }
     struct Report: Codable {
@@ -90,6 +108,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
 
     init(fileURL: URL) {
         self.fileURL = fileURL
+        do { try discardExport() }
+        catch { storageError = true }
         if FileManager.default.fileExists(atPath: fileURL.path) {
             do {
                 let decoder = JSONDecoder()
@@ -137,7 +157,15 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             hlsAvailable: streams?["hlsManifestUrl"] is String, formatCount: formats.count + adaptive.count))
     }
 
-    func recordMediaFailure(videoID: String?, statusCode: Int?, errorCode: Int? = nil) { }
+    func recordMediaFailure(videoID: String?, statusCode: Int?, errorCode: Int? = nil) {
+        let httpStatus = statusCode.flatMap { value -> Int? in
+            guard (-599...599).contains(value) else { return nil }
+            let code = abs(value)
+            return (100...599).contains(code) ? code : nil
+        }
+        record(.init(phase: .engineError, videoID: videoID, httpStatus: httpStatus,
+            transportErrorCode: errorCode))
+    }
 
     func reportData() throws -> Data {
         let snapshot = lock.withLock { (entries, storageError) }
@@ -157,6 +185,14 @@ final class PlaybackDiagnostics: @unchecked Sendable {
     func exportReport() throws -> URL {
         try Self.writeProtected(reportData(), to: exportURL)
         return exportURL
+    }
+
+    func discardExport() throws {
+        try lock.withLock {
+            if FileManager.default.fileExists(atPath: exportURL.path) {
+                try FileManager.default.removeItem(at: exportURL)
+            }
+        }
     }
 
     private static func writeProtected(_ data: Data, to destination: URL) throws {

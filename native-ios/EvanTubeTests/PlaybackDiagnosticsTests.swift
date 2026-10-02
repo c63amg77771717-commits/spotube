@@ -31,7 +31,7 @@ final class PlaybackDiagnosticsTests: XCTestCase {
             httpStatus: 200, playabilityStatus: "LOGIN_REQUIRED", reason: .classify(rawError),
             hasAuth: false, visitorSource: .appFallback, hlsAvailable: false, formatCount: 0))
         store.record(.init(phase: .engineError, videoID: "SID=SECRET_COOKIE",
-            playabilityStatus: "SECRET_KEY", reason: .classify("Sign in to play")))
+            playabilityStatus: "SECRET_KEY", reason: .classify("Sign in to play"), repeatMode: "SECRET_KEY"))
         let data = try store.reportData()
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -41,6 +41,7 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         XCTAssertEqual(report.events.last?.reason, .signInRequired)
         XCTAssertNil(report.events.last?.videoID)
         XCTAssertEqual(report.events.last?.playabilityStatus, "OTHER")
+        XCTAssertNil(report.events.last?.repeatMode)
         let json = String(decoding: data, as: UTF8.self)
         XCTAssertFalse(json.contains("SECRET_COOKIE"))
         XCTAssertFalse(json.contains("SECRET_KEY"))
@@ -91,6 +92,22 @@ final class PlaybackDiagnosticsTests: XCTestCase {
             "An interrupted share must not retain an older snapshot indefinitely")
     }
 
+    func testFinishingSharingRemovesOnlyTheTemporarySnapshot() throws {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        store.record(.init(phase: .playbackSelection, videoID: "4DARsEmUxMg",
+            shuffleEnabled: true, repeatMode: "all", queueSource: .autoplay,
+            queueCount: 3, autoplayCount: 2))
+        let snapshot = try store.exportReport()
+        try store.discardExport()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: snapshot.path))
+        XCTAssertEqual(store.events.count, 1)
+        XCTAssertEqual(store.events.first?.shuffleEnabled, true)
+        XCTAssertEqual(store.events.first?.queueSource, .autoplay)
+        XCTAssertEqual(PlaybackDiagnostics(fileURL: file).events.first?.repeatMode, "all")
+    }
+
     func testMediaHttpFailureIsCapturedBeforeRecoveryWithoutRawLogContents() {
         let file = fileURL()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
@@ -99,6 +116,8 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         XCTAssertEqual(store.events.first?.phase, .engineError)
         XCTAssertEqual(store.events.first?.httpStatus, 403)
         XCTAssertEqual(store.events.first?.transportErrorCode, -12660)
+        store.recordMediaFailure(videoID: "4DARsEmUxMg", statusCode: Int.min)
+        XCTAssertNil(store.events.last?.httpStatus)
     }
 
     @MainActor func testStartingAnotherSongDoesNotReuseThePreviousFailedSongID() async throws {
