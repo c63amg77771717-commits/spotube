@@ -231,6 +231,31 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         app.buttons["settings_appearance_dark"].tap()
     }
 
+    @MainActor func testSearchKeyboardHidesAndRestoresNowPlaying() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
+            "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-evantubeSettingsPreview"]
+        app.launchEnvironment["REVIEW_MODE"] = "1"
+        app.launch()
+        let playPause = app.buttons["dock_play_pause"]
+        XCTAssertTrue(playPause.waitForExistence(timeout: 30))
+        app.buttons["tab_search"].tap()
+        let query = app.textFields["search_query"]
+        XCTAssertTrue(query.waitForExistence(timeout: 10))
+        query.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10))
+        let hidden = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == false"), object: playPause)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        save(app, name: "12-搜尋-鍵盤開啟")
+        query.typeText("Arcadia\n")
+        let restored = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hittable == true"), object: playPause)
+        XCTAssertEqual(XCTWaiter.wait(for: [restored], timeout: 10), .completed)
+        save(app, name: "13-搜尋-鍵盤收起")
+    }
+
     @MainActor private func verifyDocumentFooter(
         _ app: XCUIApplication, above dock: XCUIElement, footerIdentifier: String = "legal_footer"
     ) {

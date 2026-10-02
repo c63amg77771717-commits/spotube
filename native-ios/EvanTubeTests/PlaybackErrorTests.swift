@@ -46,6 +46,38 @@ final class PlaybackErrorTests: XCTestCase {
         }
     }
 
+    @MainActor func testGoogleAndLookalikeCookiesCannotCompleteYouTubeLogin() {
+        func cookies(_ domain: String) -> [HTTPCookie] {
+            ["SAPISID", "SID"].map { name in
+                HTTPCookie(properties: [
+                    .name: name, .value: "test-only", .domain: domain, .path: "/",
+                ])!
+            }
+        }
+        for domain in [".google.com", ".youtube.com.example.com", ".notyoutube.com"] {
+            XCTAssertFalse(YouTubeAuthManager.hasActiveAuthCookies(cookies(domain)), domain)
+        }
+        XCTAssertTrue(YouTubeAuthManager.hasActiveAuthCookies(cookies(".youtube.com")))
+    }
+
+    func testPlayerBootstrapReceivesCurrentAuthWithoutDuplicateCookies() async throws {
+        let storage = HTTPCookieStorage.shared
+        let oldCookies = storage.cookies ?? []
+        let stale = HTTPCookie(properties: [
+            .name: "SID", .value: "stale-test-only", .domain: ".youtube.com", .path: "/",
+        ])!
+        storage.setCookie(stale)
+        defer {
+            for cookie in storage.cookies ?? [] { storage.deleteCookie(cookie) }
+            for cookie in oldCookies { storage.setCookie(cookie) }
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PlaybackAuthProtocol.self]
+        let api = InnerTubeAPI(session: URLSession(configuration: configuration))
+        await api.setCookie("SID=current-test-only; SAPISID=sapisid-test-only")
+        _ = try await api.playerWithSession(videoId: "auth-check")
+    }
+
     func testMissingFallbackKeysPreserveTheSourcePlayabilityReason() async throws {
         for reason in ["Sign in to confirm you're not a bot", "This video is not available in your country"] {
             let repository = PlayerRepository(api: PlayabilityFailureAPI(reason: reason))
@@ -59,6 +91,26 @@ final class PlaybackErrorTests: XCTestCase {
             }
         }
     }
+}
+
+private final class PlaybackAuthProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let sidValues = (request.value(forHTTPHeaderField: "Cookie") ?? "")
+            .components(separatedBy: "; ").filter { $0.hasPrefix("SID=") }
+        XCTAssertEqual(sidValues, ["SID=current-test-only"],
+                       "Both watch bootstrap and player must receive the current YouTube session exactly once")
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200,
+                                       httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        let body = request.httpMethod == "POST"
+            ? #"{"playabilityStatus":{"status":"OK"}}"#
+            : #"<html><script>{"visitorData":"test-visitor"}</script></html>"#
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
 
 private struct PlayabilityFailureAPI: PlayerAPIClient {
