@@ -69,6 +69,33 @@ final class PlaybackModeTests: XCTestCase {
         }
     }
 
+    @MainActor func testDeletingTheNextShuffledSongLeavesAValidSelection() {
+        withShuffledEngine { engine in
+            let tracks = [song("queueSong01"), song("queueSong02")]
+            engine.play(song: tracks[0], fromQueue: tracks)
+            engine.removeFromQueue(at: 1)
+            engine.next(userInitiated: false)
+            XCTAssertEqual(engine.currentTrack?.id, tracks[0].id)
+            XCTAssertEqual(engine.currentIndex, 0)
+            engine.removeFromQueue(at: 0)
+            engine.next(userInitiated: false)
+            XCTAssertTrue(engine.queue.isEmpty)
+        }
+    }
+
+    @MainActor func testStaleRecoveryFailureCannotFailAnotherSong() {
+        withShuffledEngine { engine in
+            let previous = song("queueSong01")
+            let selected = song("newSong0001")
+            engine.play(song: previous, fromQueue: [previous])
+            engine.play(song: selected)
+            let errorBefore = engine.lastError
+            engine.updateRetryState(song: previous, streamURL: "", contentLength: nil)
+            XCTAssertEqual(engine.currentTrack?.id, selected.id)
+            XCTAssertEqual(engine.lastError, errorBefore)
+        }
+    }
+
     @MainActor func testModesSurviveRestartWithoutPersistingTheQueueAndBeatAnOlderQueueSnapshot() {
         let defaults = UserDefaults.standard
         let keys = ["playbackShuffleEnabled", "playbackRepeatMode", "persistentQueue"]

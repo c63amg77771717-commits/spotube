@@ -49,7 +49,6 @@ final class AudioEngine {
             lastFailedSongId = nil
             PersonalMusicTaste.shared.begin(currentTrack)
             invalidateCrossfadePreparation(clearReservation: true)
-            recordPlaybackDiagnostic(.playbackSelection)
         }
     }
     private(set) var queue: [Song] = [] {
@@ -139,6 +138,7 @@ final class AudioEngine {
             invalidateCrossfadePreparation(clearReservation: true)
             if shuffleEnabled {
                 generateShuffledOrder()
+                autoplayQueue.shuffle()
             } else {
                 shuffledIndices = []
                 shufflePosition = 0
@@ -801,6 +801,7 @@ final class AudioEngine {
     }
 
     func play(song: Song, fromQueue: [Song] = []) {
+        let continuingCurrentSong = fromQueue.isEmpty && currentTrack?.id == song.id
         PersonalMusicTaste.shared.begin(song)
         // Round 2 — Fix 1 (review.md M1 / review-codex MED #5):
         // Reset `lastError` at entry so consumers (e.g. CarPlay
@@ -819,10 +820,10 @@ final class AudioEngine {
         prefetchManager.cancelPrefetch()
         crossfadeManager.cancelFade()
         cleanupCrossfadePlayer()
-        isPlayingFromAutoplay = false
-        if !fromQueue.isEmpty {
-            queue = fromQueue
-            currentIndex = fromQueue.firstIndex(where: { $0.id == song.id }) ?? 0
+        if !continuingCurrentSong {
+            isPlayingFromAutoplay = false
+            queue = fromQueue.isEmpty ? [song] : fromQueue
+            currentIndex = queue.firstIndex(where: { $0.id == song.id }) ?? 0
             autoplayQueue.removeAll()
             if shuffleEnabled { generateShuffledOrder() }
         }
@@ -941,6 +942,7 @@ final class AudioEngine {
         if let prefetched = prefetchManager.prefetchedPlayerItem,
             prefetchManager.prefetchedSongId == song.id
         {
+            recordPlaybackDiagnostic(.playbackSelection)
             let fileURL = prefetchManager.prefetchedLocalFileURL
             prefetchManager.cancelPrefetch()
             cleanupPlayer()
@@ -1112,12 +1114,13 @@ final class AudioEngine {
     // MARK: - Autoplay Queue Management
 
     func setAutoplayQueue(_ songs: [Song]) {
-        autoplayQueue = songs
+        autoplayQueue = shuffleEnabled ? songs.shuffled() : songs
         savePlaybackState()
     }
 
     func appendToAutoplayQueue(_ songs: [Song]) {
         autoplayQueue.append(contentsOf: songs)
+        if shuffleEnabled { autoplayQueue.shuffle() }
         savePlaybackState()
     }
 
@@ -1161,12 +1164,14 @@ final class AudioEngine {
     }
 
     func removeFromQueue(at index: Int) {
-        guard index < queue.count else { return }
+        guard queue.indices.contains(index) else { return }
         prefetchManager.cancelPrefetch()
         queue.remove(at: index)
         if index < currentIndex {
             currentIndex -= 1
         }
+        currentIndex = min(currentIndex, max(0, queue.count - 1))
+        if shuffleEnabled { regenerateShuffleForQueueChange() }
         savePlaybackState()
     }
 
@@ -1379,6 +1384,12 @@ final class AudioEngine {
 
     // MARK: - Private
 
+    private func updateQueuedStream(songID: String, streamURL: String?, contentLength: Int64?) {
+        guard let index = queue.firstIndex(where: { $0.id == songID }) else { return }
+        queue[index].streamURL = streamURL
+        queue[index].streamContentLength = contentLength
+    }
+
     private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase) {
         PlaybackDiagnostics.shared.record(.init(phase: phase, videoID: currentTrack?.id,
             shuffleEnabled: shuffleEnabled, repeatMode: repeatMode.rawValue,
@@ -1406,10 +1417,7 @@ final class AudioEngine {
             Log.audio.warning("Stream URL likely expired, re-resolving...")
             songToPlay.streamURL = nil
             songToPlay.streamContentLength = nil
-            if currentIndex < queue.count {
-                queue[currentIndex].streamURL = nil
-                queue[currentIndex].streamContentLength = nil
-            }
+            updateQueuedStream(songID: songToPlay.id, streamURL: nil, contentLength: nil)
         }
 
         // S1: Offline-first ordering. Before invoking the network resolver,
@@ -1456,10 +1464,8 @@ final class AudioEngine {
                     songToPlay.streamContentLength = result.contentLength
                     self.streamResolvedAt = Date()
                     self.currentTrack = songToPlay
-                    if self.currentIndex < self.queue.count {
-                        self.queue[self.currentIndex].streamURL = result.url
-                        self.queue[self.currentIndex].streamContentLength = result.contentLength
-                    }
+                    self.updateQueuedStream(songID: songToPlay.id,
+                        streamURL: result.url, contentLength: result.contentLength)
                     self.performLoadAndPlay(song: songToPlay)
                 } catch {
                     guard !Task.isCancelled else { return }
@@ -3379,10 +3385,8 @@ final class AudioEngine {
                 recoveredSong.streamContentLength = result.contentLength
                 self.streamResolvedAt = Date()
                 self.currentTrack = recoveredSong
-                if self.currentIndex < self.queue.count {
-                    self.queue[self.currentIndex].streamURL = result.url
-                    self.queue[self.currentIndex].streamContentLength = result.contentLength
-                }
+                self.updateQueuedStream(songID: song.id,
+                    streamURL: result.url, contentLength: result.contentLength)
 
                 self.isReconnecting = false
                 self.performLoadAndPlay(song: recoveredSong, seekTo: savedPosition)
@@ -3873,6 +3877,7 @@ final class AudioEngine {
                 self.autoplayQueue.removeFirst()
             }
             self.isPlayingFromAutoplay = true
+            self.recordPlaybackDiagnostic(.playbackSelection)
             self.savePlaybackState()
             if self.autoplayQueue.count <= 2 {
                 self.onQueueExhausted?()
@@ -3933,6 +3938,7 @@ final class AudioEngine {
                 nextIndex: capturedIndex,
                 localFileURL: capturedLocalURL
             )
+            self.recordPlaybackDiagnostic(.playbackSelection)
         }
 
         Log.audio.info("Crossfade: incoming player started for \(nextSong.title, privacy: .public)")
@@ -4255,6 +4261,7 @@ extension AudioEngine: PlaybackRecoveryDelegate {
     }
 
     func updateRetryState(song: Song, streamURL: String, contentLength: Int64?) {
+        guard currentTrack?.id == song.id else { return }
         if streamURL.isEmpty {
             // Retry failed or no resolver
             isBuffering = false
@@ -4264,11 +4271,11 @@ extension AudioEngine: PlaybackRecoveryDelegate {
                 : "Retry failed"
         } else {
             streamResolvedAt = Date()
-            currentTrack = song
-            if currentIndex < queue.count {
-                queue[currentIndex].streamURL = streamURL
-                queue[currentIndex].streamContentLength = contentLength
-            }
+            var recoveredSong = song
+            recoveredSong.streamURL = streamURL
+            recoveredSong.streamContentLength = contentLength
+            currentTrack = recoveredSong
+            updateQueuedStream(songID: song.id, streamURL: streamURL, contentLength: contentLength)
         }
     }
 }
