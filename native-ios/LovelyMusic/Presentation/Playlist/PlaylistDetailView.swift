@@ -103,6 +103,7 @@ struct PlaylistDetailView: View {
                                     .frame(width: Theme.SizeTokens.touchTarget, height: Theme.SizeTokens.touchTarget)
                             }
                             .accessibilityLabel("歌單選項")
+                            .accessibilityIdentifier("playlist_detail_options")
 
                             if !playlist.songs.isEmpty {
                                 SelectEditButton(isEditing: editMode == .active) {

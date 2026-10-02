@@ -18,7 +18,7 @@ final class EvanTubePlaybackHistoryUITests: XCTestCase {
         XCTAssertTrue(history.isHittable)
         history.tap()
 
-        let options = app.buttons["歌單選項"]
+        let options = app.buttons["playlist_detail_options"].firstMatch
         XCTAssertTrue(options.waitForExistence(timeout: 15))
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS '播放紀錄'")).firstMatch.exists)
@@ -26,7 +26,15 @@ final class EvanTubePlaybackHistoryUITests: XCTestCase {
         screenshot.name = "播放紀錄歌單"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-        options.tap()
+        let optionsFrame = options.frame
+        XCTAssertFalse(optionsFrame.isEmpty)
+        XCTAssertTrue(app.frame.contains(optionsFrame), "Playlist options must be visible in the app")
+        // SwiftUI's nested toolbar Menu buttons can make AX scroll-to-visible fail.
+        // Tap the visible control, then verify that its menu actually opened.
+        app.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: optionsFrame.midX, dy: optionsFrame.midY)).tap()
+        XCTAssertTrue(app.buttons["從相片選擇封面"].waitForExistence(timeout: 5),
+                      "Playlist options must open before checking read-only actions")
         XCTAssertEqual(app.buttons.matching(NSPredicate(
             format: "label == 'Rename' OR label == '重新命名' OR label == '重命名'"
         )).count, 0)
