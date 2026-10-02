@@ -103,22 +103,39 @@ jobs:
           ) &
           sampler_pid=$!
           trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
-          xcodebuild \
-            -project LovelyMusic.xcodeproj \
-            -scheme LovelyMusicUITests \
-            -configuration Debug \
-            -destination "platform=iOS Simulator,id=$simulator_id" \
-            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests \
-            -resultBundlePath "$RUNNER_TEMP/evantube-previews.xcresult" \
-            -retry-tests-on-failure \
-            -test-iterations 2 \
-            CODE_SIGNING_ALLOWED=YES \
-            CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
-            test
+          ui_status=0
+          # Each case gets a fresh simulator process; app data survives the reboot.
+          for test in \
+            testLibraryGearAndSettingsPreview \
+            testLaunchBrandingPreview \
+            testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow \
+            testLibrarySearchAndSongRowTap \
+            testAppearanceChoicesApplyAndPersist \
+            testSearchKeyboardHidesAndRestoresNowPlaying \
+            testPlaybackDiagnosticsCanBeOpenedAndExported; do
+            xcrun simctl shutdown all
+            xcrun simctl bootstatus "$simulator_id" -b
+            xcodebuild \
+              -project LovelyMusic.xcodeproj \
+              -scheme LovelyMusicUITests \
+              -configuration Debug \
+              -destination "platform=iOS Simulator,id=$simulator_id" \
+              -parallel-testing-enabled NO \
+              -only-testing:"LovelyMusicUITests/EvanTubeSettingsPreviewTests/$test" \
+              -resultBundlePath "$RUNNER_TEMP/evantube-previews-$test.xcresult" \
+              -retry-tests-on-failure \
+              -test-iterations 2 \
+              CODE_SIGNING_ALLOWED=YES \
+              CODE_SIGN_IDENTITY=- \
+              CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+              test || ui_status=1
+          done
+          exit "$ui_status"
       - name: Export settings preview attachments
         if: always() && steps.settings_preview.outcome != 'skipped'
         run: |
+          xcrun xcresulttool merge "$RUNNER_TEMP"/evantube-previews-*.xcresult \
+            --output-path "$RUNNER_TEMP/evantube-previews.xcresult"
           xcrun xcresulttool export attachments \
             --path "$RUNNER_TEMP/evantube-previews.xcresult" \
             --output-path "$RUNNER_TEMP/evantube-previews"
