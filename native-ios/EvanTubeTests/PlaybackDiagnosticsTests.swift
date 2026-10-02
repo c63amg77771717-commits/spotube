@@ -112,13 +112,15 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         let engine = AudioEngine()
         defer { engine.stop() }
         engine.streamURLResolver = { _ in throw InnerTubeError.timeout }
-        engine.play(song: Song(id: "failSong001", title: "First", artistName: "Test"))
+        engine.play(song: Song(id: "failSong001", title: "First", artistName: "Test",
+            artistId: nil, albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil))
         for _ in 0..<100 where engine.lastFailedSongId == nil {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
         XCTAssertEqual(engine.lastFailedSongId, "failSong001")
         engine.streamURLResolver = nil
-        engine.play(song: Song(id: "nextSong001", title: "Second", artistName: "Test"))
+        engine.play(song: Song(id: "nextSong001", title: "Second", artistName: "Test",
+            artistId: nil, albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil))
         XCTAssertNil(engine.lastFailedSongId)
         XCTAssertEqual(PlaybackDiagnostics.shared.events.last(where: { $0.phase == .engineError })?.videoID, "nextSong001")
     }
