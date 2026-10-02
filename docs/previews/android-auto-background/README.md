@@ -18,3 +18,14 @@
 | 我的音樂 | [開啟圖片](my.png) |
 | 設定 | [開啟圖片](settings.png) |
 | 歌單與同步 | [開啟圖片](sync.png) |
+
+![首頁](home.png)
+![搜尋](search.png)
+![喜愛歌曲](favorites.png)
+![媒體庫](library.png)
+![歌單內容](playlist.png)
+![現正播放](playing.png)
+![歌詞](lyrics.png)
+![我的音樂](my.png)
+![設定](settings.png)
+![歌單與同步](sync.png)
