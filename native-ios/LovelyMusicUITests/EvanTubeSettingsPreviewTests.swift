@@ -304,6 +304,13 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(file.waitForExistence(timeout: 10), "Export must open the system share sheet with a diagnostic file")
         XCTAssertFalse(app.alerts["無法匯出播放診斷"].exists)
         save(app, name: "15-匯出播放診斷")
+        let close = app.buttons["Close"]
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        let dismissed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == false"), object: file)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 10), .completed,
+                       "Dismiss the system share sheet before the next test launches the app")
     }
 
     @MainActor private func verifyDocumentFooter(
