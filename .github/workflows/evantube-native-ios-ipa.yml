@@ -89,6 +89,9 @@ jobs:
         id: settings_preview
         working-directory: native-ios
         run: |
+          xcrun simctl shutdown all
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"] == "iPhone 16 Pro" and d.get("isAvailable", False)))')
+          xcrun simctl bootstatus "$simulator_id" -b
           mkdir -p "$RUNNER_TEMP/evantube-ui-diagnostics"
           (
             while sleep 60; do
@@ -104,7 +107,7 @@ jobs:
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicUITests \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
             -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests \
             -resultBundlePath "$RUNNER_TEMP/evantube-previews.xcresult" \
             CODE_SIGNING_ALLOWED=YES \
