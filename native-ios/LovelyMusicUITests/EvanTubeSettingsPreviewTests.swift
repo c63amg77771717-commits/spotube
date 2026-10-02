@@ -133,6 +133,7 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
     }
 
     @MainActor func testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow() {
+        continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW"]
         app.launchEnvironment["REVIEW_MODE"] = "1"
@@ -148,8 +149,18 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         alert.textFields.firstMatch.typeText(title)
         alert.buttons["建立"].tap()
         let row = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", title)).firstMatch
-        for _ in 0..<5 where !row.isHittable { app.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let dock = app.descendants(matching: .any)["floating_dock"].firstMatch
+        let navigation = app.navigationBars.firstMatch
+        for _ in 0..<5 {
+            if row.frame.minY > navigation.frame.maxY + 8 &&
+                row.frame.maxY < dock.frame.minY - 8 { break }
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.62))
+                .press(forDuration: 0.05, thenDragTo:
+                    app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.30)))
+        }
+        XCTAssertGreaterThan(row.frame.minY, navigation.frame.maxY + 8)
+        XCTAssertLessThan(row.frame.maxY, dock.frame.minY - 8)
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: 0.5)).tap()
         let opened = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "exists == false"), object: app.buttons["library_settings"]
@@ -288,7 +299,8 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(app.buttons["playback_diagnostic_clear"].exists)
         save(app, name: "14-播放診斷")
         export.tap()
-        let file = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "EvanTube-播放診斷")).firstMatch
+        let file = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "EvanTube-播放診斷")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 10), "Export must open the system share sheet with a diagnostic file")
         XCTAssertFalse(app.alerts["無法匯出播放診斷"].exists)
         save(app, name: "15-匯出播放診斷")
