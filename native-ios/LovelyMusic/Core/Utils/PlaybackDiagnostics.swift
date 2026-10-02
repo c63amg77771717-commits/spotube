@@ -137,6 +137,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             hlsAvailable: streams?["hlsManifestUrl"] is String, formatCount: formats.count + adaptive.count))
     }
 
+    func recordMediaFailure(videoID: String?, statusCode: Int?, errorCode: Int? = nil) { }
+
     func reportData() throws -> Data {
         let snapshot = lock.withLock { (entries, storageError) }
         let report = Report(schemaVersion: 1,

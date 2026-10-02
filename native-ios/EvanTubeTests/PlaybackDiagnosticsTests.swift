@@ -78,6 +78,65 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         XCTAssertEqual(try exported.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
     }
 
+    func testRelaunchRemovesAnInterruptedSharingSnapshot() throws {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        store.record(.init(phase: .engineReady, videoID: "4DARsEmUxMg"))
+        let snapshot = try store.exportReport()
+        store.record(.init(phase: .enginePlaying, videoID: "4DARsEmUxMg"))
+        let restored = PlaybackDiagnostics(fileURL: file)
+        XCTAssertEqual(restored.events.count, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: snapshot.path),
+            "An interrupted share must not retain an older snapshot indefinitely")
+    }
+
+    func testMediaHttpFailureIsCapturedBeforeRecoveryWithoutRawLogContents() {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        store.recordMediaFailure(videoID: "4DARsEmUxMg", statusCode: -403, errorCode: -12660)
+        XCTAssertEqual(store.events.first?.phase, .engineError)
+        XCTAssertEqual(store.events.first?.httpStatus, 403)
+        XCTAssertEqual(store.events.first?.transportErrorCode, -12660)
+    }
+
+    @MainActor func testStartingAnotherSongDoesNotReuseThePreviousFailedSongID() async throws {
+        let defaults = UserDefaults.standard
+        let original = defaults.object(forKey: "persistentQueue")
+        defaults.set(false, forKey: "persistentQueue")
+        defer {
+            if let original { defaults.set(original, forKey: "persistentQueue") }
+            else { defaults.removeObject(forKey: "persistentQueue") }
+        }
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        engine.streamURLResolver = { _ in throw InnerTubeError.timeout }
+        engine.play(song: Song(id: "failSong001", title: "First", artistName: "Test"))
+        for _ in 0..<100 where engine.lastFailedSongId == nil {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(engine.lastFailedSongId, "failSong001")
+        engine.streamURLResolver = nil
+        engine.play(song: Song(id: "nextSong001", title: "Second", artistName: "Test"))
+        XCTAssertNil(engine.lastFailedSongId)
+        XCTAssertEqual(PlaybackDiagnostics.shared.events.last(where: { $0.phase == .engineError })?.videoID, "nextSong001")
+    }
+
+    func testFallbackRequestReportsItsActualWatchVisitorSource() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DiagnosticVisitorProtocol.self]
+        let api = InnerTubeAPI(session: URLSession(configuration: configuration))
+        _ = try await api.playerWithSession(videoId: "visitorTest")
+        let configured = YouTubeClient(clientName: "IOS", clientId: "5", clientVersion: "test",
+            apiKey: "test-only", userAgent: "test-only")
+        _ = try await api.player(client: configured, videoId: "visitorTest")
+        let result = PlaybackDiagnostics.shared.events.last {
+            $0.phase == .playerResponse && $0.videoID == "visitorTest" && $0.client == .ios
+        }
+        XCTAssertEqual(result?.visitorSource, .watchPage)
+    }
+
     func testRelaunchSanitizesUnexpectedPersistedStringsBeforeExport() throws {
         let file = fileURL()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
@@ -93,4 +152,18 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         XCTAssertEqual(restored.events.first?.playabilityStatus, "OTHER")
         XCTAssertFalse(String(decoding: try restored.reportData(), as: UTF8.self).contains("SECRET_"))
     }
+}
+
+private final class DiagnosticVisitorProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        let body = request.httpMethod == "POST" ? #"{"playabilityStatus":{"status":"OK"}}"#
+            : #"<html><script>{"visitorData":"CgtWATCH_PAGE_01234567890123456789"}</script></html>"#
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() { }
 }
