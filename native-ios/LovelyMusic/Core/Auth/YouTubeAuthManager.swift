@@ -1,6 +1,7 @@
 import Foundation
 import Security
 import CryptoKit
+import WebKit
 import os
 
 @MainActor @Observable
@@ -19,22 +20,31 @@ final class YouTubeAuthManager {
 
     // MARK: - Cookie Management
 
+    nonisolated static let authCookieNames: Set<String> = [
+        "SAPISID", "SID", "HSID", "SSID", "APISID", "LOGIN_INFO",
+        "__Secure-1PSID", "__Secure-3PSID", "__Secure-1PAPISID", "__Secure-3PAPISID",
+        "__Secure-1PSIDTS", "__Secure-3PSIDTS", "__Secure-1PSIDCC", "__Secure-3PSIDCC",
+        "VISITOR_INFO1_LIVE",
+    ]
+
+    nonisolated static func isYouTubeDomain(_ domain: String) -> Bool {
+        let host = domain.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return host == "youtube.com" || host.hasSuffix(".youtube.com")
+    }
+
     static func hasActiveAuthCookies(_ cookies: [HTTPCookie], at now: Date = Date()) -> Bool {
         let names = Set(cookies.filter {
-            !$0.value.isEmpty && ($0.expiresDate.map { $0 > now } ?? true)
+            isYouTubeDomain($0.domain) && !$0.value.isEmpty
+                && ($0.expiresDate.map { $0 > now } ?? true)
         }.map(\.name))
         return names.isSuperset(of: ["SAPISID", "SID"])
     }
 
     @discardableResult
     func storeAuthCookies(_ cookies: [HTTPCookie]) -> Bool {
-        let authCookieNames: Set<String> = [
-            "SAPISID", "SID", "HSID", "SSID", "APISID",
-            "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID",
-            "VISITOR_INFO1_LIVE"
-        ]
         let authCookies = cookies.filter {
-            authCookieNames.contains($0.name) && ($0.expiresDate.map { $0 > Date() } ?? true)
+            Self.isYouTubeDomain($0.domain) && Self.authCookieNames.contains($0.name)
+                && !$0.value.isEmpty && ($0.expiresDate.map { $0 > Date() } ?? true)
         }
         guard Self.hasActiveAuthCookies(authCookies) else { return false }
 
@@ -73,13 +83,21 @@ final class YouTubeAuthManager {
             return []
         }
         return properties.compactMap { HTTPCookie(properties: $0) }
-            .filter { $0.expiresDate.map { $0 > Date() } ?? true }
+            .filter {
+                Self.isYouTubeDomain($0.domain) && Self.authCookieNames.contains($0.name)
+                    && !$0.value.isEmpty && ($0.expiresDate.map { $0 > Date() } ?? true)
+            }
     }
 
     func cookieHeaderString() -> String? {
         let cookies = getAuthCookies()
         guard Self.hasActiveAuthCookies(cookies) else { return nil }
-        return cookies.map { "\($0.name)=\($0.value)" }.joined(separator: "; ")
+        var values: [String: String] = [:]
+        // Prefer the root-domain session when a subdomain also stored the same name.
+        for cookie in cookies.sorted(by: { $0.domain.count > $1.domain.count }) {
+            values[cookie.name] = cookie.value
+        }
+        return values.keys.sorted().map { "\($0)=\(values[$0]!)" }.joined(separator: "; ")
     }
 
     func authorizationHeader() -> String? {
@@ -102,6 +120,13 @@ final class YouTubeAuthManager {
         isLoggedIn = false
         accountName = nil
         accountPhotoURL = nil
+        NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        let store = WKWebsiteDataStore.default().httpCookieStore
+        store.getAllCookies { cookies in
+            for cookie in cookies where Self.isYouTubeDomain(cookie.domain) {
+                store.delete(cookie)
+            }
+        }
     }
 
     // MARK: - Keychain Helpers

@@ -8,7 +8,8 @@ final class PlaybackErrorTests: XCTestCase {
         }
         XCTAssertEqual(PlaybackErrorCategory.classify("Video unavailable: This video is not available in your country"), .regionBlocked)
         XCTAssertEqual(PlaybackErrorCategory.classify("Video unavailable: This video has been removed"), .songRemoved)
-        XCTAssertEqual(PlaybackErrorCategory.classify("Sign in to confirm you're not a bot"), .authRequired)
+        XCTAssertEqual(PlaybackErrorCategory.classify("Sign in to confirm you're not a bot"), .verificationRequired)
+        XCTAssertEqual(PlaybackErrorCategory.classify("影片無法播放：登入帳戶以確認你不是機器人"), .verificationRequired)
         XCTAssertEqual(PlaybackErrorCategory.classify("請登入 YouTube"), .authRequired)
         XCTAssertEqual(PlaybackErrorCategory.classify("無法在你的地區播放"), .regionBlocked)
         XCTAssertEqual(PlaybackErrorCategory.classify("這首歌已從音源移除"), .songRemoved)

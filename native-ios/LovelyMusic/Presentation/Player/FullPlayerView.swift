@@ -12,6 +12,7 @@ struct FullPlayerView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var showAddToPlaylist = false
     @State private var showYouTubeLogin = false
+    @State private var showYouTubeWebPlayback = false
     @State private var showYouTubeLoginAlert = false
     @State private var isVideoFullScreen = false
     /// Snapshot of currentTime at last interaction — used in share menu
@@ -483,6 +484,21 @@ struct FullPlayerView: View {
                             }
                             .buttonStyle(.bouncy)
                         }
+                        if playerVM.streamErrorCategory == .authRequired
+                            || playerVM.streamErrorCategory == .verificationRequired {
+                            Button {
+                                container.audioEngine.stop()
+                                showYouTubeWebPlayback = true
+                            } label: {
+                                Label("YouTube 網頁播放", systemImage: "play.rectangle")
+                                    .font(Theme.Typography.subheadline.weight(.semibold))
+                                    .foregroundStyle(Theme.Colors.brandGradient)
+                                    .padding(.horizontal, Theme.Spacing.lg)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("youtube_web_playback")
+                        }
                     }
                     .padding(Theme.Spacing.xl)
                     .background(
@@ -538,8 +554,26 @@ struct FullPlayerView: View {
         }
         .sheet(isPresented: $showYouTubeLogin) {
             YouTubeLoginView(authManager: container.authManager) {
-                NotificationCenter.default.post(name: .settingsChanged, object: nil)
-                playerVM.retryCurrentSong()
+                playerVM.retryCurrentSong(resetRetryCount: true)
+            }
+        }
+        .sheet(isPresented: $showYouTubeWebPlayback) {
+            if let song = playerVM.currentSong {
+                NavigationStack {
+                    VStack(spacing: 0) {
+                        Text("請在 YouTube 頁面按播放；網頁模式需保持此頁開啟。")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                            .padding()
+                        YouTubePlaybackWebView(videoID: song.id, authManager: container.authManager)
+                    }
+                    .background(Theme.Colors.backgroundPrimary)
+                    .navigationTitle("YouTube 網頁播放")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { CustomCloseButton() }
+                    }
+                }
             }
         }
         .onChange(of: playerVM.showYouTubeLoginPrompt) { _, shouldPrompt in

@@ -91,9 +91,9 @@ final class DIContainer {
         let savedRegion = UserDefaults.standard.string(forKey: "region") ?? "TW"
         let savedLanguage = UserDefaults.standard.string(forKey: "language") ?? "zh-TW"
         let initialLocale = YouTubeLocale(gl: savedRegion, hl: savedLanguage)
-        self.innerTubeAPI = InnerTubeAPI(locale: initialLocale)
-        self.audioEngine = AudioEngine()
         self.authManager = YouTubeAuthManager()
+        self.innerTubeAPI = InnerTubeAPI(locale: initialLocale, cookie: authManager.cookieHeaderString())
+        self.audioEngine = AudioEngine()
         self.telemetryManager = TelemetryManager.shared
         // Override review mode from environment (used by XCUITest snapshots).
         let reviewModeOverride = ProcessInfo.processInfo.environment["REVIEW_MODE"].map { $0 != "0" }
@@ -347,14 +347,6 @@ final class DIContainer {
                 }
             }
             await networkMonitor.start()
-        }
-
-        // Locale is already set synchronously during InnerTubeAPI init above.
-        // Only need to apply auth cookies here.
-        if !isReviewMode {
-            if authManager.isLoggedIn, let cookieStr = authManager.cookieHeaderString() {
-                Task { await innerTubeAPI.setCookie(cookieStr) }
-            }
         }
 
         // Observe settings changes

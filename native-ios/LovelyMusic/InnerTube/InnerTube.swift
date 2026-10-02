@@ -68,16 +68,25 @@ actor InnerTubeAPI {
     }
 
     func setCookie(_ cookieString: String?) {
+        guard cookie != cookieString else { return }
         self.cookie = cookieString
+        resetSession()
+        for stored in HTTPCookieStorage.shared.cookies ?? []
+        where YouTubeAuthManager.isYouTubeDomain(stored.domain)
+            && YouTubeAuthManager.authCookieNames.contains(stored.name) {
+            HTTPCookieStorage.shared.deleteCookie(stored)
+        }
     }
 
-    init(locale: YouTubeLocale = .default, session: URLSession? = nil, userDefaults: UserDefaults = .standard) {
+    init(locale: YouTubeLocale = .default, session: URLSession? = nil,
+         userDefaults: UserDefaults = .standard, cookie: String? = nil) {
         guard let url = URL(string: "https://music.youtube.com/youtubei/v1/") else {
             fatalError("Invalid hardcoded base URL")
         }
         self.baseURL = url
         self.locale = locale
         self.userDefaults = userDefaults
+        self.cookie = cookie
 
         // Set PREF cookie immediately so the very first request uses correct region.
         // YouTube prioritizes: PREF cookie > body gl/hl > Accept-Language > IP.
@@ -713,7 +722,7 @@ actor InnerTubeAPI {
         }
     }
 
-    // MARK: - ANDROID_VR Player with Session Cookies
+    // MARK: - IOS Player with Session Cookies
 
     /// Resets the session so the next playerWithSession call re-fetches cookies.
     func resetSession() {
@@ -748,8 +757,6 @@ actor InnerTubeAPI {
         }
         watchComponents.queryItems = [
             URLQueryItem(name: "v", value: videoId),
-            URLQueryItem(name: "bpctr", value: "9999999999"),
-            URLQueryItem(name: "has_verified", value: "1"),
         ]
         guard let watchURL = watchComponents.url else {
             throw InnerTubeError.invalidURL
@@ -765,6 +772,7 @@ actor InnerTubeAPI {
             forHTTPHeaderField: "Accept"
         )
         watchRequest.setValue("\(locale.hl),en-US;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
+        watchRequest.setValue(cookieHeaderString(), forHTTPHeaderField: "Cookie")
 
         let (data, response) = try await session.data(for: watchRequest)
 
@@ -807,31 +815,23 @@ actor InnerTubeAPI {
     /// Builds a Cookie header string merging session cookies + auth cookies (SAPISID, SID…).
     private func cookieHeaderString() -> String {
         guard let youtubeURL = URL(string: "https://www.youtube.com") else { return "" }
-        var parts: [String] = []
-
-        // Session cookies from watch page (YSC, VISITOR_INFO1_LIVE, PREF, SOCS)
-        if let storedCookies = HTTPCookieStorage.shared.cookies(for: youtubeURL),
-            !storedCookies.isEmpty
-        {
-            parts.append(contentsOf: storedCookies.map { "\($0.name)=\($0.value)" })
-        } else {
-            parts.append("PREF=hl=\(locale.hl)&gl=\(locale.gl)&tz=Asia/Ho_Chi_Minh")
-            parts.append("SOCS=CAI")
-            for cookie in sessionCookies {
-                parts.append("\(cookie.name)=\(cookie.value)")
+        var values = ["PREF": "hl=\(locale.hl)&gl=\(locale.gl)&tz=Asia/Ho_Chi_Minh", "SOCS": "CAI"]
+        for stored in (HTTPCookieStorage.shared.cookies(for: youtubeURL) ?? sessionCookies)
+        where stored.name == "VISITOR_INFO1_LIVE"
+            || !YouTubeAuthManager.authCookieNames.contains(stored.name) {
+            values[stored.name] = stored.value
+        }
+        // The validated Keychain session overrides stale cookies by name.
+        if let authCookieStr = self.cookie, !authCookieStr.isEmpty {
+            for part in authCookieStr.split(separator: ";") {
+                let pair = part.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
+                if pair.count == 2 { values[String(pair[0])] = String(pair[1]) }
             }
         }
-
-        // Auth cookies (SAPISID, SID, __Secure-1PSID…) set via setCookie() after login.
-        // These live in self.cookie, NOT in HTTPCookieStorage, so they must be merged here.
-        if let authCookieStr = self.cookie, !authCookieStr.isEmpty {
-            parts.append(authCookieStr)
-        }
-
-        return parts.joined(separator: "; ")
+        return values.keys.sorted().map { "\($0)=\(values[$0]!)" }.joined(separator: "; ")
     }
 
-    /// Fetches player data using IOS client with session cookies, which bypasses YouTube's block.
+    /// Fetches player data with the current session; source restrictions remain authoritative.
     func playerWithSession(videoId: String, playlistId: String? = nil) async throws -> Data {
         // Auto-refresh session if expired (> 4 hours) or cookies missing
         let sessionAge = sessionInitTime.map { Date().timeIntervalSince($0) } ?? .infinity

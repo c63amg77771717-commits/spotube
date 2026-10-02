@@ -11,6 +11,7 @@ enum PlaybackErrorCategory: Equatable {
     case songRemoved
     case serverError
     case authRequired
+    case verificationRequired
     case sourceNotConfigured
     case unknown
 
@@ -19,7 +20,10 @@ enum PlaybackErrorCategory: Equatable {
         if lower.contains("online source is not configured") || lower.contains("尚未設定線上音源") {
             return .sourceNotConfigured
         }
-        if ["sign in", "login", "authentication required", "unauthorized", "bot",
+        if ["not a bot", "不是機器人", "不是机器人"].contains(where: lower.contains) {
+            return .verificationRequired
+        }
+        if ["sign in", "login", "authentication required", "unauthorized",
             "confirm your age", "private", "登入", "私人影片"]
             .contains(where: lower.contains) {
             return .authRequired
@@ -51,6 +55,7 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return "trash.circle"
         case .serverError: return "exclamationmark.icloud"
         case .authRequired: return "person.crop.circle.badge.exclamationmark"
+        case .verificationRequired: return "checkmark.shield"
         case .sourceNotConfigured: return "gearshape"
         case .unknown: return "exclamationmark.triangle"
         }
@@ -63,6 +68,7 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return LocalizationManager.text("Song No Longer Available")
         case .serverError: return LocalizationManager.text("Server Error")
         case .authRequired: return LocalizationManager.text("Sign In Required")
+        case .verificationRequired: return "YouTube 播放驗證"
         case .sourceNotConfigured: return LocalizationManager.text("Online source is not configured")
         case .unknown: return LocalizationManager.text("Playback Error")
         }
@@ -75,6 +81,8 @@ enum PlaybackErrorCategory: Equatable {
         case .songRemoved: return LocalizationManager.text("This song has been removed from the catalog")
         case .serverError: return LocalizationManager.text("Please try again later")
         case .authRequired: return LocalizationManager.text("Sign in to YouTube to access this content")
+        case .verificationRequired:
+            return "YouTube 要求驗證目前的播放連線。可改用 YouTube 網頁播放，或稍後重試。"
         case .sourceNotConfigured: return LocalizationManager.text("This test build needs source configuration for online playback.")
         case .unknown: return LocalizationManager.text("Something went wrong")
         }
@@ -584,7 +592,8 @@ final class PlayerViewModel {
 
     // MARK: - Error Handling
 
-    func retryCurrentSong() {
+    func retryCurrentSong(resetRetryCount: Bool = false) {
+        if resetRetryCount { retryCount = 0 }
         guard retryCount < maxRetries, let song = currentSong else { return }
         retryCount += 1
         streamError = nil
@@ -628,7 +637,7 @@ final class PlayerViewModel {
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
 
-            if streamErrorCategory == .sourceNotConfigured {
+            if streamErrorCategory == .sourceNotConfigured || streamErrorCategory == .verificationRequired {
                 autoSkipTask?.cancel()
                 return
             }
@@ -836,6 +845,8 @@ final class PlayerViewModel {
         switch PlaybackErrorCategory.classify(error) {
         case .authRequired:
             return LocalizationManager.text("Sign in to YouTube is required to play this track.")
+        case .verificationRequired:
+            return PlaybackErrorCategory.verificationRequired.action
         case .noInternet:
             return LocalizationManager.text("Network error. Check your connection and try again.")
         case .regionBlocked:

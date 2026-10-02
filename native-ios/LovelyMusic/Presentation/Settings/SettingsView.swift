@@ -153,9 +153,7 @@ struct SettingsView: View {
             GoogleDriveSyncView()
         }
         .sheet(isPresented: $viewModel.showingLogin) {
-            YouTubeLoginView(authManager: viewModel.authManager) {
-                NotificationCenter.default.post(name: .settingsChanged, object: nil)
-            }
+            YouTubeLoginView(authManager: viewModel.authManager) {}
         }
         .onChange(of: viewModel.sleepTimer) { _, newValue in
             sleepTimerManager.start(option: newValue)

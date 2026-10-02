@@ -15,16 +15,20 @@ struct ContentView: View {
 
     // Layout constants — extracted from inline magic numbers
     @State private var dockHeight: CGFloat = 160
+    @State private var isKeyboardVisible = false
     private let dockHideOffset: CGFloat = 200
 
     /// Dock is hidden when: edit mode forces it OR user scrolled down
     private var dockHidden: Bool {
         playerVM.isDockHidden || scrollTracker.isScrollingDown
+            || (selectedTab == .search && isKeyboardVisible)
     }
 
     // Reserve the measured dock height even while it is hidden by scrolling.
     // Revealing it at the end of a page must not cover the last row.
-    private var bottomInsetValue: CGFloat { dockHeight }
+    private var bottomInsetValue: CGFloat {
+        selectedTab == .search && isKeyboardVisible ? 0 : dockHeight
+    }
 
     /// Shows soft update only if the user hasn't dismissed this particular version.
     private var showSoftUpdateBinding: Binding<Bool> {
@@ -115,6 +119,7 @@ struct ContentView: View {
             .offset(y: dockHidden ? dockHideOffset : 0)
             .opacity(dockHidden ? 0 : 1)
             .allowsHitTesting(!dockHidden)
+            .accessibilityHidden(dockHidden)
             .animation(Theme.AnimationPresets.smooth, value: dockHidden)
         }
         .fullScreenCover(
@@ -145,6 +150,12 @@ struct ContentView: View {
             )
         }
         .environment(\.isPureBlack, themeManager.isPureBlack)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            isKeyboardVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in
+            isKeyboardVisible = false
+        }
         .preferredColorScheme(themeManager.preferredColorScheme)
         // C3 — CMS fetch and ad preload are owned by `LovelyMusicApp` so they
         // run regardless of onboarding state and exactly once per launch. The

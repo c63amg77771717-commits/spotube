@@ -3,14 +3,18 @@ import WebKit
 
 struct YouTubeLoginView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(DIContainer.self) private var container
     let authManager: YouTubeAuthManager
     let onLoginComplete: () -> Void
 
     var body: some View {
         NavigationStack {
             YouTubeLoginWebView(authManager: authManager) {
-                onLoginComplete()
-                dismiss()
+                Task {
+                    await container.innerTubeAPI.setCookie(authManager.cookieHeaderString())
+                    onLoginComplete()
+                    dismiss()
+                }
             }
             .navigationTitle("Sign in")
             .navigationBarTitleDisplayMode(.inline)
@@ -29,7 +33,7 @@ struct YouTubeLoginWebView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
-        config.websiteDataStore = .nonPersistent()
+        config.websiteDataStore = .default()
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = context.coordinator
 
@@ -52,6 +56,7 @@ struct YouTubeLoginWebView: UIViewRepresentable {
         let onComplete: () -> Void
         // Must have navigated through Google accounts page before completing login
         private var hasSeenGoogleAccountsPage = false
+        private var didComplete = false
 
         init(authManager: YouTubeAuthManager, onComplete: @escaping () -> Void) {
             self.authManager = authManager
@@ -59,23 +64,23 @@ struct YouTubeLoginWebView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            guard let url = webView.url?.absoluteString else { return }
+            guard !didComplete, let host = webView.url?.host?.lowercased() else { return }
 
             // Track when we've visited Google accounts (so we know auth started)
-            if url.contains("accounts.google.com") {
+            if host == "accounts.google.com" {
                 hasSeenGoogleAccountsPage = true
                 return
             }
 
             // Only complete if user went through Google accounts AND landed on YouTube
             guard hasSeenGoogleAccountsPage else { return }
-            guard url.contains("music.youtube.com") || url.contains("youtube.com/") else { return }
+            guard YouTubeAuthManager.isYouTubeDomain(host) else { return }
 
             webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
                 guard let self else { return }
 
                 let ytCookies = cookies.filter {
-                    $0.domain.contains("youtube.com") || $0.domain.contains("google.com")
+                    YouTubeAuthManager.isYouTubeDomain($0.domain)
                 }
                 guard YouTubeAuthManager.hasActiveAuthCookies(ytCookies) else {
                     // Key auth cookies not yet set — wait for final music.youtube.com navigation
@@ -83,6 +88,7 @@ struct YouTubeLoginWebView: UIViewRepresentable {
                 }
 
                 guard self.authManager.storeAuthCookies(ytCookies) else { return }
+                self.didComplete = true
                 DispatchQueue.main.async { self.onComplete() }
             }
         }
