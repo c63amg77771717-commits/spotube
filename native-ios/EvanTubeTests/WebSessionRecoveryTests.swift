@@ -87,7 +87,7 @@ final class WebSessionRecoveryTests: XCTestCase {
         let requested = expectation(description: "Manual retry requests a fresh stream")
         engine.streamURLResolver = { _ in
             requested.fulfill()
-            throw InnerTubeError.videoUnavailable("Sign in to confirm you're not a bot")
+            throw InnerTubeError.videoUnavailable(reason: "Sign in to confirm you're not a bot")
         }
         model.retryCurrentSong()
         await fulfillment(of: [requested], timeout: 2)
@@ -117,7 +117,7 @@ final class WebSessionRecoveryTests: XCTestCase {
 
 private struct WebRecoveryRepository: PlayerRepositoryProtocol, LyricsRepositoryProtocol {
     func resolveStreamURL(videoId: String) async throws -> (url: String, contentLength: Int64?) {
-        throw InnerTubeError.videoUnavailable("Sign in to confirm you're not a bot")
+        throw InnerTubeError.videoUnavailable(reason: "Sign in to confirm you're not a bot")
     }
     func resolveVideoStreamURL(videoId: String) async throws -> (url: String, contentLength: Int64?)? { nil }
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? { nil }
