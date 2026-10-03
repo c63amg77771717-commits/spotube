@@ -1,0 +1,52 @@
+name: EvanTube iOS playback tests (no packaging)
+
+on:
+  push:
+    branches: [codex/ios-playback-session-tests-20261003]
+    paths:
+      - native-ios/**
+      - .github/workflows/evantube-native-ios-tests.yml
+
+concurrency:
+  group: evantube-native-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: macos-14
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate test project without online credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          xcodegen generate
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'evantube-simulator.entitlements'
+          path.write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True,
+          }))
+          PY
+      - name: Test native playback and browser session handoff
+        working-directory: native-ios
+        run: |
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme EvanTubeTests \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -parallel-testing-enabled NO \
+            -only-testing:EvanTubeTests \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test

@@ -197,6 +197,8 @@ targets:
     sources:
       - path: EvanTubeTests
       - path: LovelyMusicTests/Mocks/MockInnerTubeRepository.swift
+      - path: LovelyMusicTests/Mocks/MockPlaylistRepository.swift
+      - path: LovelyMusicTests/Mocks/MockFavoritesRepository.swift
       - path: ../test/fixtures/evantube_drive_v1.json
         buildPhase: resources
     dependencies:
