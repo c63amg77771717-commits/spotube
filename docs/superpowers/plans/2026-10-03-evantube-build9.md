@@ -24,3 +24,11 @@ Use the existing car project logo and night driving artwork. Show home, search, 
 - `.github/workflows/evantube-native-ios-ipa.yml`: native unit tests, seven existing isolated simulator UI cases and a new playback-history UI case
 - Existing `work/verify-build7-ipa.py` with build number 9
 - Android: bundled Playwright with installed Edge, layout overflow checks and visual inspection of rendered PNGs
+
+## Post-delivery playback incident
+
+The user's 2026-10-03 build 9 device trace confirms playback verification rejection after a successful track was paused. A fresh watch-session bootstrap with authentication material is also rejected; two configured fallback clients are unavailable because playback-source configuration is absent. See [the evidence and pending verification](../../diagnostics/2026-10-03-build9-playback-verification.md). Treat this as unresolved for the next iOS build; do not mark it fixed without affected-device recovery evidence.
+
+Follow-up: the user confirms the app's YouTube watch-page playback works. Native tests reproduced and repaired browser-cookie handoff, retry progress loss, stale delayed retries, and premature raw fMP4 deferred-seek consumption. Final source review passed; all 115 simulator tests passed in run `37095517704`, with no uploaded artifacts. These app defects are not a confirmed explanation for the remote verification trigger; affected-phone validation remains pending.
+
+Current user direction: fix and verify source only; do not produce IPA/APK files. Use the dedicated `codex/ios-playback-session-tests-20261003` branch and `.github/workflows/evantube-native-ios-tests.yml`; do not trigger the packaging workflow.
