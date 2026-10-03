@@ -582,14 +582,23 @@ final class PlayerViewModel {
 
     // MARK: - Error Handling
 
+    func prepareForWebPlayback() {
+        autoSkipTask?.cancel()
+        retryCount = 0
+        audioEngine.pause()
+    }
+
     func retryCurrentSong(resetRetryCount: Bool = false) {
         if resetRetryCount { retryCount = 0 }
-        guard retryCount < maxRetries, let song = currentSong else { return }
+        guard retryCount < maxRetries, var song = currentSong else { return }
+        let position = currentTime
+        song.streamURL = nil
+        song.streamContentLength = nil
         retryCount += 1
         streamError = nil
         streamErrorCategory = nil
         bufferingTooLong = false
-        audioEngine.play(song: song)
+        audioEngine.play(song: song, seekTo: position)
     }
 
     func dismissError() {

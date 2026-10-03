@@ -489,7 +489,7 @@ struct FullPlayerView: View {
                         if playerVM.streamErrorCategory == .authRequired
                             || playerVM.streamErrorCategory == .verificationRequired {
                             Button {
-                                container.audioEngine.stop()
+                                playerVM.prepareForWebPlayback()
                                 showYouTubeWebPlayback = true
                             } label: {
                                 Label("YouTube 網頁播放", systemImage: "play.rectangle")

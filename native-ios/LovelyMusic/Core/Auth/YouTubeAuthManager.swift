@@ -9,6 +9,7 @@ final class YouTubeAuthManager {
     private static let logger = Logger(subsystem: "com.lovelymusic.app", category: "YouTubeAuth")
 
     private(set) var isLoggedIn: Bool = false
+    private(set) var sessionRevision: UInt = 0
     private(set) var accountName: String?
     private(set) var accountPhotoURL: String?
 
@@ -66,6 +67,7 @@ final class YouTubeAuthManager {
             accountName = "YouTube User"
         }
 
+        sessionRevision &+= 1
         isLoggedIn = true
         // Notify DIContainer to update InnerTubeAPI with the new auth cookies.
         // DIContainer observes .settingsChanged and calls innerTubeAPI.setCookie().
@@ -115,6 +117,7 @@ final class YouTubeAuthManager {
     }
 
     func logout() {
+        sessionRevision &+= 1
         deleteFromKeychain(key: "cookies")
         deleteFromKeychain(key: "accountName")
         isLoggedIn = false

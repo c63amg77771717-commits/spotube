@@ -78,12 +78,18 @@ final class WebSessionRecoveryTests: XCTestCase {
             manageFavoritesUseCase: ManageFavoritesUseCase(repository: MockFavoritesRepository()),
             premiumManager: PremiumManager(),
             getRelatedSongsUseCase: GetRelatedSongsUseCase(repository: MockInnerTubeRepository()))
-        let selected = Song(id: "recovery001", title: "Fixture", artistName: "Fixture", artistId: nil,
+        var selected = Song(id: "recovery001", title: "Fixture", artistName: "Fixture", artistId: nil,
                             albumName: nil, albumId: nil, duration: 360, thumbnailURL: nil)
+        selected.streamURL = "https://example.test/stale-stream?expire=1"
+        selected.streamContentLength = 1234
         let next = Song(id: "recovery002", title: "Next fixture", artistName: "Fixture", artistId: nil,
                         albumName: nil, albumId: nil, duration: 360, thumbnailURL: nil)
         engine.restorePlaybackState(.init(queue: [selected, next], autoplayQueue: [], currentIndex: 0,
             currentTime: 269, wasPlaying: false, shuffleEnabled: true, repeatMode: "off", savedAt: Date()))
+        model.prepareForWebPlayback()
+        XCTAssertEqual(engine.currentTime, 269, accuracy: 0.001)
+        XCTAssertFalse(engine.isPlaying)
+        XCTAssertFalse(engine.isBuffering)
         let requested = expectation(description: "Manual retry requests a fresh stream")
         engine.streamURLResolver = { _ in
             requested.fulfill()
@@ -94,6 +100,30 @@ final class WebSessionRecoveryTests: XCTestCase {
         XCTAssertEqual(engine.currentTime, 269, accuracy: 0.001, "Retry must not reset the saved progress")
         XCTAssertEqual(engine.queue.map(\.id), [selected.id, next.id])
         XCTAssertTrue(engine.shuffleEnabled)
+    }
+
+    func testClosingAnOldWebViewCannotReplaceANewerLogin() async throws {
+        let auth = YouTubeAuthManager()
+        let original = auth.getAuthCookies()
+        defer { restore(auth, cookies: original) }
+        XCTAssertTrue(auth.storeAuthCookies(cookies(value: "old-test-only")))
+        let coordinator = YouTubePlaybackWebView(videoID: "sessiontest", authManager: auth).makeCoordinator()
+        let webView = makeWebView()
+        for cookie in cookies(value: "browser-test-only") {
+            await webView.configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
+        }
+        XCTAssertTrue(auth.storeAuthCookies(cookies(value: "newer-login-test-only")))
+        let overwritten = expectation(description: "A newer login must take precedence over an old web page")
+        overwritten.isInverted = true
+        let observer = NotificationCenter.default.addObserver(forName: .settingsChanged, object: nil, queue: .main) { _ in
+            Task { @MainActor in
+                if auth.cookieHeaderString()?.contains("browser-test-only") == true { overwritten.fulfill() }
+            }
+        }
+        defer { NotificationCenter.default.removeObserver(observer) }
+        YouTubePlaybackWebView.dismantleUIView(webView, coordinator: coordinator)
+        await fulfillment(of: [overwritten], timeout: 1)
+        XCTAssertEqual(auth.cookieHeaderString(), "SAPISID=newer-login-test-only; SID=newer-login-test-only")
     }
 
     private func cookies(value: String) -> [HTTPCookie] {

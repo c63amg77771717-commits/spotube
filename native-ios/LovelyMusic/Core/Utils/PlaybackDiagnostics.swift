@@ -5,6 +5,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
     enum Phase: String, Codable, Sendable {
         case watchSession, visitor, playerResponse, streamResolved, engineReady, enginePlaying, engineError, authChanged
         case playbackSelection, playbackMode
+        case webSessionUpdated
         case remotePlay, remotePause, interruptionBegan, interruptionEnded
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
     }

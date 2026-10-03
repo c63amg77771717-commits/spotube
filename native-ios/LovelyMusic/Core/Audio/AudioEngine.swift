@@ -853,7 +853,7 @@ final class AudioEngine {
         isBuffering = false
     }
 
-    func play(song: Song, fromQueue: [Song] = []) {
+    func play(song: Song, fromQueue: [Song] = [], seekTo: TimeInterval? = nil) {
         hasReportedPlaybackStart = false
         let continuingCurrentSong = fromQueue.isEmpty && currentTrack?.id == song.id
         PersonalMusicTaste.shared.begin(song)
@@ -882,7 +882,11 @@ final class AudioEngine {
             if shuffleEnabled { generateShuffledOrder() }
         }
         currentTrack = song
-        loadAndPlay(song: song)
+        loadAndPlay(song: song, seekTo: seekTo)
+    }
+
+    func pause() {
+        setPlaybackIntent(false)
     }
 
     func playPause() {
