@@ -57,5 +57,5 @@ All runs use `.github/workflows/evantube-native-ios-tests.yml` on the dedicated 
 
 - The user has confirmed the app's visible watch-page fallback works during this incident.
 - Verify returning from web verification and manually retrying native playback. Do not assume successful web playback also restores native background or lock-screen playback.
-- Build an installation package only when the user requests packaging again. Device acceptance of the native player request remains a separate check after installation.
+- The user has now requested a repaired iOS IPA: build 10 will include these source repairs after the packaging workflow's native and UI gates pass. Device acceptance of the native player request remains a separate check after installation.
 - Do not label this incident fixed on the basis of a renamed error, more retries, or passing offline tests. Verify the recovery on the affected phone.

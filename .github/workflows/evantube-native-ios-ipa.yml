@@ -81,6 +81,7 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:EvanTubeTests \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \

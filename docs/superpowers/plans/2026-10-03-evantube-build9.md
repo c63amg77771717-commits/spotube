@@ -31,4 +31,6 @@ The user's 2026-10-03 build 9 device trace confirms playback verification reject
 
 Follow-up: the user confirms the app's YouTube watch-page playback works. Native tests reproduced and repaired browser-cookie handoff, retry progress loss, stale delayed retries, and premature raw fMP4 deferred-seek consumption. Final source review passed; all 115 simulator tests passed in run `37095517704`, with no uploaded artifacts. These app defects are not a confirmed explanation for the remote verification trigger; affected-phone validation remains pending.
 
-Current user direction: fix and verify source only; do not produce IPA/APK files. Use the dedicated `codex/ios-playback-session-tests-20261003` branch and `.github/workflows/evantube-native-ios-tests.yml`; do not trigger the packaging workflow.
+The source-only phase used the dedicated `codex/ios-playback-session-tests-20261003` branch and `.github/workflows/evantube-native-ios-tests.yml`, without producing IPA/APK files.
+
+Latest user direction: also produce the repaired iOS IPA. Set both app and notification extension to build 10, use the normal iOS branch and packaging workflow, require all native and eight isolated UI checks, then verify and deliver the unsigned device IPA. Keep native tests serial as in the verified source-only workflow because authentication tests share Keychain state. Android car assessment remains read-only and does not produce an APK. Native YouTube service acceptance remains an affected-device check.
