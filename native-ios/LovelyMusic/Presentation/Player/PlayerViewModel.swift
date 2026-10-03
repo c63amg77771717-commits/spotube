@@ -589,6 +589,7 @@ final class PlayerViewModel {
     }
 
     func retryCurrentSong(resetRetryCount: Bool = false) {
+        autoSkipTask?.cancel()
         if resetRetryCount { retryCount = 0 }
         guard retryCount < maxRetries, var song = currentSong else { return }
         let position = currentTime
@@ -676,9 +677,11 @@ final class PlayerViewModel {
 
             // Transient failure: try once more before giving up on this song.
             if retryCount == 0 {
-                Task { [weak self] in
+                autoSkipTask?.cancel()
+                autoSkipTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(1))
-                    guard let self, !Task.isCancelled else { return }
+                    guard let self, !Task.isCancelled, self.currentSong?.id == videoId,
+                          self.streamError != nil, self.audioEngine.lastError == error else { return }
                     self.retryCurrentSong()
                 }
             } else if autoSkipEnabled {

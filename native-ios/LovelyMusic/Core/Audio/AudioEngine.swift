@@ -3234,8 +3234,8 @@ final class AudioEngine {
                         duration: self.duration
                     )
 
-                    // Deferred seek: used when performLoadAndPlay(seekTo:) sets a target position.
-                    if let seekTime = self.pendingSeekTime {
+                    // Raw fMP4 cannot seek; keep the target for the seekable remux handoff.
+                    if let seekTime = self.pendingSeekTime, !self.isStreamingMode {
                         self.pendingSeekTime = nil
                         let cmTime = CMTime(seconds: seekTime, preferredTimescale: 600)
                         self.player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
