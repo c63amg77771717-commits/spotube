@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftUI
 import WebKit
 import XCTest
@@ -164,8 +165,19 @@ final class WebSessionRecoveryTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: directory) }
         let raw = directory.appendingPathComponent("raw.mp4")
         let local = directory.appendingPathComponent("remuxed.m4a")
-        _ = try await DeterministicFMP4Fixture.generate(configuration: .twentySeconds,
-            outputURL: raw, timeout: .seconds(30))
+        let source = try XCTUnwrap(Bundle.main.url(forResource: "demo_song_morning_light", withExtension: "m4a"))
+        let exporter = try XCTUnwrap(AVAssetExportSession(asset: AVURLAsset(url: source),
+                                                       presetName: AVAssetExportPresetPassthrough))
+        exporter.outputURL = raw
+        exporter.outputFileType = .mp4
+        exporter.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))
+        exporter.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
+        await withCheckedContinuation { continuation in
+            exporter.exportAsynchronously { continuation.resume() }
+        }
+        XCTAssertEqual(exporter.status, .completed)
+        XCTAssertNotNil(try Data(contentsOf: raw).range(of: Data("moof".utf8)),
+                        "The test must use actual fragmented media")
         let remuxed = await AudioEngine.remuxToStandardMP4(source: raw, destination: local)
         XCTAssertTrue(remuxed)
         let engine = AudioEngine()
@@ -192,6 +204,12 @@ final class WebSessionRecoveryTests: XCTestCase {
         XCTAssertEqual(engine.localFileURL, local)
         XCTAssertFalse(engine.isStreamingMode)
         XCTAssertFalse(engine.isPlaying, "Remux handoff must also preserve an explicit pause")
+        engine.handleRemotePlay()
+        for _ in 0..<300 where engine.guardedObservedPosition < 12.25 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertGreaterThan(engine.guardedObservedPosition, 12.25,
+                             "Successful playback must advance from the saved position")
     }
 
     private func makeModel(engine: AudioEngine) -> PlayerViewModel {
