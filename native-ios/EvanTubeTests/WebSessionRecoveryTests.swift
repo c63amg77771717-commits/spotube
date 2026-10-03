@@ -166,16 +166,30 @@ final class WebSessionRecoveryTests: XCTestCase {
         let raw = directory.appendingPathComponent("raw.mp4")
         let local = directory.appendingPathComponent("remuxed.m4a")
         let source = try XCTUnwrap(Bundle.main.url(forResource: "demo_song_morning_light", withExtension: "m4a"))
-        let exporter = try XCTUnwrap(AVAssetExportSession(asset: AVURLAsset(url: source),
-                                                       presetName: AVAssetExportPresetPassthrough))
-        exporter.outputURL = raw
-        exporter.outputFileType = .mp4
-        exporter.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))
-        exporter.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
-        await withCheckedContinuation { continuation in
-            exporter.exportAsynchronously { continuation.resume() }
+        let asset = AVURLAsset(url: source)
+        let track = try XCTUnwrap(try await asset.loadTracks(withMediaType: .audio).first)
+        let format = try XCTUnwrap(try await track.load(.formatDescriptions).first)
+        let reader = try AVAssetReader(asset: asset)
+        reader.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: 20, preferredTimescale: 600))
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        let writer = try AVAssetWriter(url: raw, fileType: .mp4)
+        writer.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 600)
+        let input = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: format)
+        writer.add(input)
+        XCTAssertTrue(reader.startReading())
+        XCTAssertTrue(writer.startWriting())
+        writer.startSession(atSourceTime: .zero)
+        while let sample = output.copyNextSampleBuffer() {
+            for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
+                try await Task.sleep(for: .milliseconds(10))
+            }
+            XCTAssertTrue(input.append(sample))
         }
-        XCTAssertEqual(exporter.status, .completed)
+        input.markAsFinished()
+        await writer.finishWriting()
+        XCTAssertEqual(reader.status, .completed)
+        XCTAssertEqual(writer.status, .completed)
         XCTAssertNotNil(try Data(contentsOf: raw).range(of: Data("moof".utf8)),
                         "The test must use actual fragmented media")
         let remuxed = await AudioEngine.remuxToStandardMP4(source: raw, destination: local)
