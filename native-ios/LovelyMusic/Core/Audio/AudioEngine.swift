@@ -232,7 +232,7 @@ final class AudioEngine {
     private var hasReportedPlaybackStart = false
     private var recoveryPosition: TimeInterval?
     var onPlaybackStarted: ((Song) -> Void)?
-    private var pendingSeekTime: TimeInterval?
+    private(set) var pendingSeekTime: TimeInterval?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var errorLogObserver: NSObjectProtocol?
@@ -2446,7 +2446,7 @@ final class AudioEngine {
         }
     }
 
-    fileprivate var guardedObservedPosition: TimeInterval {
+    var guardedObservedPosition: TimeInterval {
         let observed = player?.currentTime().seconds ?? currentTime
         return observed.isFinite && observed >= 0 ? observed : max(0, currentTime)
     }
@@ -2919,30 +2919,7 @@ final class AudioEngine {
 
                 // Play the raw fMP4 immediately — linear playback works from local file.
                 // Seeking won't work yet (empty stbl) but audio starts right away.
-                self.isStreamingMode = true
-                self.localFileURL = rawURL
-                let asset = AVURLAsset(url: rawURL)
-                let playerItem = AVPlayerItem(asset: asset)
-                playerItem.preferredForwardBufferDuration = 0
-                self.configurePlayer(with: playerItem)
-                self.setupPlayerItemObserver(playerItem)
-
-                if let seekTime = initialSeek {
-                    self.pendingSeekTime = seekTime
-                    self.currentTime = seekTime
-                }
-
-                // Write Now Playing metadata BEFORE activating + starting playback
-                // so iOS samples a fully-populated dictionary on bind (D-2, D-3).
-                if let songDuration = song.duration, songDuration > 0 {
-                    self.duration = TimeInterval(songDuration)
-                }
-                self.nowPlayingManager.updateNowPlayingInfo(song: song, duration: self.duration)
-
-                // Activate the audio session immediately before playback begins (D-1).
-                self.resumePlayer()
-                self.applyAudioProcessing()
-                self.recoveryService.startStallDetection()
+                self.playRawFile(rawURL, song: song, seekTo: initialSeek)
                 Log.audio.info(
                     "Playing from raw fMP4, starting background remux for seek capability")
 
@@ -2987,10 +2964,31 @@ final class AudioEngine {
         }
     }
 
+    /// Installs the downloaded fMP4 before its seekable remux is ready.
+    func playRawFile(_ rawURL: URL, song: Song, seekTo initialSeek: TimeInterval? = nil) {
+        isStreamingMode = true
+        localFileURL = rawURL
+        let playerItem = AVPlayerItem(asset: AVURLAsset(url: rawURL))
+        playerItem.preferredForwardBufferDuration = 0
+        configurePlayer(with: playerItem)
+        setupPlayerItemObserver(playerItem)
+        if let seekTime = initialSeek {
+            pendingSeekTime = seekTime
+            currentTime = seekTime
+        }
+        if let songDuration = song.duration, songDuration > 0 {
+            duration = TimeInterval(songDuration)
+        }
+        nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
+        resumePlayer()
+        applyAudioProcessing()
+        recoveryService.startStallDetection()
+    }
+
     /// Seamlessly replaces the raw fMP4 player item with a remuxed local file.
     /// Records the current playback position and seeks to it after replacement,
     /// giving the user full seek capability without audible interruption.
-    private func handoffToLocalFile(_ localURL: URL, song: Song) {
+    func handoffToLocalFile(_ localURL: URL, song: Song) {
         // Guard: only handoff if still playing the same song
         guard currentTrack?.id == song.id else {
             Log.audio.debug("Handoff skipped: song changed from \(song.id, privacy: .public)")
