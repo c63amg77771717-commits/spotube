@@ -43,14 +43,13 @@ import XCTest
         let repository = AutomaticControlledLyricsRepository()
         let engine = AudioEngine()
         let vm = model(repository, engine: engine)
-        let old = Task { await vm.loadLyrics(for: song("AAAAAAAAAAA")) }
         await repository.waitForRequest("AAAAAAAAAAA")
         select("BBBBBBBBBBB", engine: engine)
         await repository.waitForRequest("BBBBBBBBBBB")
         await repository.complete("BBBBBBBBBBB")
         await drain()
         await repository.complete("AAAAAAAAAAA")
-        await old.value
+        await drain()
         XCTAssertEqual(vm.lyrics?.lines.first?.text, "BBBBBBBBBBB")
         let cancelled = await repository.cancelled.contains("AAAAAAAAAAA")
         XCTAssertTrue(cancelled, "Changing songs cancels the old provider task even if it returns late")
@@ -95,7 +94,6 @@ import XCTest
         let engine = AudioEngine()
         let repository = AutomaticControlledLyricsRepository()
         let vm = model(repository, engine: engine)
-        let old = Task { await vm.loadLyrics(for: song("AAAAAAAAAAA")) }
         await repository.waitForRequest("AAAAAAAAAAA")
         vm.retryLyrics() // Captures A but has not yet entered the queued task.
         select("BBBBBBBBBBB", engine: engine)
@@ -103,7 +101,7 @@ import XCTest
         await repository.complete("BBBBBBBBBBB")
         await drain()
         await repository.complete("AAAAAAAAAAA")
-        await old.value
+        await drain()
         XCTAssertEqual(vm.lyrics?.lines.first?.text, "BBBBBBBBBBB")
         XCTAssertNil(vm.lyricsError)
         XCTAssertFalse(vm.isLoadingLyrics)
@@ -112,12 +110,11 @@ import XCTest
         let engine = AudioEngine()
         let repository = AutomaticControlledLyricsRepository()
         let vm = model(repository, engine: engine)
-        let old = Task { await vm.loadLyrics(for: song("AAAAAAAAAAA")) }
         await repository.waitForRequest("AAAAAAAAAAA")
         select(nil, engine: engine)
         await drain()
         await repository.complete("AAAAAAAAAAA")
-        await old.value
+        await drain()
         XCTAssertNil(vm.lyrics)
         XCTAssertNil(vm.lyricsError)
         XCTAssertFalse(vm.isLoadingLyrics)

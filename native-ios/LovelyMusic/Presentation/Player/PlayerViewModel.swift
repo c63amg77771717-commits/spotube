@@ -258,6 +258,7 @@ final class PlayerViewModel {
         observeAudioEngineErrors()
         observeBufferingState()
         observeTrackChanges()
+        if let song = currentSong { requestLyrics(for: song) }
         observeStreamRecovery()
         setupAutoplay()
         observeSettingsChanges()
