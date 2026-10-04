@@ -18,6 +18,10 @@ final class LrcLibService: LyricsRepositoryProtocol {
     }
 
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
+        try await getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: false)
+    }
+
+    func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("get"),
             resolvingAgainstBaseURL: false
@@ -45,10 +49,24 @@ final class LrcLibService: LyricsRepositoryProtocol {
             request.url = components.url
             (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
         }
+        var relaxedPair: LyricsLookupMetadata.Pair?
+        if httpResponse.statusCode == 404,
+           let pair = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: allowVideoCredits) {
+            components.queryItems = [URLQueryItem(name: "track_name", value: pair.title),
+                                     URLQueryItem(name: "artist_name", value: pair.artist)]
+            request.url = components.url
+            (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
+            relaxedPair = pair
+        }
         if httpResponse.statusCode == 404 { return nil }
         guard httpResponse.statusCode == 200 else { throw PublicSourceError.http("LRCLib", httpResponse.statusCode) }
 
         let lrcResponse = try decoder.decode(LrcLibResponse.self, from: data)
+        if let pair = relaxedPair {
+            guard let track = lrcResponse.trackName, let performer = lrcResponse.artistName,
+                  LyricsLookupMetadata.normalized(track) == LyricsLookupMetadata.normalized(pair.title),
+                  LyricsLookupMetadata.normalized(performer) == LyricsLookupMetadata.normalized(pair.artist) else { return nil }
+        }
 
         if let syncedLyrics = lrcResponse.syncedLyrics, !syncedLyrics.isEmpty {
             let lines = parseLRC(syncedLyrics)

@@ -37,6 +37,24 @@ import XCTest
         for _ in 0..<30 { await Task.yield() }
         try? await Task.sleep(for: .milliseconds(40))
     }
+    func testActualPlayerEnablesVideoCreditsOnlyForASCIIYouTubeIdentity() async throws {
+        let repository = AutomaticIdentityLyricsRepository()
+        let engine = AudioEngine()
+        let vm = model(repository, engine: engine)
+        await drain()
+        select("local-track", engine: engine)
+        await drain()
+        select("AAAAAAAAAAé", engine: engine)
+        await drain()
+        let flags = await repository.flags
+        XCTAssertEqual(flags["AAAAAAAAAAA"], true)
+        XCTAssertEqual(flags["local-track"], false)
+        XCTAssertEqual(flags["AAAAAAAAAAé"], false)
+        _ = vm
+        _ = try await GetLyricsUseCase(repository: repository).execute(title: "default", artist: "Artist")
+        let defaultFlag = await repository.flags["default"]
+        XCTAssertEqual(defaultFlag, false, "Other callers do not infer video origin from their title strings")
+    }
     func testNewInstallationKeepsCoverSelectedWhenLyricsFinishEmpty() async {
         let previous = UserDefaults.standard.object(forKey: "showLyricsAutomatically")
         defer {
@@ -147,6 +165,15 @@ import XCTest
         XCTAssertEqual(vm.lyrics?.lines.first?.text, "retried")
     }
 
+}
+
+private actor AutomaticIdentityLyricsRepository: LyricsRepositoryProtocol {
+    var flags: [String: Bool] = [:]
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? { nil }
+    func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
+        flags[title] = allowVideoCredits
+        return nil
+    }
 }
 private struct AutomaticEmptyLyricsRepository: LyricsRepositoryProtocol {
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? { nil }

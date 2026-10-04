@@ -323,7 +323,8 @@ final class PlayerViewModel {
             guard let self else { return }
             do {
                 let result = try await self.getLyricsUseCase.execute(
-                    title: song.title, artist: song.artistName, duration: song.duration)
+                    title: song.title, artist: song.artistName, duration: song.duration,
+                    allowVideoCredits: song.hasYouTubeOrigin && !song.isEpisode && song.id.utf8.allSatisfy { $0 < 128 })
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
                 self.lyrics = result?.lines.isEmpty == false ? result : nil

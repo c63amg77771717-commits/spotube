@@ -7,7 +7,7 @@ final class GetLyricsUseCase {
         self.repository = repository
     }
 
-    func execute(title: String, artist: String, duration: Int? = nil) async throws -> SyncedLyrics? {
-        try await repository.getLyrics(title: title, artist: artist, duration: duration)
+    func execute(title: String, artist: String, duration: Int? = nil, allowVideoCredits: Bool = false) async throws -> SyncedLyrics? {
+        try await repository.getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: allowVideoCredits)
     }
 }

@@ -2,16 +2,16 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsMetadataLookupTests: XCTestCase {
-    private func lyrics(_ title: String, artist: String = "Rick Astley") async throws -> SyncedLyrics? {
+    private func lyrics(_ title: String, artist: String = "Rick Astley", allowVideoCredits: Bool = true) async throws -> SyncedLyrics? {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [LyricsMetadataFixture.self]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
-        return try await LrcLibService(session: session).getLyrics(title: title, artist: artist, duration: nil)
+        return try await LrcLibService(session: session).getLyrics(title: title, artist: artist, duration: nil, allowVideoCredits: allowVideoCredits)
     }
     func testExactArtistPrefixAndOfficialSuffixProduceOneMatchingLookup() async throws {
         await LyricsMetadataRequests.shared.reset()
-        let result = try await lyrics("Rick Astley - Never Gonna Give You Up Official MV")
+        let result = try await lyrics("Rick Astley - Never Gonna Give You Up Official MV", allowVideoCredits: false)
         XCTAssertEqual(result?.lines.first?.text, "Matched fixture")
         let requests = await LyricsMetadataRequests.shared.pairs
         XCTAssertEqual(requests, ["Rick Astley|Rick Astley - Never Gonna Give You Up Official MV", "Rick Astley|Never Gonna Give You Up"])
@@ -50,6 +50,22 @@ final class LyricsMetadataLookupTests: XCTestCase {
     func testRelaxedLookupRejectsAnotherPerformer() async throws {
         let result = try await lyrics("Rick Astley - Wrong Artist Official MV")
         XCTAssertNil(result)
+    }
+    func testCatalogMetadataCannotReplaceArtistFromTheTitle() async throws {
+        await LyricsMetadataRequests.shared.reset()
+        let result = try await lyrics("Rick Astley - Never Gonna Give You Up Official MV", artist: "Catalog Artist", allowVideoCredits: false)
+        XCTAssertNil(result)
+        let requests = await LyricsMetadataRequests.shared.pairs
+        XCTAssertEqual(requests, ["Catalog Artist|Rick Astley - Never Gonna Give You Up Official MV"])
+    }
+    func testUnofficialAndMixedVersionBracketsRemainComplete() async throws {
+        for preserved in ["Song Unofficial MV", "Song Unofficial Music Video", "Song (Remix Official MV)", "Song [Live Lyric Video]", "Song 【Acoustic Music Video】"] {
+            await LyricsMetadataRequests.shared.reset()
+            let result = try await lyrics("Rick Astley - \(preserved)")
+            XCTAssertNil(result)
+            let requests = await LyricsMetadataRequests.shared.pairs
+            XCTAssertEqual(requests.last, "Rick Astley|\(preserved)", "Only an entire independent presentation suffix may be removed")
+        }
     }
 }
 
