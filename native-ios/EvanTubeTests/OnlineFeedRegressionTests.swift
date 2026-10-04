@@ -2,6 +2,12 @@ import XCTest
 @testable import LovelyMusic
 
 final class OnlineFeedRegressionTests: XCTestCase {
+    func testChartUsesCanonicalAppleHostWithoutLegacyRedirect() async throws {
+        URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
+        defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
+        let feed = try await EvanTubeOnlineFeedService.chart(region: "WW")
+        XCTAssertEqual(feed.items.first?.title, "Fixture track")
+    }
     func testValidEmptyChartIsAnEmptyFeed() async throws {
         URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
         defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
@@ -187,8 +193,8 @@ private final class ChartSearchResponseProtocol: URLProtocol {
 
 private final class OnlineFeedResponseProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool {
-        guard let url = request.url, url.host == "rss.applemarketingtools.com" else { return false }
-        return ["xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
+        guard let url = request.url, ["rss.applemarketingtools.com", "rss.marketingtools.apple.com"].contains(url.host ?? "") else { return false }
+        return ["ww", "xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
     }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -202,7 +208,8 @@ private final class OnlineFeedResponseProtocol: URLProtocol {
             // Synthetic transport fixture; this is never a production catalog.
             json = #"{"feed":{"results":[{"id":"1234567890","name":"Fixture track","artistName":"Fixture artist"}]}}"#
         }
-        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+        let correctRoute = url.host == "rss.marketingtools.apple.com" && url.path == "/api/v2/ww/music/most-played/20/songs.json"
+        let response = HTTPURLResponse(url: url, statusCode: url.path.contains("/ww/") && !correctRoute ? 503 : 200, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(json.utf8))

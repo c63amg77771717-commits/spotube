@@ -2,6 +2,17 @@ import XCTest
 @testable import LovelyMusic
 
 @MainActor final class AutomaticLyricsTests: XCTestCase {
+    private var previousMode: Any?
+    override func setUp() {
+        super.setUp()
+        previousMode = UserDefaults.standard.object(forKey: "playerLyricsVisible")
+        UserDefaults.standard.removeObject(forKey: "playerLyricsVisible")
+    }
+    override func tearDown() {
+        if let previousMode { UserDefaults.standard.set(previousMode, forKey: "playerLyricsVisible") }
+        else { UserDefaults.standard.removeObject(forKey: "playerLyricsVisible") }
+        super.tearDown()
+    }
     private func song(_ id: String) -> Song {
         Song(id: id, title: id, artistName: "Artist", artistId: nil, albumName: nil,
              albumId: nil, duration: 180, thumbnailURL: nil)
@@ -26,7 +37,7 @@ import XCTest
         for _ in 0..<30 { await Task.yield() }
         try? await Task.sleep(for: .milliseconds(40))
     }
-    func testLyricsDisplayAutomaticallyEvenWhenLegacyPreferenceIsOffAndNoLyricsExist() async {
+    func testNewInstallationKeepsCoverSelectedWhenLyricsFinishEmpty() async {
         let previous = UserDefaults.standard.object(forKey: "showLyricsAutomatically")
         defer {
             if let previous { UserDefaults.standard.set(previous, forKey: "showLyricsAutomatically") }
@@ -35,7 +46,7 @@ import XCTest
         UserDefaults.standard.set(false, forKey: "showLyricsAutomatically")
         let vm = model(AutomaticEmptyLyricsRepository())
         await vm.loadLyrics(for: song("AAAAAAAAAAA"))
-        XCTAssertTrue(vm.isLyricsVisible, "No manual lyrics tap is required, even for the empty state")
+        XCTAssertFalse(vm.isLyricsVisible, "Fetching lyrics must not replace the selected cover")
         XCTAssertFalse(vm.isLoadingLyrics)
         XCTAssertNil(vm.lyrics)
     }
@@ -55,7 +66,7 @@ import XCTest
         XCTAssertTrue(cancelled, "Changing songs cancels the old provider task even if it returns late")
         XCTAssertFalse(vm.isLoadingLyrics)
     }
-    func testSameSongRefreshPreservesManualCoverChoiceButNewSongShowsLyrics() async {
+    func testSameAndNewSongPreserveManualCoverChoice() async {
         let engine = AudioEngine()
         let vm = model(AutomaticEmptyLyricsRepository(), engine: engine)
         await vm.loadLyrics(for: song("AAAAAAAAAAA"))
@@ -64,11 +75,11 @@ import XCTest
         XCTAssertFalse(vm.isLyricsVisible)
         select("BBBBBBBBBBB", engine: engine)
         await drain()
-        XCTAssertTrue(vm.isLyricsVisible)
+        XCTAssertFalse(vm.isLyricsVisible)
         vm.toggleVideoMode()
         XCTAssertFalse(vm.isLyricsVisible, "The video action remains available while lyrics are automatic")
     }
-    func testActualTrackObservationShowsLyricsAndPreservesSameTrackManualChoice() async throws {
+    func testActualTrackObservationPreservesSelectedModeAcrossTracksAndViewModelRecreation() async throws {
         let engine = AudioEngine()
         let vm = model(AutomaticEmptyLyricsRepository(), engine: engine)
         func select(_ id: String) {
@@ -79,16 +90,21 @@ import XCTest
         select("AAAAAAAAAAA")
         for _ in 0..<20 { await Task.yield() }
         try await Task.sleep(for: .milliseconds(40))
-        XCTAssertTrue(vm.isLyricsVisible)
-        vm.isLyricsVisible = false
+        XCTAssertFalse(vm.isLyricsVisible)
+        vm.isLyricsVisible = true
         select("AAAAAAAAAAA")
         for _ in 0..<20 { await Task.yield() }
         try await Task.sleep(for: .milliseconds(40))
-        XCTAssertFalse(vm.isLyricsVisible)
+        XCTAssertTrue(vm.isLyricsVisible)
         select("BBBBBBBBBBB")
         for _ in 0..<20 { await Task.yield() }
         try await Task.sleep(for: .milliseconds(40))
         XCTAssertTrue(vm.isLyricsVisible)
+        let restored = model(AutomaticEmptyLyricsRepository())
+        XCTAssertTrue(restored.isLyricsVisible, "The explicit lyrics selection survives view-model recreation")
+        restored.isLyricsVisible = false
+        let cover = model(AutomaticEmptyLyricsRepository())
+        XCTAssertFalse(cover.isLyricsVisible)
     }
     func testQueuedRetryForOldSongCannotCancelTheNewSongRequest() async {
         let engine = AudioEngine()
@@ -124,7 +140,7 @@ import XCTest
         let vm = model(repository)
         await vm.loadLyrics(for: song("AAAAAAAAAAA"))
         XCTAssertNotNil(vm.lyricsError)
-        XCTAssertTrue(vm.isLyricsVisible)
+        XCTAssertFalse(vm.isLyricsVisible, "An error must not change the selected presentation")
         XCTAssertFalse(vm.isLoadingLyrics)
         await vm.loadLyrics(for: song("AAAAAAAAAAA"))
         XCTAssertNil(vm.lyricsError)
