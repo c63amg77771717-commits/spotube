@@ -22,13 +22,24 @@ final class LrcLibService: LyricsRepositoryProtocol {
     }
 
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        var lookupTitle = title
+        var lookupArtist = artist
+        var relaxedPair: LyricsLookupMetadata.Pair?
+        if artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard allowVideoCredits,
+                  let pair = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: true) else { return nil }
+            lookupTitle = pair.title
+            lookupArtist = pair.artist
+            relaxedPair = pair
+        }
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent("get"),
             resolvingAgainstBaseURL: false
         ) else { return nil }
         var queryItems = [
-            URLQueryItem(name: "track_name", value: title),
-            URLQueryItem(name: "artist_name", value: artist)
+            URLQueryItem(name: "track_name", value: lookupTitle),
+            URLQueryItem(name: "artist_name", value: lookupArtist)
         ]
         let validDuration = duration.flatMap { (1...3600).contains($0) ? $0 : nil }
         if let duration = validDuration {
@@ -44,15 +55,14 @@ final class LrcLibService: LyricsRepositoryProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         var (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
-        var relaxedPair: LyricsLookupMetadata.Pair?
         if httpResponse.statusCode == 404, validDuration != nil {
             components.queryItems = queryItems.filter { $0.name != "duration" }
             request.url = components.url
             (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
-            relaxedPair = LyricsLookupMetadata.Pair(title: title, artist: artist)
+            relaxedPair = LyricsLookupMetadata.Pair(title: lookupTitle, artist: lookupArtist)
         }
         if httpResponse.statusCode == 404,
-           let pair = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: allowVideoCredits) {
+           let pair = LyricsLookupMetadata.cleaned(title: lookupTitle, artist: lookupArtist, allowVideoCredits: allowVideoCredits) {
             components.queryItems = [URLQueryItem(name: "track_name", value: pair.title),
                                      URLQueryItem(name: "artist_name", value: pair.artist)]
             request.url = components.url
