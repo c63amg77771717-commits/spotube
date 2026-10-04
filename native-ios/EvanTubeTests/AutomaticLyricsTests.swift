@@ -55,6 +55,18 @@ import XCTest
         let defaultFlag = await repository.flags["default"]
         XCTAssertEqual(defaultFlag, false, "Other callers do not infer video origin from their title strings")
     }
+    func testActualPlayerKeepsEmptyArtistAndEnablesVerifiedSingleCreditLookup() async {
+        let repository = AutomaticIdentityLyricsRepository()
+        let engine = AudioEngine()
+        let original = Song(id: "IdneKLhsWOQ", title: "Taylor Swift - Wildest Dreams", artistName: "", artistId: nil, albumName: nil, albumId: nil, duration: 235, thumbnailURL: nil)
+        engine.restorePlaybackState(.init(queue: [original], autoplayQueue: [], currentIndex: 0, currentTime: 0, wasPlaying: false, shuffleEnabled: false, repeatMode: AudioEngine.RepeatMode.off.rawValue, savedAt: Date()))
+        let vm = model(repository, engine: engine)
+        await vm.loadLyrics(for: original)
+        let flag = await repository.flags[original.title]
+        XCTAssertEqual(flag, true)
+        XCTAssertEqual(vm.currentSong?.artistName, "")
+        XCTAssertEqual(vm.currentSong?.title, original.title)
+    }
     func testNewInstallationKeepsCoverSelectedWhenLyricsFinishEmpty() async {
         let previous = UserDefaults.standard.object(forKey: "showLyricsAutomatically")
         defer {

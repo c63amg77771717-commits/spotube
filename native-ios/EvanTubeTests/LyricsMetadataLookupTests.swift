@@ -2,6 +2,28 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsMetadataLookupTests: XCTestCase {
+    func testVerifiedVideoEmptyArtistUsesSingleCreditBeforeInvalidRequest() async throws {
+        await LyricsMetadataRequests.shared.reset()
+        let result = try await lyrics("Rick Astley - Never Gonna Give You Up", artist: "  ")
+        XCTAssertEqual(result?.lines.first?.text, "Matched fixture")
+        let requests = await LyricsMetadataRequests.shared.pairs
+        XCTAssertEqual(requests, ["Rick Astley|Never Gonna Give You Up"])
+    }
+    func testEmptyArtistAmbiguousOrCatalogMetadataDoesNotSendInvalidRequest() async throws {
+        for (title, video) in [("Rick Astley - Never Gonna Give You Up", false), ("Rick Astley & Guest - Song", true), ("Rick Astley - Song - Live", true), ("Song", true)] {
+            await LyricsMetadataRequests.shared.reset()
+            let result = try await lyrics(title, artist: "", allowVideoCredits: video)
+            XCTAssertNil(result)
+            let requests = await LyricsMetadataRequests.shared.pairs
+            XCTAssertTrue(requests.isEmpty)
+        }
+    }
+    func testEmptyArtistExtractedPairStillRequiresResponseIdentity() async throws {
+        for title in ["Wrong Artist", "Song Live", "Missing Identity"] {
+            let result = try await lyrics("Rick Astley - \(title)", artist: "")
+            XCTAssertNil(result)
+        }
+    }
     private func lyrics(_ title: String, artist: String = "Rick Astley", allowVideoCredits: Bool = true, duration: Int? = nil) async throws -> SyncedLyrics? {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [LyricsMetadataFixture.self]
@@ -111,7 +133,7 @@ private final class LyricsMetadataFixture: URLProtocol {
             await LyricsMetadataRequests.shared.append("\(artist)|\(title)")
             let hasDuration = values.contains { $0.name == "duration" }
             let match = !hasDuration && artist == "Rick Astley" && ["Never Gonna Give You Up", "Song Remix", "Song Live", "Wrong Artist", "Missing Identity"].contains(title)
-            let response = HTTPURLResponse(url: request.url!, statusCode: match ? 200 : 404, httpVersion: nil, headerFields: nil)!
+            let response = HTTPURLResponse(url: request.url!, statusCode: artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 400 : (match ? 200 : 404), httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             if match {
                 var json: [String: String] = ["trackName": title == "Song Live" ? "Song" : title,
