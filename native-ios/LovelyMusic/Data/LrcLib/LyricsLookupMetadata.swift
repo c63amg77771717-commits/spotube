@@ -13,7 +13,7 @@ enum LyricsLookupMetadata {
 
     static func cleaned(title: String, artist: String, allowVideoCredits: Bool) -> Pair? {
         let parts = title.components(separatedBy: " - ")
-        guard parts.count <= 2 else { return nil }
+        guard parts.count <= 2, allowVideoCredits || parts.count == 2 else { return nil }
         var lookupTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         var lookupArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
         if parts.count == 2 {
@@ -39,7 +39,7 @@ enum LyricsLookupMetadata {
 
     private static func hasGuestCredit(_ value: String) -> Bool {
         let text = normalized(value)
-        return text.contains(where: { "&+×/,、".contains($0) })
-            || text.range(of: "\\b(feat|featuring|ft|with)\\b", options: .regularExpression) != nil
+        return text.contains(where: { "&+×/,、|".contains($0) })
+            || text.range(of: "\\b(feat|featuring|ft|with|vs|versus)\\b", options: .regularExpression) != nil
     }
 }

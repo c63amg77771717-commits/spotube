@@ -42,13 +42,13 @@ import XCTest
         let engine = AudioEngine()
         let vm = model(repository, engine: engine)
         await drain()
-        select("local-track", engine: engine)
+        select("local-song-id", engine: engine)
         await drain()
         select("AAAAAAAAAAé", engine: engine)
         await drain()
         let flags = await repository.flags
         XCTAssertEqual(flags["AAAAAAAAAAA"], true)
-        XCTAssertEqual(flags["local-track"], false)
+        XCTAssertEqual(flags["local-song-id"], false)
         XCTAssertEqual(flags["AAAAAAAAAAé"], false)
         _ = vm
         _ = try await GetLyricsUseCase(repository: repository).execute(title: "default", artist: "Artist")

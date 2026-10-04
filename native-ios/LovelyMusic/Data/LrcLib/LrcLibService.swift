@@ -44,12 +44,13 @@ final class LrcLibService: LyricsRepositoryProtocol {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         var (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
+        var relaxedPair: LyricsLookupMetadata.Pair?
         if httpResponse.statusCode == 404, validDuration != nil {
             components.queryItems = queryItems.filter { $0.name != "duration" }
             request.url = components.url
             (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
+            relaxedPair = LyricsLookupMetadata.Pair(title: title, artist: artist)
         }
-        var relaxedPair: LyricsLookupMetadata.Pair?
         if httpResponse.statusCode == 404,
            let pair = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: allowVideoCredits) {
             components.queryItems = [URLQueryItem(name: "track_name", value: pair.title),
