@@ -121,6 +121,15 @@ final class ChartResolutionSafetyTests: XCTestCase {
         }
     }
 
+    func testStructuredTranslationCannotHideInstrumentalOrAlternateRecordingVersions() async throws {
+        for version in ["Piano Solo", "Guitar Solo", "Orchestral Arrangement", "Radio Edit", "Alternate Version", "Special Edition"] {
+            let resolved = try await EvanTubeOnlineSongResolver.resolve(item(title: "要去什麼地方", artist: "田馥甄")) { _ in
+                [self.song(title: "田馥甄 Hebe Tien《要去什麼地方 \(version)》Official Music Video")]
+            }
+            XCTAssertNil(resolved, "A \(version) suffix is recording evidence, not a title translation")
+        }
+    }
+
     func testStructuredTitleRejectsUnrelatedSurroundingText() async throws {
         for title in [
             "田馥甄 Hebe Tien《要去什麼地方 The Land of Maybe》Album Review",
