@@ -2,6 +2,17 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsHTTPFailureTests: XCTestCase {
+    func testUnknownOrOutOfContractDurationUsesDurationlessLookup() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [LyricsHTTPFixture.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let service = LrcLibService(session: session)
+        for duration in [0, -1, 3601] {
+            let lyrics = try await service.getLyrics(title: "duration-contract", artist: "fixture", duration: duration)
+            XCTAssertEqual(lyrics?.lines.first?.text, "Fixture lyrics")
+        }
+    }
     func testMissingLyricsIsEmptyButServerFailureRemainsRetryable() async throws {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [LyricsHTTPFixture.self]
@@ -20,11 +31,17 @@ private final class LyricsHTTPFixture: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let missing = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
-            .queryItems?.first(where: { $0.name == "track_name" })?.value == "missing"
-        let response = HTTPURLResponse(url: request.url!, statusCode: missing ? 404 : 503,
+        let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let title = items.first(where: { $0.name == "track_name" })?.value
+        let contract = title == "duration-contract"
+        let hasDuration = items.contains(where: { $0.name == "duration" })
+        let status = contract ? (hasDuration ? 400 : 200) : (title == "missing" ? 404 : 503)
+        let response = HTTPURLResponse(url: request.url!, statusCode: status,
                                        httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        if status == 200 {
+            client?.urlProtocol(self, didLoad: Data(#"{"plainLyrics":"Fixture lyrics"}"#.utf8))
+        }
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
