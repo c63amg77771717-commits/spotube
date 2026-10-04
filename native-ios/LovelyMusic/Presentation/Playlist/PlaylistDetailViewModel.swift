@@ -16,6 +16,9 @@ final class PlaylistDetailViewModel {
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
     private(set) var error: String?
+    private(set) var isRemovingSongs = false
+    private(set) var removedSongIDs: Set<String> = []
+    var removalError: String?
     private(set) var songsContinuation: String?
 
     var searchText: String = "" {
@@ -103,21 +106,43 @@ final class PlaylistDetailViewModel {
     }
 
     func removeSongs(songIds: Set<String>) {
-        guard let playlist, let managePlaylistUseCase else { return }
+        guard let playlist, playlist.isLocal, !isRemovingSongs,
+              !songIds.isEmpty, let managePlaylistUseCase else { return }
         let playlistId = playlist.id
-        removeSongsTask?.cancel()
+        isRemovingSongs = true
+        removedSongIDs = []
+        removalError = nil
+        error = nil
         removeSongsTask = Task { [weak self] in
-            guard let self, !Task.isCancelled else { return }
+            guard let self else { return }
+            defer { isRemovingSongs = false }
+            var removed: Set<String> = []
+            var failures: [String] = []
             for songId in songIds {
                 guard !Task.isCancelled else { return }
                 do {
                     try await managePlaylistUseCase.removeSong(songId: songId, from: playlistId)
+                    removed.insert(songId)
                 } catch {
                     Log.playlist.error("Failed to remove song \(songId, privacy: .public) from playlist: \(error.localizedDescription, privacy: .public)")
+                    failures.append(error.localizedDescription)
                 }
             }
-            guard !Task.isCancelled else { return }
-            loadPlaylist(playlistId: playlistId)
+            guard !Task.isCancelled, self.playlist?.id == playlistId else { return }
+            if let current = self.playlist {
+                let songs = current.songs.filter { !removed.contains($0.id) }
+                self.playlist = Playlist(id: current.id, title: current.title,
+                    thumbnailURL: current.thumbnailURL, songCount: songs.count,
+                    description: current.description, songs: songs,
+                    isLocal: current.isLocal, isPodcast: current.isPodcast)
+                updateFilteredSongs()
+            }
+            removedSongIDs = removed
+            if !failures.isEmpty {
+                let message = failures.joined(separator: "\n")
+                error = message
+                removalError = message
+            }
         }
     }
 

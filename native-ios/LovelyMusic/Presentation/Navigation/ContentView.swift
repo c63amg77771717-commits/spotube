@@ -163,6 +163,26 @@ struct ContentView: View {
         // and ran *after* `DIContainer` had already frozen repository wiring.
         .task {
             #if DEBUG
+            if CommandLine.arguments.contains("-evantubePlaylistRemovalPreview") {
+                let title = "刪歌測試歌單"
+                if CommandLine.arguments.contains("-evantubeResetPlaylistRemovalPreview") {
+                    for playlist in (try? await container.playlistRepository.getAllPlaylists()) ?? []
+                        where playlist.title == title {
+                        try? await container.playlistRepository.deletePlaylist(id: playlist.id)
+                    }
+                }
+                let existing = try? await container.playlistRepository.getAllPlaylists()
+                // An existing empty fixture must remain empty on the second launch.
+                if existing?.contains(where: { $0.title == title }) != true,
+                   let playlist = try? await container.playlistRepository.createPlaylist(title: title) {
+                    try? await container.playlistRepository.addSongToPlaylist(song: Song(
+                        id: "demo_song_removal_test", title: "刪歌測試歌曲", artistName: "測試歌手",
+                        artistId: nil, albumName: nil, albumId: nil,
+                        duration: nil, thumbnailURL: nil
+                    ), playlistId: playlist.id)
+                }
+                await container.libraryViewModel.loadLibrary()
+            }
             if CommandLine.arguments.contains("-evantubeSearchPreview") {
                 let existing = try? await container.playlistRepository.getAllPlaylists()
                 if existing?.contains(where: { $0.title == "搜尋與點擊測試" }) != true {

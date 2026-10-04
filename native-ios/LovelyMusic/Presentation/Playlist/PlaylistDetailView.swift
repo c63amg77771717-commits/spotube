@@ -19,6 +19,7 @@ struct PlaylistDetailView: View {
     @State private var showCoverError = false
     @State private var coverError = ""
     @State private var showRemoveSongsConfirmation = false
+    @State private var songsToRemove: Set<String> = []
 
     init(
         playlistId: String, getPlaylistUseCase: GetPlaylistUseCase,
@@ -44,20 +45,25 @@ struct PlaylistDetailView: View {
             .background(Theme.Colors.backgroundPrimary)
             .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
             .confirmationDialog(
-                "Remove \(selectedSongs.count) songs from playlist?",
+                "要從此歌單移除 \(songsToRemove.count) 首歌曲嗎？",
                 isPresented: $showRemoveSongsConfirmation,
                 titleVisibility: .visible
             ) {
-                Button("Remove \(selectedSongs.count) Songs", role: .destructive) {
-                    viewModel.removeSongs(songIds: selectedSongs)
-                    withAnimation(Theme.AnimationPresets.smooth) {
-                        selectedSongs.removeAll()
-                        editMode = .inactive
-                    }
+                Button("移除歌曲", role: .destructive) {
+                    viewModel.removeSongs(songIds: songsToRemove)
                 }
-                Button("Cancel", role: .cancel) {}
+                .disabled(viewModel.isRemovingSongs)
+                Button("取消", role: .cancel) { songsToRemove = [] }
             } message: {
-                Text("This action cannot be undone.")
+                Text("只會從此歌單移除，不影響其他歌單、收藏或目前的播放佇列。")
+            }
+            .alert("無法移除歌曲", isPresented: Binding(
+                get: { viewModel.removalError != nil },
+                set: { if !$0 { viewModel.removalError = nil } }
+            )) {
+                Button("好", role: .cancel) { viewModel.removalError = nil }
+            } message: {
+                Text(viewModel.removalError ?? "")
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -113,6 +119,7 @@ struct PlaylistDetailView: View {
                                         playerVM.isDockHidden = editMode == .active
                                     }
                                 }
+                                .disabled(viewModel.isRemovingSongs)
                             }
                         }
                     }
@@ -162,6 +169,16 @@ struct PlaylistDetailView: View {
                 selectedPhoto = nil
                 photoPlaylistId = nil
                 showPhotoPicker = false
+                songsToRemove = []
+                showRemoveSongsConfirmation = false
+                selectedSongs = []
+            }
+            .onChange(of: viewModel.removedSongIDs) { _, removed in
+                selectedSongs.subtract(removed)
+                if selectedSongs.isEmpty && editMode == .active {
+                    editMode = .inactive
+                    playerVM.isDockHidden = false
+                }
             }
             .onChange(of: searchText) { _, newValue in
                 viewModel.searchText = newValue
@@ -174,7 +191,7 @@ struct PlaylistDetailView: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: .playlistsChanged)) { _ in
-                viewModel.loadPlaylist(playlistId: playlistId)
+                if !viewModel.isRemovingSongs { viewModel.loadPlaylist(playlistId: playlistId) }
             }
             .onReceive(NotificationCenter.default.publisher(for: .recentlyPlayedChanged)) { _ in
                 if playlistId == Playlist.playbackHistoryID {
@@ -262,6 +279,12 @@ struct PlaylistDetailView: View {
                             canMove: playlist.isLocal && searchText.isEmpty,
                             onMoveUp: { Task { await viewModel.moveSong(song, direction: -1) } },
                             onMoveDown: { Task { await viewModel.moveSong(song, direction: 1) } },
+                            canRemove: playlist.isLocal,
+                            isRemoving: viewModel.isRemovingSongs,
+                            onRemove: {
+                                songsToRemove = [song.id]
+                                showRemoveSongsConfirmation = true
+                            },
                             onDownloadTap: {
                                 if downloadManager.isDownloaded(songId: song.id) {
                                     downloadManager.removeDownload(songId: song.id)
@@ -344,6 +367,7 @@ struct PlaylistDetailView: View {
     }
 
     private func toggleSelection(_ id: String) {
+        guard !viewModel.isRemovingSongs else { return }
         withAnimation(Theme.AnimationPresets.gentle) {
             if selectedSongs.contains(id) {
                 selectedSongs.remove(id)
@@ -361,11 +385,13 @@ struct PlaylistDetailView: View {
             HStack(spacing: Theme.Spacing.xl) {
                 if viewModel.playlist?.isLocal == true {
                     Button {
+                        songsToRemove = selectedSongs
                         showRemoveSongsConfirmation = true
                     } label: {
-                        Label("Remove", systemImage: "trash")
+                        Label(viewModel.isRemovingSongs ? "正在移除…" : "移除歌曲", systemImage: "trash")
                     }
                     .tint(Theme.Colors.error)
+                    .disabled(viewModel.isRemovingSongs)
                 }
 
                 if featureFlags.isDownloadEnabled {
@@ -391,6 +417,7 @@ struct PlaylistDetailView: View {
             .padding(.vertical, Theme.Spacing.md)
             .padding(.horizontal, Theme.Spacing.lg)
             .frame(maxWidth: .infinity)
+            .disabled(viewModel.isRemovingSongs)
         }
         .background(.ultraThinMaterial)
         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -414,6 +441,9 @@ private struct PlaylistSongRowView: View {
     let canMove: Bool
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
+    let canRemove: Bool
+    let isRemoving: Bool
+    let onRemove: () -> Void
     let onDownloadTap: () -> Void
 
     var body: some View {
@@ -449,6 +479,12 @@ private struct PlaylistSongRowView: View {
 
                     if editMode == .inactive {
                         Menu {
+                            if canRemove {
+                                Button(role: .destructive, action: onRemove) {
+                                    Label("從此歌單移除", systemImage: "trash")
+                                }
+                                .disabled(isRemoving)
+                            }
                             if canMove {
                                 Button(action: onMoveUp) {
                                     Label("上移歌曲", systemImage: "arrow.up")

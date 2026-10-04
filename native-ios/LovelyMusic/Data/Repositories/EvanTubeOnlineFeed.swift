@@ -25,13 +25,19 @@ enum EvanTubeOnlineSongResolver {
     static func resolve(_ item: EvanTubeOnlineItem,
                         search: (String) async throws -> [Song]) async throws -> Song? {
         guard item.kind == .song, !item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        try Task.checkCancellation()
         let query = "\(item.title) \(item.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
-        // ponytail: require title and artist evidence; use catalog matching only if this bounded heuristic falls short.
-        guard let song = ContentPreferences.filteredSongs(try await search(query)).first(where: {
+        let results = try await search(query)
+        try Task.checkCancellation()
+        var seen = Set<String>()
+        let candidates = ContentPreferences.filteredSongs(results).filter {
             let channel = $0.artistName.replacingOccurrences(of: "(?i)vevo$", with: "", options: .regularExpression)
-            return isPlayable($0) && matches($0.title, item.title)
-                && (item.artist.isEmpty || matches(channel, item.artist) || matches($0.title, item.artist))
-        }) else { return nil }
+            return isPlayable($0) && titleMatches($0.title, item: item)
+                && (item.artist.isEmpty || matches(channel, item.artist) || hasArtistCredit($0.title, item: item))
+                && seen.insert($0.id).inserted
+        }
+        // Search order does not prove which recording the listener intended.
+        guard candidates.count == 1, let song = candidates.first else { return nil }
         // Keep the catalog artist for future taste seeds; an uploader may be a record label.
         return Song(id: song.id, title: item.title,
                     artistName: item.artist.isEmpty ? song.artistName : item.artist,
@@ -42,14 +48,51 @@ enum EvanTubeOnlineSongResolver {
                     streamURL: song.streamURL, streamContentLength: song.streamContentLength)
     }
 
-    fileprivate static func matches(_ candidate: String, _ expected: String) -> Bool {
-        func normalized(_ value: String) -> String {
-            let text = value.applyingTransform(StringTransform("Traditional-Simplified"), reverse: false) ?? value
-            return text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
-                                locale: Locale(identifier: "zh_TW"))
-                .map { $0.isLetter || $0.isNumber ? String($0) : " " }.joined()
-                .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    private static func normalized(_ value: String) -> String {
+        let text = value.applyingTransform(StringTransform("Traditional-Simplified"), reverse: false) ?? value
+        return text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                            locale: Locale(identifier: "zh_TW"))
+            .map { $0.isLetter || $0.isNumber ? String($0) : " " }.joined()
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static func hasArtistCredit(_ candidate: String, item: EvanTubeOnlineItem) -> Bool {
+        let title = normalized(candidate)
+        let artistPattern = normalized(item.artist).split(separator: " ").map {
+            NSRegularExpression.escapedPattern(for: String($0))
+        }.joined(separator: " ?")
+        guard !artistPattern.isEmpty,
+              let prefix = title.range(of: "^" + artistPattern + " ", options: .regularExpression) else { return false }
+        // A title word is not performer evidence: the remaining text must still name the complete recording.
+        return titleMatches(String(title[prefix.upperBound...]), item: item, stripArtistPrefix: false)
+    }
+
+    private static func titleMatches(_ candidate: String, item: EvanTubeOnlineItem, stripArtistPrefix: Bool = true) -> Bool {
+        func creditNormalized(_ text: String) -> String {
+            normalized(text).replacingOccurrences(of: "\\b(featuring|feat|ft)\\b", with: "feat", options: .regularExpression)
         }
+        var title = creditNormalized(candidate)
+        let expected = creditNormalized(item.title)
+        if title == expected { return true }
+        let artist = normalized(item.artist)
+        let artistPattern = artist.split(separator: " ").map {
+            NSRegularExpression.escapedPattern(for: String($0))
+        }.joined(separator: " ?")
+        // Artist-prefixed official metadata is common even when the uploader is a label.
+        if stripArtistPrefix, !artist.isEmpty, let prefix = title.range(of: "^" + artistPattern + " ", options: .regularExpression) {
+            title = String(title[prefix.upperBound...])
+        }
+        if title == expected { return true }
+        // Only remove known presentation labels, never arbitrary remaining title words.
+        let suffix = "(?:official music video|official lyric video|official video|official audio|music video|lyric video|lyrics|visualizer|official|audio|mv|hd|4k)"
+        while let range = title.range(of: "(?:^| )" + suffix + "$", options: .regularExpression) {
+            title.removeSubrange(range)
+            if title == expected { return true }
+        }
+        return false
+    }
+
+    fileprivate static func matches(_ candidate: String, _ expected: String) -> Bool {
         let lhs = normalized(candidate), rhs = normalized(expected)
         guard !rhs.isEmpty else { return false }
         let words = rhs.split(separator: " ").map { NSRegularExpression.escapedPattern(for: String($0)) }

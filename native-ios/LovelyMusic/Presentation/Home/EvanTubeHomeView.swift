@@ -108,6 +108,7 @@ struct EvanTubeHomeView: View {
     @State private var feeds = EvanTubeHomeFeeds()
     @State private var region = EvanTubeRegion.taiwan
     @State private var actionMessage: String?
+    @State private var manualSearchItem: EvanTubeOnlineItem?
     @State private var resolutionID = UUID()
     @State private var personal = PersonalRecommendations()
     @State private var preferenceRevision = 0
@@ -162,6 +163,29 @@ struct EvanTubeHomeView: View {
         .dockSafeBottom()
         .background(Theme.Colors.backgroundPrimary)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(item: $manualSearchItem) { item in
+            VStack(alignment: .leading, spacing: 16) {
+                Text(actionMessage ?? "請搜尋並選擇想聽的版本。")
+                    .font(.headline)
+                Text("搜尋：\(item.title) \(item.artist)")
+                    .font(.subheadline).textSelection(.enabled)
+                Button(item.kind == .release ? "搜尋專輯或專輯歌曲" : "前往搜尋並選擇版本", systemImage: "magnifyingglass") {
+                    let search = container.searchViewModel
+                    // Clear before switching scope so it cannot submit an old library query.
+                    search.query = ""
+                    search.selectLibraryScope(false)
+                    search.selectFilter(item.kind == .release && search.availableFilters.contains(.albums) ? .albums : .songs)
+                    search.query = "\(item.title) \(item.artist)".trimmingCharacters(in: .whitespacesAndNewlines)
+                    search.search()
+                    manualSearchItem = nil
+                    NotificationCenter.default.post(name: .switchToSearchTab, object: nil)
+                }
+                .accessibilityIdentifier("home_chart_choose_version")
+                Button("稍後再選", role: .cancel) { manualSearchItem = nil }
+            }
+            .padding(24)
+            .presentationDetents([.medium])
+        }
         .refreshable {
             viewModel.refresh()
             viewModel.loadRecentlyPlayed()
@@ -430,6 +454,7 @@ struct EvanTubeHomeView: View {
     private func resolveAndOpen(_ item: EvanTubeOnlineItem) async {
         let request = UUID()
         resolutionID = request
+        manualSearchItem = nil
         actionMessage = "正在尋找「\(item.title)」的線上版本…"
         do {
             if item.kind == .release {
@@ -437,6 +462,7 @@ struct EvanTubeHomeView: View {
                 guard !Task.isCancelled, resolutionID == request else { return }
                 guard let album = resolved else {
                     actionMessage = "目前音源找不到「\(item.title)」的可開啟專輯版本；可到搜尋找這張專輯的歌曲。"
+                    manualSearchItem = item
                     return
                 }
                 actionMessage = nil
@@ -447,7 +473,8 @@ struct EvanTubeHomeView: View {
                 }
                 guard !Task.isCancelled, resolutionID == request else { return }
                 guard let song = resolved else {
-                    actionMessage = "找不到「\(item.title)」的可播放版本。"
+                    actionMessage = "無法確認「\(item.title)」的唯一對應版本；請搜尋並選擇想聽的版本。"
+                    manualSearchItem = item
                     return
                 }
                 actionMessage = nil
@@ -455,7 +482,8 @@ struct EvanTubeHomeView: View {
             }
         } catch {
             guard !Task.isCancelled, resolutionID == request else { return }
-            actionMessage = "無法搜尋可播放版本：\(error.localizedDescription)"
+            actionMessage = "版本搜尋失敗：\(error.localizedDescription)"
+            manualSearchItem = item
         }
     }
 

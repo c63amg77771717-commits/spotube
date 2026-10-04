@@ -91,6 +91,7 @@ final class PlaylistRemovalTests: XCTestCase {
         let model = await model(io, id: chosen.id)
 
         model.removeSongs(songIds: [first.id])
+        XCTAssertTrue(model.isRemovingSongs)
         await wait { io.pending != nil }
         XCTAssertNotNil(io.pending, "The first write must be suspended before the second request")
         model.removeSongs(songIds: [second.id])
@@ -103,6 +104,45 @@ final class PlaylistRemovalTests: XCTestCase {
         let persisted = try await reopen(defaults).getAllPlaylists()
         XCTAssertEqual(persisted.first?.songs.map(\.id), [second.id])
         XCTAssertEqual(model.filteredSongs.map(\.id), [second.id])
+        XCTAssertFalse(model.isRemovingSongs)
+    }
+
+    func testPartialFailureReportsOnlySuccessfulIDsForSelectionAndAllowsRetry() async throws {
+        let (defaults, store) = storage()
+        let chosen = try await store.createPlaylist(title: "Chosen")
+        let first = song("aaaaaaaaaaa"), second = song("bbbbbbbbbbb")
+        _ = try await store.addSongsToPlaylist(songs: [first, second], playlistId: chosen.id)
+        let io = RemovalIO(base: store)
+        io.failedSongID = second.id
+        let model = await model(io, id: chosen.id)
+        model.removeSongs(songIds: [first.id, second.id])
+        await wait { !model.isRemovingSongs }
+
+        XCTAssertEqual(model.removedSongIDs, [first.id], "The view removes only successful IDs from selection")
+        XCTAssertEqual(model.filteredSongs.map(\.id), [second.id])
+        XCTAssertNotNil(model.removalError)
+        let partial = try await reopen(defaults).getAllPlaylists()
+        XCTAssertEqual(partial.first?.songs.map(\.id), [second.id])
+
+        io.failedSongID = nil
+        model.removeSongs(songIds: [second.id])
+        await wait { !model.isRemovingSongs }
+        XCTAssertNil(model.removalError)
+        XCTAssertTrue(model.filteredSongs.isEmpty)
+        let retried = try await reopen(defaults).getAllPlaylists()
+        XCTAssertEqual(retried.first?.songs, [])
+    }
+
+    func testPlaybackHistoryRemovalIsIgnored() async throws {
+        let (defaults, store) = storage()
+        let track = song("aaaaaaaaaaa")
+        try await store.addToHistory(song: track)
+        let model = await model(store, id: Playlist.playbackHistoryID)
+        model.removeSongs(songIds: [track.id])
+        XCTAssertFalse(model.isRemovingSongs)
+        XCTAssertEqual(model.filteredSongs.map(\.id), [track.id])
+        let persisted = try await reopen(defaults).getRecentlyPlayed()
+        XCTAssertEqual(persisted.map(\.id), [track.id])
     }
 
     func testReadOnlyPlaylistCannotRemovePersistedMembership() async throws {
@@ -128,6 +168,7 @@ final class PlaylistRemovalTests: XCTestCase {
 private final class RemovalIO: PlaylistRepositoryProtocol {
     let base: LocalPlaylistRepository
     var failure: Error?
+    var failedSongID: String?
     var readOnly = false
     var delayNextRemoval = false
     var pending: CheckedContinuation<Void, Never>?
@@ -145,6 +186,10 @@ private final class RemovalIO: PlaylistRepositoryProtocol {
             await withCheckedContinuation { pending = $0 }
         }
         if let failure { throw failure }
+        if songId == failedSongID {
+            throw NSError(domain: "RemovalTests", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "無法儲存歌單"])
+        }
         try await base.removeSongFromPlaylist(songId: songId, playlistId: playlistId)
     }
     func createPlaylist(title: String) async throws -> Playlist { try await base.createPlaylist(title: title) }

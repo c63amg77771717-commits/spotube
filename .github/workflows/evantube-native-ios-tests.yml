@@ -45,13 +45,13 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
-            -only-testing:EvanTubeTests/ChartResolutionSafetyTests/testArtistTokenInsideSongTitleIsNotArtistEvidence \
+            -only-testing:EvanTubeTests \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
             test
       - name: Verify startup loading UI regression
-        if: false
+        if: always()
         working-directory: native-ios
         run: |
           xcrun simctl shutdown all

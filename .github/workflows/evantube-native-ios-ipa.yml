@@ -114,7 +114,8 @@ jobs:
             EvanTubeSettingsPreviewTests/testAppearanceChoicesApplyAndPersist \
             EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
             EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
-            EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory; do
+            EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
+            EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch; do
             xcrun simctl shutdown all
             xcrun simctl bootstatus "$simulator_id" -b
             xcodebuild \

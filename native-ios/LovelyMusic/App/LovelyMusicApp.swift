@@ -11,6 +11,7 @@ struct LovelyMusicApp: App {
 
     /// Built synchronously so offline library, CarPlay and background playback can open immediately.
     @State private var diContainer: DIContainer?
+    @State private var isLocalLibraryReady = false
 
     @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = true
     @AppStorage("disableScreenshots") private var disableScreenshots = false
@@ -77,7 +78,7 @@ struct LovelyMusicApp: App {
 
     private var appContent: some View {
         ZStack {
-            if let diContainer {
+            if let diContainer, isLocalLibraryReady {
                 if hasCompletedOnboarding {
                     ContentView()
                         .environment(diContainer)
@@ -104,10 +105,21 @@ struct LovelyMusicApp: App {
                     }
                     .transition(.opacity)
                 }
+            } else {
+                EvanTubeLaunchView()
             }
         }
         .task {
-            GoogleDrivePlaylistSync.shared.startForeground()
+            // Warm the actual local library before presenting it. DI remains
+            // available to CarPlay/background scenes; remote requests never gate launch.
+            if !isLocalLibraryReady, let diContainer {
+                await diContainer.libraryViewModel.loadLibrary()
+                guard !Task.isCancelled else { return }
+                isLocalLibraryReady = true
+            }
+            if scenePhase != .background {
+                GoogleDrivePlaylistSync.shared.startForeground()
+            }
             await flagManager.fetchFlags()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -124,7 +136,9 @@ struct LovelyMusicApp: App {
                     di.audioCacheManager.removeOrphans(knownDownloadIds: downloadIds)
                 }
             } else if newPhase == .active {
-                GoogleDrivePlaylistSync.shared.startForeground()
+                if isLocalLibraryReady {
+                    GoogleDrivePlaylistSync.shared.startForeground()
+                }
                 // polish-B4: invalidate home cache when returning from a
                 // long background pause (>15 min) so users see fresh
                 // recommendations. On first launch the cache is not stale
