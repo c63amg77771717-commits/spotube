@@ -26,7 +26,8 @@ final class LrcLibService: LyricsRepositoryProtocol {
             URLQueryItem(name: "track_name", value: title),
             URLQueryItem(name: "artist_name", value: artist)
         ]
-        if let duration {
+        let validDuration = duration.flatMap { (1...3600).contains($0) ? $0 : nil }
+        if let duration = validDuration {
             queryItems.append(URLQueryItem(name: "duration", value: String(duration)))
         }
         components.queryItems = queryItems
@@ -34,14 +35,18 @@ final class LrcLibService: LyricsRepositoryProtocol {
         guard let url = components.url else { return nil }
 
         var request = URLRequest(url: url)
-        request.setValue("LovelyMusic/1.0", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 15
+        request.setValue("EvanTube/1.0.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
+        var (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
+        if httpResponse.statusCode == 404, validDuration != nil {
+            components.queryItems = queryItems.filter { $0.name != "duration" }
+            request.url = components.url
+            (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
         }
         if httpResponse.statusCode == 404 { return nil }
-        guard httpResponse.statusCode == 200 else { throw URLError(.badServerResponse) }
+        guard httpResponse.statusCode == 200 else { throw PublicSourceError.http("LRCLib", httpResponse.statusCode) }
 
         let lrcResponse = try decoder.decode(LrcLibResponse.self, from: data)
 

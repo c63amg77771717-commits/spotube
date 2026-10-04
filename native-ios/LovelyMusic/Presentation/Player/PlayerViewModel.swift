@@ -330,7 +330,7 @@ final class PlayerViewModel {
             } catch {
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
-                self.lyricsError = "歌詞取得失敗，請重試"
+                self.lyricsError = "歌詞取得失敗（\(error.localizedDescription)），請重試"
             }
             guard self.lyricsGeneration == generation else { return }
             self.isLoadingLyrics = false

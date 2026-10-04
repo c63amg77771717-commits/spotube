@@ -1,7 +1,7 @@
 import Foundation
 
-struct EvanTubeOnlineItem: Identifiable {
-    enum Kind { case song, release }
+struct EvanTubeOnlineItem: Identifiable, Codable {
+    enum Kind: String, Codable { case song, release }
     let id: String
     let title: String
     let artist: String
@@ -10,7 +10,7 @@ struct EvanTubeOnlineItem: Identifiable {
     let releaseDate: Date?
 }
 
-struct EvanTubeOnlineFeed {
+struct EvanTubeOnlineFeed: Codable {
     let sourceName: String
     let updatedAt: Date?
     let periodStart: Date?
@@ -156,11 +156,49 @@ enum EvanTubeOnlineAlbumResolver {
 }
 
 enum EvanTubeOnlineFeedService {
-    static func chart(region: String) async throws -> EvanTubeOnlineFeed {
+    private struct CachedChart: Codable {
+        let fetchedAt: Date
+        let feed: EvanTubeOnlineFeed
+    }
+
+    static func chart(region: String, session: URLSession = .shared,
+                      defaults: UserDefaults = .standard, now: Date = Date()) async throws -> EvanTubeOnlineFeed {
         guard region.count == 2, region.utf8.allSatisfy({ (65...90).contains($0) }) else {
             throw URLError(.badURL)
         }
-        let root = try await json("https://rss.marketingtools.apple.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json")
+        let key = "evantube.chart.v1.\(region)"
+        do {
+            let feed: EvanTubeOnlineFeed
+            do { feed = try await appleChart(region: region, session: session) }
+            catch is CancellationError { throw CancellationError() }
+            catch let error as URLError where error.code == .badServerResponse { throw error }
+            catch {
+                if let error = error as? URLError, error.code == .cancelled { throw error }
+                feed = try await iTunesChart(region: region, session: session)
+            }
+            try Task.checkCancellation()
+            if let data = try? JSONEncoder().encode(CachedChart(fetchedAt: now, feed: feed)) {
+                defaults.set(data, forKey: key)
+            }
+            return feed
+        } catch {
+            try Task.checkCancellation()
+            if let error = error as? URLError, error.code == .cancelled { throw error }
+            if let data = defaults.data(forKey: key),
+               let cached = try? JSONDecoder().decode(CachedChart.self, from: data),
+               (0...86400).contains(now.timeIntervalSince(cached.fetchedAt)) {
+                let date = DateFormatter()
+                date.locale = Locale(identifier: "zh_TW")
+                date.dateFormat = "yyyy/MM/dd HH:mm"
+                return EvanTubeOnlineFeed(sourceName: "\(cached.feed.sourceName) · 快取（取得於 \(date.string(from: cached.fetchedAt))）",
+                    updatedAt: cached.feed.updatedAt, periodStart: cached.feed.periodStart, items: cached.feed.items)
+            }
+            throw error
+        }
+    }
+
+    private static func appleChart(region: String, session: URLSession) async throws -> EvanTubeOnlineFeed {
+        let root = try await json("https://rss.marketingtools.apple.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json", session: session, source: "Apple Music")
         guard let feed = root["feed"] as? [String: Any],
               let rows = feed["results"] as? [[String: Any]] else { throw URLError(.badServerResponse) }
         let items = rows.compactMap { row -> EvanTubeOnlineItem? in
@@ -174,6 +212,24 @@ enum EvanTubeOnlineFeedService {
             sourceName: "Apple Music · \(region)",
             updatedAt: date(feed["updated"]), periodStart: nil, items: items
         )
+    }
+
+    private static func iTunesChart(region: String, session: URLSession) async throws -> EvanTubeOnlineFeed {
+        let root = try await json("https://itunes.apple.com/\(region.lowercased())/rss/topsongs/limit=20/json", session: session, source: "iTunes")
+        guard let feed = root["feed"] as? [String: Any],
+              let rows = feed["entry"] as? [[String: Any]] else { throw URLError(.badServerResponse) }
+        let items = rows.compactMap { row -> EvanTubeOnlineItem? in
+            guard let identity = row["id"] as? [String: Any],
+                  let attributes = identity["attributes"] as? [String: Any],
+                  let id = string(attributes["im:id"]),
+                  let title = string((row["im:name"] as? [String: Any])?["label"]) else { return nil }
+            return EvanTubeOnlineItem(id: id, title: title,
+                artist: string((row["im:artist"] as? [String: Any])?["label"]) ?? "",
+                artworkURL: (row["im:image"] as? [[String: Any]])?.last.flatMap { string($0["label"]) },
+                kind: .song, releaseDate: nil)
+        }
+        return EvanTubeOnlineFeed(sourceName: "iTunes · \(region) 熱門歌曲（Apple Music 暫時不可用）",
+            updatedAt: date((feed["updated"] as? [String: Any])?["label"]), periodStart: nil, items: items)
     }
 
     static func weekly() async throws -> EvanTubeOnlineFeed {
@@ -224,13 +280,14 @@ enum EvanTubeOnlineFeedService {
         )
     }
 
-    private static func json(_ address: String) async throws -> [String: Any] {
+    private static func json(_ address: String, session: URLSession = .shared, source: String = "線上來源") async throws -> [String: Any] {
         guard let url = URL(string: address) else { throw URLError(.badURL) }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200,
-              data.count <= 2 * 1024 * 1024,
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await PublicSourceRequest.data(for: request, session: session, source: source)
+        guard response.statusCode == 200 else { throw PublicSourceError.http(source, response.statusCode) }
+        guard data.count <= 2 * 1024 * 1024,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw URLError(.badServerResponse)
         }
@@ -250,6 +307,10 @@ enum EvanTubeOnlineFeedService {
         guard let text = raw as? String else { return nil }
         let iso = ISO8601DateFormatter()
         if let parsed = iso.date(from: text) { return parsed }
+        let rss = DateFormatter()
+        rss.locale = Locale(identifier: "en_US_POSIX")
+        rss.dateFormat = "EEE, d MMM yyyy HH:mm:ss Z"
+        if let parsed = rss.date(from: text) { return parsed }
         let simple = DateFormatter()
         simple.locale = Locale(identifier: "en_US_POSIX")
         simple.timeZone = TimeZone(secondsFromGMT: 0)

@@ -63,7 +63,7 @@ final class EvanTubeHomeFeeds {
         if chartGeneration == request {
             switch chartResult {
             case .success(let feed): chart = feed; chartError = nil
-            case .failure: chartError = "無法取得 Apple Music 榜單；請檢查連線後重試。"
+            case .failure(let error): chartError = "無法取得排行榜（\(error.localizedDescription)）；請稍後重試。"
             }
         }
         let weeklyResult = await weeklyRequest
@@ -91,7 +91,7 @@ final class EvanTubeHomeFeeds {
         guard !Task.isCancelled, chartGeneration == request else { return }
         switch result {
         case .success(let feed): chart = feed
-        case .failure: chartError = "無法取得 Apple Music 榜單；請檢查連線後重試。"
+        case .failure(let error): chartError = "無法取得排行榜（\(error.localizedDescription)）；請稍後重試。"
         }
     }
 
@@ -151,7 +151,7 @@ struct EvanTubeHomeView: View {
                 }
                 recentSection
                 nativeSection
-                onlineSection(title: "最近熱門", subtitle: "Apple Music · \(region.label) 即時榜", items: Array((feeds.chart?.items ?? []).prefix(6)), source: feeds.chart, error: feeds.chartError)
+                onlineSection(title: "最近熱門", subtitle: feeds.chart?.sourceName ?? "\(region.label) 音樂排行榜", items: Array((feeds.chart?.items ?? []).prefix(6)), source: feeds.chart, error: feeds.chartError)
                 chartSection
                 onlineSection(title: "本週精選", subtitle: "ListenBrainz 社群週榜", items: feeds.weekly?.items ?? [], source: feeds.weekly, error: feeds.weeklyError)
                 onlineSection(title: "最新發行", subtitle: "ListenBrainz · MusicBrainz · 最近 7 天", items: Array((feeds.releases?.items ?? []).prefix(20)), source: feeds.releases, error: feeds.releaseError)
@@ -343,7 +343,7 @@ struct EvanTubeHomeView: View {
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
-                sectionTitle("各語系音樂排行", subtitle: "Apple Music · 榜單按地區統計")
+                sectionTitle("各語系音樂排行", subtitle: feeds.chart?.sourceName ?? "榜單按地區統計")
                 Spacer(minLength: 8)
                 Menu {
                     ForEach(EvanTubeRegion.all) { option in
