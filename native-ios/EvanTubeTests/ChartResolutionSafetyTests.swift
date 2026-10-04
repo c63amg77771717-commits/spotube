@@ -143,6 +143,38 @@ final class ChartResolutionSafetyTests: XCTestCase {
         XCTAssertNil(resolved, "Bilingual metadata must not override explicit version selection")
     }
 
+    func testLatinArtistCannotGainAnUnrelatedArtistAlias() async throws {
+        let resolved = try await EvanTubeOnlineSongResolver.resolve(item()) { _ in
+            [self.song(title: "Fixture Artist Different Artist《Fixture Track》Official Audio")]
+        }
+        XCTAssertNil(resolved, "An extra same-script credit is not a bilingual alias")
+    }
+
+    func testBilingualArtistAliasDoesNotEraseCollaborationMarkers() async throws {
+        for marker in ["&", "+", "×", "/", "、", ","] {
+            let resolved = try await EvanTubeOnlineSongResolver.resolve(item(title: "要去什麼地方", artist: "田馥甄")) { _ in
+                [self.song(title: "田馥甄 \(marker) Jay Chou《要去什麼地方 The Land of Maybe》Official Audio")]
+            }
+            XCTAssertNil(resolved, "The guest credit \(marker) is part of the recording")
+        }
+    }
+
+    func testNumericRecordingSuffixIsNotAnEnglishTitleTranslation() async throws {
+        let resolved = try await EvanTubeOnlineSongResolver.resolve(item(title: "要去什麼地方", artist: "田馥甄")) { _ in
+            [self.song(title: "田馥甄 Hebe Tien《要去什麼地方 2026》Official Audio")]
+        }
+        XCTAssertNil(resolved)
+    }
+
+    func testCatalogTitleThatIsAlsoAPresentationLabelIsPreserved() async throws {
+        for title in ["Audio", "Official", "Visualizer"] {
+            let resolved = try await EvanTubeOnlineSongResolver.resolve(item(title: title)) { _ in
+                [self.song(title: "Fixture Artist - \(title) (Official Audio)")]
+            }
+            XCTAssertEqual(resolved?.id, "aaaaaaaaaaa", "Stripping labels must stop at the complete catalog title")
+        }
+    }
+
     @MainActor func testFailedRefreshKeepsPreviouslyLoadedFeedsVisible() async {
         let feeds = EvanTubeHomeFeeds()
         let cached = EvanTubeOnlineFeed(sourceName: "cached chart", updatedAt: nil, periodStart: nil, items: [item()])
