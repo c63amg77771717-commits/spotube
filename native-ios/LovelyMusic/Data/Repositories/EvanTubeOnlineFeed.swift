@@ -57,6 +57,7 @@ enum EvanTubeOnlineSongResolver {
     }
 
     private static func hasArtistCredit(_ candidate: String, item: EvanTubeOnlineItem) -> Bool {
+        if structuredTitleMatches(candidate, item: item) { return true }
         let title = normalized(candidate)
         let artistPattern = normalized(item.artist).split(separator: " ").map {
             NSRegularExpression.escapedPattern(for: String($0))
@@ -84,12 +85,48 @@ enum EvanTubeOnlineSongResolver {
         }
         if title == expected { return true }
         // Only remove known presentation labels, never arbitrary remaining title words.
-        let suffix = "(?:official music video|official lyric video|official video|official audio|music video|lyric video|lyrics|visualizer|official|audio|mv|hd|4k)"
-        while let range = title.range(of: "(?:^| )" + suffix + "$", options: .regularExpression) {
-            title.removeSubrange(range)
-            if title == expected { return true }
+        if presentationStripped(title) == expected { return true }
+        return structuredTitleMatches(candidate, item: item)
+    }
+
+    private static func presentationStripped(_ value: String) -> String {
+        var text = value
+        let label = "(?:official music video|official lyric video|official video|official audio|music video|lyric video|lyrics|visualizer|official|audio|mv|hd|4k)"
+        while let range = text.range(of: "(?:^| )" + label + "$", options: .regularExpression) {
+            text.removeSubrange(range)
         }
-        return false
+        return text
+    }
+
+    private static func structuredTitleMatches(_ candidate: String, item: EvanTubeOnlineItem) -> Bool {
+        // Preserve title delimiters: flattening the bilingual artist and song into one
+        // string loses the boundary in e.g. Artist English Name《Song English Title》.
+        guard let opening = candidate.range(of: "[《〈]", options: .regularExpression) else { return false }
+        let closingCharacter = candidate[opening] == "《" ? "》" : "〉"
+        guard let closing = candidate.range(of: closingCharacter, range: opening.upperBound..<candidate.endIndex) else { return false }
+        let artist = normalized(item.artist)
+        let credit = normalized(String(candidate[..<opening.lowerBound]))
+        guard !artist.isEmpty else { return false }
+        let variants = "\\b(live|cover|remix|mix|acoustic|instrumental|karaoke|unplugged|performance|reaction|review|teaser|trailer|snippet|sped|slowed|nightcore|remaster|remastered|version|feat|featuring|ft|with|by)\\b"
+        func latinMetadata(_ value: String) -> Bool {
+            !value.isEmpty && value.unicodeScalars.allSatisfy {
+                $0.value == 32 || (48...57).contains($0.value) || (97...122).contains($0.value)
+            } && value.range(of: variants, options: .regularExpression) == nil
+        }
+        if credit != artist {
+            guard credit.hasPrefix(artist + " "), latinMetadata(String(credit.dropFirst(artist.count + 1))) else { return false }
+        }
+        let tail = normalized(String(candidate[closing.upperBound...]))
+        guard presentationStripped(tail).isEmpty else { return false }
+        let title = normalized(String(candidate[opening.upperBound..<closing.lowerBound]))
+        let expected = normalized(item.title)
+        if title == expected { return true }
+        // A separate Latin translation may follow the complete non-Latin catalog
+        // title. Never trim more native-language title words or recording variants.
+        let nativeTitle = expected.unicodeScalars.contains { $0.value > 127 }
+            && !expected.unicodeScalars.contains { (97...122).contains($0.value) }
+        guard nativeTitle, !expected.isEmpty, title.hasPrefix(expected + " ") else { return false }
+        return latinMetadata(String(title.dropFirst(expected.count + 1)))
     }
 
     fileprivate static func matches(_ candidate: String, _ expected: String) -> Bool {
