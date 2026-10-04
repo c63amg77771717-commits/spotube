@@ -128,7 +128,6 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["More Than Music"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["正在開啟你的音樂世界…"].exists)
         let loadingProgress = app.descendants(matching: .any)["evantube.launch.progress"]
-        if !loadingProgress.exists { print("Launch accessibility tree: \(app.debugDescription)") }
         XCTAssertTrue(loadingProgress.exists)
         XCTAssertTrue(app.staticTexts["Evan Liao"].exists)
         XCTAssertTrue(app.staticTexts["© 2026 Evan Liao · EvanTube"].exists)

@@ -37,7 +37,6 @@ jobs:
           }))
           PY
       - name: Test native playback and browser session handoff
-        if: false
         working-directory: native-ios
         run: |
           xcodebuild \
