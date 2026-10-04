@@ -198,18 +198,11 @@ struct PlaybackAudioSettingsView: View {
                     SettingsRow(
                         icon: "quote.bubble.fill",
                         iconColor: Theme.Colors.brandGradientEnd,
-                        title: "Auto-Show Lyrics"
+                        title: "切歌自動顯示歌詞"
                     ) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            CustomToggle(
-                                isOn: Binding(
-                                    get: { viewModel.showLyricsAutomatically },
-                                    set: { newValue in
-                                            viewModel.showLyricsAutomatically = newValue
-                                    }
-                                )
-                            )
-                        }
+                        Text("現在播放頁面會自動顯示；仍可手動選擇影片或封面。")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
                     }
 
                     SettingsDivider()

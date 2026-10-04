@@ -308,6 +308,7 @@ final class PlayerViewModel {
     }
 
     func loadLyrics(for song: Song) async {
+        guard currentSong?.id == song.id else { return }
         lyricsTask?.cancel()
         lyricsGeneration += 1
         let generation = lyricsGeneration
@@ -322,11 +323,11 @@ final class PlayerViewModel {
                 let result = try await self.getLyricsUseCase.execute(
                     title: song.title, artist: song.artistName, duration: song.duration)
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
-                      self.currentSong == nil || self.currentSong?.id == song.id else { return }
+                      self.currentSong?.id == song.id else { return }
                 self.lyrics = result?.lines.isEmpty == false ? result : nil
             } catch {
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
-                      self.currentSong == nil || self.currentSong?.id == song.id else { return }
+                      self.currentSong?.id == song.id else { return }
                 self.lyricsError = "歌詞取得失敗，請重試"
             }
             guard self.lyricsGeneration == generation else { return }
