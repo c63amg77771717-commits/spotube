@@ -61,9 +61,9 @@ private actor PublicRecoveryState {
 private final class PublicRecoveryFixture: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    private var task: Task<Void, Never>?
+    private var responseTask: Task<Void, Never>?
     override func startLoading() {
-        task = Task {
+        responseTask = Task {
             let url = request.url!
             let key = url.path
             let counter = await PublicRecoveryState.shared.next(url.host == "fixture.test" ? String(key.dropFirst()) : url.absoluteString)
@@ -78,5 +78,5 @@ private final class PublicRecoveryFixture: URLProtocol {
             client?.urlProtocolDidFinishLoading(self)
         }
     }
-    override func stopLoading() { task?.cancel() }
+    override func stopLoading() { responseTask?.cancel() }
 }
