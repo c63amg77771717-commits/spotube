@@ -79,9 +79,10 @@ private struct EvanTubeLoadingBar: View {
                 .clipShape(Capsule())
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("正在載入")
-        .accessibilityIdentifier("evantube.launch.progress")
+        .accessibilityRepresentation {
+            ProgressView("正在載入")
+                .accessibilityIdentifier("evantube.launch.progress")
+        }
     }
 }
 
