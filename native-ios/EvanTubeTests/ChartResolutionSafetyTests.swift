@@ -72,6 +72,13 @@ final class ChartResolutionSafetyTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    func testArtistTokenInsideSongTitleIsNotArtistEvidence() async throws {
+        let resolved = try await EvanTubeOnlineSongResolver.resolve(item(title: "Killer Queen", artist: "Queen")) { _ in
+            [self.song(title: "Killer Queen (Official Video)", artist: "Different Artist")]
+        }
+        XCTAssertNil(resolved, "An artist word occurring in the recording title does not identify the performer")
+    }
+
     @MainActor func testFailedRefreshKeepsPreviouslyLoadedFeedsVisible() async {
         let feeds = EvanTubeHomeFeeds()
         let cached = EvanTubeOnlineFeed(sourceName: "cached chart", updatedAt: nil, periodStart: nil, items: [item()])
