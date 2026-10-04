@@ -198,9 +198,9 @@ struct PlaybackAudioSettingsView: View {
                     SettingsRow(
                         icon: "quote.bubble.fill",
                         iconColor: Theme.Colors.brandGradientEnd,
-                        title: "切歌自動顯示歌詞"
+                        title: "記憶播放頁面選擇"
                     ) {
-                        Text("現在播放頁面會自動顯示；仍可手動選擇影片或封面。")
+                        Text("記憶歌詞或封面選擇，切歌不會自動改變；仍可手動開啟影片或佇列。")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                     }

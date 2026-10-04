@@ -159,7 +159,9 @@ final class PlayerViewModel {
 
     var isFullPlayerPresented: Bool = false
     var isQueuePresented: Bool = false
-    var isLyricsVisible: Bool = false
+    var isLyricsVisible: Bool = UserDefaults.standard.bool(forKey: "playerLyricsVisible") {
+        didSet { UserDefaults.standard.set(isLyricsVisible, forKey: "playerLyricsVisible") }
+    }
     var showYouTubeLoginPrompt: Bool = false
     var isDockHidden: Bool = false
 
@@ -313,7 +315,6 @@ final class PlayerViewModel {
         lyricsTask?.cancel()
         lyricsGeneration += 1
         let generation = lyricsGeneration
-        if lyricsTrackID != song.id { isLyricsVisible = true }
         lyricsTrackID = song.id
         isLoadingLyrics = true
         lyricsError = nil
