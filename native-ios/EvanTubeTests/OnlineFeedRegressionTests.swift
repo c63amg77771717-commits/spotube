@@ -2,6 +2,23 @@ import XCTest
 @testable import LovelyMusic
 
 final class OnlineFeedRegressionTests: XCTestCase {
+    func testCapturedLiveTaiwanPayloadPassesProductionChartDecoder() async throws {
+        URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
+        defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
+        let feed = try await EvanTubeOnlineFeedService.chart(region: "VV")
+        XCTAssertEqual(feed.items.count, 20)
+        XCTAssertFalse(feed.items[0].title.isEmpty)
+        XCTAssertFalse(feed.items[0].artist.isEmpty)
+    }
+    func testUnavailableAppleFeedUsesExplicitSameRegionITunesSource() async throws {
+        URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
+        defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
+        let feed = try await EvanTubeOnlineFeedService.chart(region: "RR")
+        XCTAssertTrue(feed.sourceName.contains("iTunes"))
+        XCTAssertTrue(feed.sourceName.contains("RR"))
+        XCTAssertEqual(feed.items.first?.id, "876543210")
+        XCTAssertEqual(feed.items.first?.title, "Regional fixture")
+    }
     func testChartUsesCanonicalAppleHostWithoutLegacyRedirect() async throws {
         URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
         defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
@@ -193,14 +210,24 @@ private final class ChartSearchResponseProtocol: URLProtocol {
 
 private final class OnlineFeedResponseProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool {
-        guard let url = request.url, ["rss.applemarketingtools.com", "rss.marketingtools.apple.com"].contains(url.host ?? "") else { return false }
-        return ["ww", "xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
+        guard let url = request.url, ["rss.applemarketingtools.com", "rss.marketingtools.apple.com", "itunes.apple.com"].contains(url.host ?? "") else { return false }
+        return ["rr", "vv", "ww", "xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
     }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         let url = request.url!
+        if url.path.contains("/vv/") {
+            let file = Bundle(for: OnlineFeedRegressionTests.self).url(forResource: "apple-tw20-live-20261004", withExtension: "json")!
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: try! Data(contentsOf: file))
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
         let json: String
-        if url.path.contains("/zz/") {
+        if url.host == "itunes.apple.com" {
+            json = #"{"feed":{"updated":{"label":"2026-10-04T10:00:00Z"},"entry":[{"id":{"attributes":{"im:id":"876543210"}},"im:name":{"label":"Regional fixture"},"im:artist":{"label":"Regional artist"},"im:image":[{"label":"https://example.com/art.png"}]}]}}"#
+        } else if url.path.contains("/zz/") {
             json = #"{"unexpected":[]}"#
         } else if url.path.contains("/yy/") {
             json = #"{"feed":{"results":[]}}"#
@@ -209,7 +236,8 @@ private final class OnlineFeedResponseProtocol: URLProtocol {
             json = #"{"feed":{"results":[{"id":"1234567890","name":"Fixture track","artistName":"Fixture artist"}]}}"#
         }
         let correctRoute = url.host == "rss.marketingtools.apple.com" && url.path == "/api/v2/ww/music/most-played/20/songs.json"
-        let response = HTTPURLResponse(url: url, statusCode: url.path.contains("/ww/") && !correctRoute ? 503 : 200, httpVersion: nil,
+        let unavailable = url.path.contains("/rr/") && url.host != "itunes.apple.com"
+        let response = HTTPURLResponse(url: url, statusCode: unavailable || (url.path.contains("/ww/") && !correctRoute) ? 503 : 200, httpVersion: nil,
                                        headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Data(json.utf8))
