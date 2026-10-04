@@ -6,7 +6,8 @@ import XCTest
         Song(id: id, title: id, artistName: "Artist", artistId: nil, albumName: nil,
              albumId: nil, duration: 180, thumbnailURL: nil)
     }
-    private func model(_ repository: LyricsRepositoryProtocol, engine: AudioEngine = AudioEngine()) -> PlayerViewModel {
+    private func model(_ repository: LyricsRepositoryProtocol, engine: AudioEngine? = nil) -> PlayerViewModel {
+        let engine = engine ?? AudioEngine()
         if engine.currentTrack == nil { select("AAAAAAAAAAA", engine: engine) }
         return PlayerViewModel(audioEngine: engine,
             resolveStreamUseCase: ResolveStreamUseCase(repository: AutomaticLyricsPlayerRepository()),
