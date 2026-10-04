@@ -85,15 +85,16 @@ enum EvanTubeOnlineSongResolver {
         }
         if title == expected { return true }
         // Only remove known presentation labels, never arbitrary remaining title words.
-        if presentationStripped(title) == expected { return true }
+        if presentationStripped(title, matching: expected) == expected { return true }
         return structuredTitleMatches(candidate, item: item)
     }
 
-    private static func presentationStripped(_ value: String) -> String {
+    private static func presentationStripped(_ value: String, matching expected: String? = nil) -> String {
         var text = value
         let label = "(?:official music video|official lyric video|official video|official audio|music video|lyric video|lyrics|visualizer|official|audio|mv|hd|4k)"
         while let range = text.range(of: "(?:^| )" + label + "$", options: .regularExpression) {
             text.removeSubrange(range)
+            if let expected, text == expected { return text }
         }
         return text
     }
@@ -105,16 +106,22 @@ enum EvanTubeOnlineSongResolver {
         let closingCharacter = candidate[opening] == "《" ? "》" : "〉"
         guard let closing = candidate.range(of: closingCharacter, range: opening.upperBound..<candidate.endIndex) else { return false }
         let artist = normalized(item.artist)
-        let credit = normalized(String(candidate[..<opening.lowerBound]))
+        let rawCredit = String(candidate[..<opening.lowerBound])
+        let credit = normalized(rawCredit)
         guard !artist.isEmpty else { return false }
         let variants = "\\b(live|cover|remix|mix|acoustic|instrumental|karaoke|unplugged|performance|reaction|review|teaser|trailer|snippet|sped|slowed|nightcore|remaster|remastered|version|feat|featuring|ft|with|by)\\b"
         func latinMetadata(_ value: String) -> Bool {
             !value.isEmpty && value.unicodeScalars.allSatisfy {
                 $0.value == 32 || (48...57).contains($0.value) || (97...122).contains($0.value)
-            } && value.range(of: variants, options: .regularExpression) == nil
+            } && value.unicodeScalars.contains { (97...122).contains($0.value) }
+                && value.range(of: variants, options: .regularExpression) == nil
         }
         if credit != artist {
-            guard credit.hasPrefix(artist + " "), latinMetadata(String(credit.dropFirst(artist.count + 1))) else { return false }
+            // An alias must cross scripts. Keep guest delimiters before punctuation
+            // normalization so a different collaboration cannot become an alias.
+            guard artist.unicodeScalars.contains(where: { $0.value > 127 }),
+                  !rawCredit.contains(where: { "&＆+＋×/／、,，".contains($0) }),
+                  credit.hasPrefix(artist + " "), latinMetadata(String(credit.dropFirst(artist.count + 1))) else { return false }
         }
         let tail = normalized(String(candidate[closing.upperBound...]))
         guard presentationStripped(tail).isEmpty else { return false }
