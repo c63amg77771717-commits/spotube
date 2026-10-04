@@ -32,8 +32,12 @@ struct EvanTubeLaunchView: View {
                     Text("正在開啟你的音樂世界…")
                         .font(.system(size: 13))
                         .foregroundStyle(Color(red: 154 / 255, green: 166 / 255, blue: 184 / 255))
-                    EvanTubeLoadingBar()
+                    ProgressView("正在載入")
+                        .progressViewStyle(EvanTubeLoadingBarStyle())
                         .frame(width: min(geometry.size.width * 0.6, 280), height: 4)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("正在載入")
+                        .accessibilityIdentifier("evantube.launch.progress")
                 }
                 .position(x: geometry.size.width / 2, y: geometry.size.height * 0.73)
 
@@ -50,17 +54,16 @@ struct EvanTubeLaunchView: View {
             }
         }
         .preferredColorScheme(.dark)
-        .accessibilityIdentifier("evantube.launch.preview")
     }
 }
 
-private struct EvanTubeLoadingBar: View {
+private struct EvanTubeLoadingBarStyle: ProgressViewStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     private var isStatic: Bool { reduceMotion || scenePhase != .active }
 
-    var body: some View {
+    func makeBody(configuration: Configuration) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: isStatic)) { timeline in
             GeometryReader { geometry in
                 let segmentWidth = geometry.size.width * 0.4
@@ -78,10 +81,6 @@ private struct EvanTubeLoadingBar: View {
                 }
                 .clipShape(Capsule())
             }
-        }
-        .accessibilityRepresentation {
-            ProgressView("正在載入")
-                .accessibilityIdentifier("evantube.launch.progress")
         }
     }
 }
