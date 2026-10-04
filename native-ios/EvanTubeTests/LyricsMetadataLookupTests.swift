@@ -2,12 +2,12 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsMetadataLookupTests: XCTestCase {
-    private func lyrics(_ title: String, artist: String = "Rick Astley", allowVideoCredits: Bool = true) async throws -> SyncedLyrics? {
+    private func lyrics(_ title: String, artist: String = "Rick Astley", allowVideoCredits: Bool = true, duration: Int? = nil) async throws -> SyncedLyrics? {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [LyricsMetadataFixture.self]
         let session = URLSession(configuration: config)
         defer { session.invalidateAndCancel() }
-        return try await LrcLibService(session: session).getLyrics(title: title, artist: artist, duration: nil, allowVideoCredits: allowVideoCredits)
+        return try await LrcLibService(session: session).getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: allowVideoCredits)
     }
     func testExactArtistPrefixAndOfficialSuffixProduceOneMatchingLookup() async throws {
         await LyricsMetadataRequests.shared.reset()
@@ -67,6 +67,30 @@ final class LyricsMetadataLookupTests: XCTestCase {
             XCTAssertEqual(requests.last, "Rick Astley|\(preserved)", "Only an entire independent presentation suffix may be removed")
         }
     }
+    func testDurationlessResponseStillMustKeepRequestedArtistVersionAndIdentity() async throws {
+        for title in ["Wrong Artist", "Song Live", "Missing Identity"] {
+            let result = try await lyrics(title, allowVideoCredits: false, duration: 240)
+            XCTAssertNil(result, "A durationless retry cannot display another recording or unidentified lyrics: \(title)")
+        }
+    }
+    func testCatalogPresentationWordsAreNotGuessedWithoutVideoOriginOrExactArtistCredit() async throws {
+        await LyricsMetadataRequests.shared.reset()
+        let result = try await lyrics("Never Gonna Give You Up Official MV", allowVideoCredits: false)
+        XCTAssertNil(result)
+        let requests = await LyricsMetadataRequests.shared.pairs
+        XCTAssertEqual(requests.count, 1)
+        let verified = try await lyrics("Never Gonna Give You Up Official MV", allowVideoCredits: true)
+        XCTAssertEqual(verified?.lines.first?.text, "Matched fixture")
+    }
+    func testPipeAndVersusCreditsCannotBeGuessedAsASinglePerformer() async throws {
+        for credit in ["Rick Astley | Guest", "Rick Astley vs Guest", "Rick Astley versus Guest"] {
+            await LyricsMetadataRequests.shared.reset()
+            let result = try await lyrics("\(credit) - Never Gonna Give You Up Official MV", artist: "Uploader")
+            XCTAssertNil(result)
+            let requests = await LyricsMetadataRequests.shared.pairs
+            XCTAssertEqual(requests.count, 1)
+        }
+    }
 }
 
 private actor LyricsMetadataRequests {
@@ -85,12 +109,14 @@ private final class LyricsMetadataFixture: URLProtocol {
             let title = values.first { $0.name == "track_name" }!.value!
             let artist = values.first { $0.name == "artist_name" }!.value!
             await LyricsMetadataRequests.shared.append("\(artist)|\(title)")
-            let match = artist == "Rick Astley" && ["Never Gonna Give You Up", "Song Remix", "Song Live", "Wrong Artist"].contains(title)
+            let hasDuration = values.contains { $0.name == "duration" }
+            let match = !hasDuration && artist == "Rick Astley" && ["Never Gonna Give You Up", "Song Remix", "Song Live", "Wrong Artist", "Missing Identity"].contains(title)
             let response = HTTPURLResponse(url: request.url!, statusCode: match ? 200 : 404, httpVersion: nil, headerFields: nil)!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             if match {
-                let json: [String: String] = ["trackName": title == "Song Live" ? "Song" : title,
+                var json: [String: String] = ["trackName": title == "Song Live" ? "Song" : title,
                     "artistName": title == "Wrong Artist" ? "Another Performer" : artist, "plainLyrics": "Matched fixture"]
+                if title == "Missing Identity" { json = ["plainLyrics": "Unidentified fixture"] }
                 client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: json))
             }
             client?.urlProtocolDidFinishLoading(self)

@@ -53,7 +53,8 @@ private final class LyricsHTTPFixture: URLProtocol {
                                        httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if status == 200 {
-            client?.urlProtocol(self, didLoad: Data(#"{"plainLyrics":"Fixture lyrics"}"#.utf8))
+            let json = ["plainLyrics": "Fixture lyrics", "trackName": title ?? "", "artistName": "fixture"]
+            client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: json))
         }
         client?.urlProtocolDidFinishLoading(self)
     }
