@@ -2,7 +2,7 @@ name: EvanTube iOS playback tests (no packaging)
 
 on:
   push:
-    branches: [codex/ios-playback-session-tests-20261003]
+    branches: [codex/ios-playback-session-tests-20261003, codex/ios-chart-title-tests-20261004]
     paths:
       - native-ios/**
       - .github/workflows/evantube-native-ios-tests.yml
@@ -45,13 +45,13 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
-            -only-testing:EvanTubeTests \
+            -only-testing:${{ github.ref == 'refs/heads/codex/ios-chart-title-tests-20261004' && 'EvanTubeTests/ChartResolutionSafetyTests' || 'EvanTubeTests' }} \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
             test
       - name: Verify startup loading UI regression
-        if: always()
+        if: always() && github.ref != 'refs/heads/codex/ios-chart-title-tests-20261004'
         working-directory: native-ios
         run: |
           xcrun simctl shutdown all
