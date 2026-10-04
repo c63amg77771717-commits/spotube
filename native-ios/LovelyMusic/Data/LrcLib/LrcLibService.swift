@@ -2,14 +2,15 @@ import Foundation
 
 final class LrcLibService: LyricsRepositoryProtocol {
     private let baseURL: URL
-    private let session = URLSession.shared
+    private let session: URLSession
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
     }()
 
-    init() {
+    init(session: URLSession = .shared) {
+        self.session = session
         guard let url = URL(string: "https://lrclib.net/api") else {
             fatalError("Invalid hardcoded LrcLib base URL")
         }
@@ -36,10 +37,11 @@ final class LrcLibService: LyricsRepositoryProtocol {
         request.setValue("LovelyMusic/1.0", forHTTPHeaderField: "User-Agent")
 
         let (data, response) = try await session.data(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            return nil
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
         }
+        if httpResponse.statusCode == 404 { return nil }
+        guard httpResponse.statusCode == 200 else { throw URLError(.badServerResponse) }
 
         let lrcResponse = try decoder.decode(LrcLibResponse.self, from: data)
 

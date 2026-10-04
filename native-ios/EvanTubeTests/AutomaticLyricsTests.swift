@@ -6,8 +6,8 @@ import XCTest
         Song(id: id, title: id, artistName: "Artist", artistId: nil, albumName: nil,
              albumId: nil, duration: 180, thumbnailURL: nil)
     }
-    private func model(_ repository: LyricsRepositoryProtocol) -> PlayerViewModel {
-        PlayerViewModel(audioEngine: AudioEngine(),
+    private func model(_ repository: LyricsRepositoryProtocol, engine: AudioEngine = AudioEngine()) -> PlayerViewModel {
+        PlayerViewModel(audioEngine: engine,
             resolveStreamUseCase: ResolveStreamUseCase(repository: AutomaticLyricsPlayerRepository()),
             getLyricsUseCase: GetLyricsUseCase(repository: repository),
             managePlaylistUseCase: ManagePlaylistUseCase(repository: MockPlaylistRepository()),
@@ -16,6 +16,11 @@ import XCTest
             getRelatedSongsUseCase: GetRelatedSongsUseCase(repository: MockInnerTubeRepository()))
     }
     func testLyricsDisplayAutomaticallyEvenWhenLegacyPreferenceIsOffAndNoLyricsExist() async {
+        let previous = UserDefaults.standard.object(forKey: "showLyricsAutomatically")
+        defer {
+            if let previous { UserDefaults.standard.set(previous, forKey: "showLyricsAutomatically") }
+            else { UserDefaults.standard.removeObject(forKey: "showLyricsAutomatically") }
+        }
         UserDefaults.standard.set(false, forKey: "showLyricsAutomatically")
         let vm = model(AutomaticEmptyLyricsRepository())
         await vm.loadLyrics(for: song("AAAAAAAAAAA"))
@@ -35,8 +40,55 @@ import XCTest
         await repository.complete("AAAAAAAAAAA")
         await old.value
         XCTAssertEqual(vm.lyrics?.lines.first?.text, "BBBBBBBBBBB")
+        let cancelled = await repository.cancelled.contains("AAAAAAAAAAA")
+        XCTAssertTrue(cancelled, "Changing songs cancels the old provider task even if it returns late")
         XCTAssertFalse(vm.isLoadingLyrics)
     }
+    func testSameSongRefreshPreservesManualCoverChoiceButNewSongShowsLyrics() async {
+        let vm = model(AutomaticEmptyLyricsRepository())
+        await vm.loadLyrics(for: song("AAAAAAAAAAA"))
+        vm.isLyricsVisible = false
+        await vm.loadLyrics(for: song("AAAAAAAAAAA"))
+        XCTAssertFalse(vm.isLyricsVisible)
+        await vm.loadLyrics(for: song("BBBBBBBBBBB"))
+        XCTAssertTrue(vm.isLyricsVisible)
+        vm.toggleVideoMode()
+        XCTAssertFalse(vm.isLyricsVisible, "The video action remains available while lyrics are automatic")
+    }
+    func testActualTrackObservationShowsLyricsAndPreservesSameTrackManualChoice() async throws {
+        let engine = AudioEngine()
+        let vm = model(AutomaticEmptyLyricsRepository(), engine: engine)
+        func select(_ id: String) {
+            engine.restorePlaybackState(.init(queue: [song(id)], autoplayQueue: [],
+                currentIndex: 0, currentTime: 0, wasPlaying: false, shuffleEnabled: false,
+                repeatMode: AudioEngine.RepeatMode.off.rawValue, savedAt: Date()))
+        }
+        select("AAAAAAAAAAA")
+        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(vm.isLyricsVisible)
+        vm.isLyricsVisible = false
+        select("AAAAAAAAAAA")
+        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertFalse(vm.isLyricsVisible)
+        select("BBBBBBBBBBB")
+        for _ in 0..<20 { await Task.yield() }
+        try await Task.sleep(for: .milliseconds(40))
+        XCTAssertTrue(vm.isLyricsVisible)
+    }
+    func testFailureIsRetryableAndSuccessfulRetryClearsError() async {
+        let repository = AutomaticRetryLyricsRepository()
+        let vm = model(repository)
+        await vm.loadLyrics(for: song("AAAAAAAAAAA"))
+        XCTAssertNotNil(vm.lyricsError)
+        XCTAssertTrue(vm.isLyricsVisible)
+        XCTAssertFalse(vm.isLoadingLyrics)
+        await vm.loadLyrics(for: song("AAAAAAAAAAA"))
+        XCTAssertNil(vm.lyricsError)
+        XCTAssertEqual(vm.lyrics?.lines.first?.text, "retried")
+    }
+
 }
 private struct AutomaticEmptyLyricsRepository: LyricsRepositoryProtocol {
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? { nil }
@@ -49,8 +101,11 @@ private struct AutomaticLyricsPlayerRepository: PlayerRepositoryProtocol {
 }
 private actor AutomaticControlledLyricsRepository: LyricsRepositoryProtocol {
     var pending: [String: CheckedContinuation<SyncedLyrics?, Error>] = [:]
+    var cancelled = Set<String>()
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
-        try await withCheckedThrowingContinuation { pending[title] = $0 }
+        let value: SyncedLyrics? = try await withCheckedThrowingContinuation { pending[title] = $0 }
+        if Task.isCancelled { cancelled.insert(title) }
+        return value
     }
     func waitForRequest(_ title: String) async {
         while pending[title] == nil { await Task.yield() }
@@ -58,5 +113,14 @@ private actor AutomaticControlledLyricsRepository: LyricsRepositoryProtocol {
     func complete(_ title: String) {
         pending.removeValue(forKey: title)?.resume(returning:
             SyncedLyrics(lines: [LyricLine(time: 0, text: title)], source: "fixture"))
+    }
+}
+
+private actor AutomaticRetryLyricsRepository: LyricsRepositoryProtocol {
+    private var attempts = 0
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
+        attempts += 1
+        if attempts == 1 { throw URLError(.notConnectedToInternet) }
+        return SyncedLyrics(lines: [LyricLine(time: 0, text: "retried")], source: "fixture")
     }
 }

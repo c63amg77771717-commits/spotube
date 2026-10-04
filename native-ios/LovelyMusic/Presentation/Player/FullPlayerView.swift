@@ -629,6 +629,14 @@ struct FullPlayerView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
                 Spacer()
             }
+        } else if let error = playerVM.lyricsError {
+            VStack(spacing: Theme.Spacing.md) {
+                Spacer()
+                Text(error).foregroundStyle(Theme.Colors.textSecondary)
+                Button("重試取得歌詞") { playerVM.retryLyrics() }
+                    .accessibilityIdentifier("lyrics_retry")
+                Spacer()
+            }
         } else {
             VStack {
                 Spacer()
@@ -636,7 +644,7 @@ struct FullPlayerView: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.Colors.brandGradient)
-                    Text("No lyrics available")
+                    Text("暫無歌詞")
                         .font(Theme.Typography.subheadline)
                         .foregroundStyle(Theme.Colors.textSecondary)
                 }

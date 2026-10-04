@@ -126,6 +126,10 @@ final class PlayerViewModel {
     // MARK: - Lyrics
     private(set) var lyrics: SyncedLyrics?
     private(set) var isLoadingLyrics = false
+    private(set) var lyricsError: String?
+    @ObservationIgnored private var lyricsTask: Task<Void, Never>?
+    @ObservationIgnored private var lyricsGeneration = 0
+    private var lyricsTrackID: String?
 
     // MARK: - Dynamic Theme
     var dominantColor: Color = Theme.Colors.brandGradientStart
@@ -285,25 +289,56 @@ final class PlayerViewModel {
             audioEngine.setVideoMode(false)
         }
 
+        requestLyrics(for: song)
+    }
+
+    // Track observation can repeat after stream resolution; do not reset a
+    // listener's manual cover/video choice for the same recording.
+    private func requestLyrics(for song: Song) {
+        guard currentSong?.id == song.id, lyricsTrackID != song.id else { return }
+        Task { [weak self] in
+            guard let self, self.currentSong?.id == song.id, self.lyricsTrackID != song.id else { return }
+            await self.loadLyrics(for: song)
+        }
+    }
+
+    func retryLyrics() {
+        guard let song = currentSong else { return }
         Task { [weak self] in await self?.loadLyrics(for: song) }
     }
 
     func loadLyrics(for song: Song) async {
+        lyricsTask?.cancel()
+        lyricsGeneration += 1
+        let generation = lyricsGeneration
+        if lyricsTrackID != song.id { isLyricsVisible = true }
+        lyricsTrackID = song.id
         isLoadingLyrics = true
+        lyricsError = nil
         lyrics = nil
-        do {
-            lyrics = try await getLyricsUseCase.execute(
-                title: song.title,
-                artist: song.artistName,
-                duration: song.duration
-            )
-            if lyrics != nil && UserDefaults.standard.bool(forKey: "showLyricsAutomatically") {
-                isLyricsVisible = true
+        let task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await self.getLyricsUseCase.execute(
+                    title: song.title, artist: song.artistName, duration: song.duration)
+                guard !Task.isCancelled, self.lyricsGeneration == generation,
+                      self.currentSong == nil || self.currentSong?.id == song.id else { return }
+                self.lyrics = result?.lines.isEmpty == false ? result : nil
+            } catch {
+                guard !Task.isCancelled, self.lyricsGeneration == generation,
+                      self.currentSong == nil || self.currentSong?.id == song.id else { return }
+                self.lyricsError = "歌詞取得失敗，請重試"
             }
-        } catch {
-            Log.player.error("Failed to load lyrics: \(error)")
+            guard self.lyricsGeneration == generation else { return }
+            self.isLoadingLyrics = false
         }
-        isLoadingLyrics = false
+        lyricsTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        if lyricsGeneration == generation { isLoadingLyrics = false }
     }
 
     func playPause() {
@@ -455,6 +490,7 @@ final class PlayerViewModel {
     // MARK: - Video Mode
 
     func toggleVideoMode() {
+        isLyricsVisible = false
         isVideoMode.toggle()
         audioEngine.setVideoMode(isVideoMode)
         if isVideoMode, let song = currentSong {
@@ -779,9 +815,14 @@ final class PlayerViewModel {
                     }
 
                     // Reload lyrics for the new track
-                    Task { [weak self] in
-                        await self?.loadLyrics(for: song)
-                    }
+                    self.requestLyrics(for: song)
+                } else {
+                    self.lyricsTask?.cancel()
+                    self.lyricsGeneration += 1
+                    self.lyricsTrackID = nil
+                    self.lyrics = nil
+                    self.lyricsError = nil
+                    self.isLoadingLyrics = false
                 }
 
                 self.observeTrackChanges()
