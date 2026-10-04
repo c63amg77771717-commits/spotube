@@ -109,7 +109,7 @@ enum EvanTubeOnlineSongResolver {
         let rawCredit = String(candidate[..<opening.lowerBound])
         let credit = normalized(rawCredit)
         guard !artist.isEmpty else { return false }
-        let variants = "\\b(live|cover|remix|mix|acoustic|instrumental|karaoke|unplugged|performance|reaction|review|teaser|trailer|snippet|sped|slowed|nightcore|remaster|remastered|version|feat|featuring|ft|with|by)\\b"
+        let variants = "\\b(live|cover|remix|mix|acoustic|instrumental|karaoke|unplugged|performance|reaction|review|teaser|trailer|snippet|sped|slowed|nightcore|remaster|remastered|version|piano|guitar|solo|orchestra|orchestral|arrangement|arranged|radio|edit|edition|alternate|alternative|extended|demo|feat|featuring|ft|with|by)\\b"
         func latinMetadata(_ value: String) -> Bool {
             !value.isEmpty && value.unicodeScalars.allSatisfy {
                 $0.value == 32 || (48...57).contains($0.value) || (97...122).contains($0.value)
