@@ -15,6 +15,10 @@ jobs:
   picker:
     runs-on: macos-14
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, label-identifier]
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -25,7 +29,7 @@ jobs:
           EVANTUBE_PICKER_EVIDENCE: ${{ runner.temp }}/evantube-picker-evidence
         run: |
           echo "EVANTUBE_PICKER_EVIDENCE=$EVANTUBE_PICKER_EVIDENCE" >> "$GITHUB_ENV"
-          python3 scripts/ios-picker-diagnostic/prepare.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_PICKER_EVIDENCE"
+          python3 scripts/ios-picker-diagnostic/prepare.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_PICKER_EVIDENCE" --variant "${{ matrix.variant }}"
       - name: Generate existing native project
         working-directory: native-ios
         run: |
@@ -56,7 +60,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-picker-diagnostic
+          name: EvanTube-build19-picker-diagnostic-${{ matrix.variant }}
           path: |
             ${{ runner.temp }}/evantube-picker-evidence/**/*.png
             ${{ runner.temp }}/evantube-picker-evidence/**/*.txt
@@ -68,7 +72,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-picker-xcresult
+          name: EvanTube-build19-picker-xcresult-${{ matrix.variant }}
           path: ${{ runner.temp }}/evantube-picker.xcresult
           if-no-files-found: warn
           retention-days: 30
