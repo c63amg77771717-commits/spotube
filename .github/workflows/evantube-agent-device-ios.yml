@@ -69,8 +69,6 @@ jobs:
     timeout-minutes: 40
     env:
       AGENT_DEVICE_NO_UPDATE_NOTIFIER: '1'
-      AGENT_DEVICE_STATE_DIR: ${{ runner.temp }}/evantube-agent-device-state
-      EVANTUBE_AGENT_EVIDENCE: ${{ runner.temp }}/evantube-agent-device-evidence
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -80,6 +78,9 @@ jobs:
         with:
           node-version: '24'
       - name: Install verified official agent-device version
+        env:
+          AGENT_DEVICE_STATE_DIR: ${{ runner.temp }}/evantube-agent-device-state
+          EVANTUBE_AGENT_EVIDENCE: ${{ runner.temp }}/evantube-agent-device-evidence
         run: |
           expected='sha512-nD2QNRTbQo3mMEnpOTqgguIreY98lri+VfWBo0Njzc+CLBrISHApUJD2Cs2P8zfzvZCvbGibX1D+LP/B/qeQrQ=='
           actual=$(npm view agent-device@0.21.20 dist.integrity --registry=https://registry.npmjs.org)
@@ -88,6 +89,8 @@ jobs:
           echo "AGENT_DEVICE_ENTRY=$RUNNER_TEMP/evantube-agent-device/node_modules/agent-device/dist/src/index.js" >> "$GITHUB_ENV"
           echo "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin" >> "$GITHUB_PATH"
           mkdir -p "$EVANTUBE_AGENT_EVIDENCE"
+          echo "AGENT_DEVICE_STATE_DIR=$AGENT_DEVICE_STATE_DIR" >> "$GITHUB_ENV"
+          echo "EVANTUBE_AGENT_EVIDENCE=$EVANTUBE_AGENT_EVIDENCE" >> "$GITHUB_ENV"
           node --version > "$EVANTUBE_AGENT_EVIDENCE/node-version.txt"
           "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin/agent-device" --version > "$EVANTUBE_AGENT_EVIDENCE/agent-device-version.txt"
       - name: Prepare isolated simulator fixtures
