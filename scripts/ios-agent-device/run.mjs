@@ -116,6 +116,16 @@ async function settings() {
     until: 'id="lyrics_lrcapi_enabled"', settle: true }));
   await waitID('lyrics_lrcapi_enabled');
 }
+async function waitLocalResolution(id) {
+  await step(`wait-local-resolution-${id}`, async () => {
+    const deadline = Date.now() + 15000;
+    while (Date.now() < deadline) {
+      if (fixtureEvents().some(e => e.kind === 'audio' && e.videoID === id && e.outcome === 'local_wav')) return;
+      await sleep(100);
+    }
+    assert.fail(`${id} did not finish its bounded retry with an actual local resolution`);
+  });
+}
 async function assertNoPlaybackError() {
   const snap = await snapshot();
   assert(!snap.nodes.some(n => n.label === 'Error details'), 'A transient retry must not leave the error panel visible');
@@ -171,10 +181,10 @@ const cases = [
     await step('seek-to-start', () => client.interactions.press({ x: node.rect.x + 1, y: node.rect.y + node.rect.height / 2 }));
     // Previous wraps to an unresolved track, so its injected error cannot be bypassed by the cache.
     await pressLabel('Previous track', false); await waitText('Agent Last');
-    await assertNoPlaybackError(); await screenshot('previous-recovered');
+    await waitLocalResolution('agent_last'); await assertNoPlaybackError(); await screenshot('previous-recovered');
     await pressLabel('Next track', false); await waitText('Arcadia');
     await pressLabel('Next track', false); await waitText('Agent Next');
-    await assertNoPlaybackError(); await screenshot('next-recovered');
+    await waitLocalResolution('agent_next'); await assertNoPlaybackError(); await screenshot('next-recovered');
     const events = fixtureEvents().filter(e => e.kind === 'audio');
     for (const id of ['agent_last', 'agent_next']) {
       const rows = events.filter(e => e.videoID === id);

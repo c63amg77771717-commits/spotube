@@ -48,7 +48,8 @@ replace('LovelyMusic/Presentation/Navigation/ContentView.swift', '''            
                     Song(id: "agent_last", title: "Agent Last", artistName: "Fixture Artist",
                         artistId: nil, albumName: nil, albumId: nil, duration: 98, thumbnailURL: nil)
                 ]
-                playerVM.play(song: songs[0], fromQueue: songs)''')
+                let needsQueue = ["transient", "stale"].contains(ProcessInfo.processInfo.environment["EVANTUBE_AGENT_SCENARIO"] ?? "")
+                playerVM.play(song: songs[0], fromQueue: needsQueue ? songs : [songs[0]])''')
 fixture = native / 'LovelyMusic/App/AgentDeviceAutomationFixture.swift'
 assert not fixture.exists()
 shutil.copyfile(pathlib.Path(__file__).with_name('AgentDeviceAutomationFixture.swift'), fixture)
