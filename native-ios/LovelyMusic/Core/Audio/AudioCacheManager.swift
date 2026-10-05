@@ -256,9 +256,9 @@ final class AudioCacheManager: @unchecked Sendable {
 
         while currentTotal > maxCacheSize, !state.entries.isEmpty {
             guard
-                let victim = state.entries.values.filter {
+                let victim = state.entries.values.filter({
                     !state.playbackProtectedPaths.contains($0.fileURL.standardizedFileURL.path)
-                }.min(by: { $0.lastAccessDate < $1.lastAccessDate })
+                }).min(by: { $0.lastAccessDate < $1.lastAccessDate })
             else {
                 break
             }
