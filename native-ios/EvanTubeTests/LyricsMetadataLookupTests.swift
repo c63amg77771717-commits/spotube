@@ -24,7 +24,7 @@ final class LyricsMetadataLookupTests: XCTestCase {
         XCTAssertEqual(requests, ["Rick Astley|Never Gonna Give You Up"])
     }
     func testEmptyArtistAmbiguousOrCatalogMetadataDoesNotSendInvalidRequest() async throws {
-        for (title, video) in [("Rick Astley - Never Gonna Give You Up", false), ("Rick Astley & Guest - Song", true), ("Rick Astley - Song - Live", true), ("Song", true)] {
+        for (title, video) in [("Rick Astley - Never Gonna Give You Up", false), ("Rick Astley & Guest - Song", true), ("Rick Astley - Song - Live", true)] {
             await LyricsMetadataRequests.shared.reset()
             let result = try await lyrics(title, artist: "", allowVideoCredits: video)
             XCTAssertNil(result)

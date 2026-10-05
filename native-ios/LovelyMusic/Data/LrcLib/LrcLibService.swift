@@ -1,20 +1,18 @@
 import Foundation
 
 final class LrcLibService: LyricsRepositoryProtocol {
-    private let baseURL: URL
+    private let baseURL = URL(string: "https://lrclib.net/api")!
     private let session: URLSession
+    private let defaults: UserDefaults
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         return decoder
     }()
 
-    init(session: URLSession = .shared) {
-        self.session = session
-        guard let url = URL(string: "https://lrclib.net/api") else {
-            fatalError("Invalid hardcoded LrcLib base URL")
-        }
-        self.baseURL = url
+    init(session: URLSession? = nil, defaults: UserDefaults = .standard) {
+        self.session = session ?? LyricsTransportPolicy.makeSession()
+        self.defaults = defaults
     }
 
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
@@ -22,104 +20,142 @@ final class LrcLibService: LyricsRepositoryProtocol {
     }
 
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        var lookupTitle = title
-        var lookupArtist = artist
-        var relaxedPair: LyricsLookupMetadata.Pair?
+        var pair = LyricsLookupMetadata.Pair(title: title, artist: artist)
+        var hasExplicitPair = false
         if artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard allowVideoCredits,
-                  let pair = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: true) else { return nil }
-            lookupTitle = pair.title
-            lookupArtist = pair.artist
-            relaxedPair = pair
+            guard allowVideoCredits else { return nil }
+            if let credit = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: true) {
+                pair = credit
+                hasExplicitPair = true
+            } else {
+                // Missing performer is a manual-choice flow, never an automatic match.
+                // Ambiguous embedded credits must not be guessed into a bare song title.
+                guard !title.contains(" - "), !title.contains("《"), !title.contains("【") else { return nil }
+                let validDuration = LyricsMatchingPolicy.validDuration(duration)
+                var matches = try await search(pair: pair)
+                if matches.isEmpty, let simplified = LyricsLookupMetadata.simplifiedPair(pair) {
+                    pair = simplified
+                    matches = try await search(pair: pair)
+                }
+                let key = LyricsMatchingPolicy.selectionKey(title: title, artist: artist, duration: duration)
+                return choose(matches, pair: pair, duration: validDuration, key: key, missingArtist: true)
+            }
         }
-        guard var components = URLComponents(
-            url: baseURL.appendingPathComponent("get"),
-            resolvingAgainstBaseURL: false
-        ) else { return nil }
-        var queryItems = [
-            URLQueryItem(name: "track_name", value: lookupTitle),
-            URLQueryItem(name: "artist_name", value: lookupArtist)
-        ]
-        let validDuration = duration.flatMap { (1...3600).contains($0) ? $0 : nil }
-        if let duration = validDuration {
-            queryItems.append(URLQueryItem(name: "duration", value: String(duration)))
+        let validDuration = LyricsMatchingPolicy.validDuration(duration)
+        var response = try await get(pair: pair, duration: validDuration)
+        if response.status == 404, validDuration != nil {
+            response = try await get(pair: pair, duration: nil)
         }
-        components.queryItems = queryItems
-
-        guard let url = components.url else { return nil }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.setValue("EvanTube/1.0.0", forHTTPHeaderField: "User-Agent")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-
-        var (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
-        if httpResponse.statusCode == 404, validDuration != nil {
-            components.queryItems = queryItems.filter { $0.name != "duration" }
-            request.url = components.url
-            (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
-            relaxedPair = LyricsLookupMetadata.Pair(title: lookupTitle, artist: lookupArtist)
+        if response.status == 404,
+           let clean = LyricsLookupMetadata.cleaned(title: pair.title, artist: pair.artist, allowVideoCredits: allowVideoCredits) {
+            pair = clean
+            hasExplicitPair = true
+            response = try await get(pair: pair, duration: nil)
         }
-        if httpResponse.statusCode == 404,
-           let pair = LyricsLookupMetadata.cleaned(title: lookupTitle, artist: lookupArtist, allowVideoCredits: allowVideoCredits) {
-            components.queryItems = [URLQueryItem(name: "track_name", value: pair.title),
-                                     URLQueryItem(name: "artist_name", value: pair.artist)]
-            request.url = components.url
-            (data, httpResponse) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
-            relaxedPair = pair
+        if response.status == 404,
+           let chinese = LyricsLookupMetadata.chineseVideoPair(title: pair.title, artist: pair.artist, allowVideoCredits: allowVideoCredits) {
+            pair = chinese
+            hasExplicitPair = true
+            response = try await get(pair: pair, duration: nil)
         }
-        if httpResponse.statusCode == 404 { return nil }
-        guard httpResponse.statusCode == 200 else { throw PublicSourceError.http("LRCLib", httpResponse.statusCode) }
-
-        let lrcResponse = try decoder.decode(LrcLibResponse.self, from: data)
-        if let pair = relaxedPair {
-            guard let track = lrcResponse.trackName, let performer = lrcResponse.artistName,
-                  LyricsLookupMetadata.normalized(track) == LyricsLookupMetadata.normalized(pair.title),
-                  LyricsLookupMetadata.normalized(performer) == LyricsLookupMetadata.normalized(pair.artist) else { return nil }
+        if response.status == 404, allowVideoCredits,
+           let simplified = LyricsLookupMetadata.simplifiedPair(pair) {
+            pair = simplified
+            response = try await get(pair: pair, duration: nil)
         }
-
-        if let syncedLyrics = lrcResponse.syncedLyrics, !syncedLyrics.isEmpty {
-            let lines = parseLRC(syncedLyrics)
-            if !lines.isEmpty { return SyncedLyrics(lines: lines, source: "LrcLib") }
+        let key = LyricsMatchingPolicy.selectionKey(title: title, artist: artist, duration: duration)
+        if response.status == 404 {
+            guard hasExplicitPair else { return nil }
+            let matches = try await search(pair: pair)
+            return choose(matches, pair: pair, duration: validDuration, key: key)
         }
-
-        if let plainLyrics = lrcResponse.plainLyrics, !plainLyrics.isEmpty {
-            let lines = plainLyrics.components(separatedBy: .newlines)
-                .enumerated()
-                .map { LyricLine(time: Double($0.offset) * 3.0, text: $0.element) }
-            return SyncedLyrics(lines: lines, source: "LrcLib (plain)")
+        guard response.status == 200 else { throw PublicSourceError.http("LRCLib", response.status) }
+        let match = try decoder.decode(LrcLibResponse.self, from: response.data)
+        guard identityMatches(match, pair: pair), let lyrics = lyrics(match, duration: validDuration) else { return nil }
+        // A trusted identity with uncertain timing can still provide useful text.
+        // Search the same explicit pair to expose multiple recordings to the user.
+        if !lyrics.isTimeSynced || LyricsSelectionStore.selectedRecord(for: key, defaults: defaults) != nil, match.id != nil {
+            var matches: [LrcLibResponse]
+            var failures: [LyricsSourceFailure] = []
+            do { matches = try await search(pair: pair) }
+            catch {
+                try LyricsMatchingPolicy.checkCancellation(error)
+                matches = [match]
+                failures.append(LyricsSourceFailure(providerID: .lrclib, message: error.localizedDescription))
+            }
+            try Task.checkCancellation()
+            return choose([match] + matches, pair: pair, duration: validDuration, key: key, failures: failures)
         }
-
-        return nil
+        try Task.checkCancellation()
+        if match.id != nil {
+            return choose([match], pair: pair, duration: validDuration, key: key)
+        }
+        return lyrics
     }
 
-    private func parseLRC(_ lrc: String) -> [LyricLine] {
-        lrc.components(separatedBy: .newlines).compactMap { line in
-            guard line.hasPrefix("["),
-                  let closeBracket = line.firstIndex(of: "]") else { return nil }
+    private func get(pair: LyricsLookupMetadata.Pair, duration: Int?) async throws -> (data: Data, status: Int) {
+        var items = [URLQueryItem(name: "track_name", value: pair.title), URLQueryItem(name: "artist_name", value: pair.artist)]
+        if let duration { items.append(URLQueryItem(name: "duration", value: String(duration))) }
+        return try await request(endpoint: "get", items: items)
+    }
 
-            let timeStr = String(line[line.index(after: line.startIndex)..<closeBracket])
-            let text = String(line[line.index(after: closeBracket)...])
-                .trimmingCharacters(in: .whitespaces)
+    private func search(pair: LyricsLookupMetadata.Pair) async throws -> [LrcLibResponse] {
+        var items = [URLQueryItem(name: "track_name", value: pair.title)]
+        if !pair.artist.isEmpty { items.append(URLQueryItem(name: "artist_name", value: pair.artist)) }
+        let result = try await request(endpoint: "search", items: items)
+        if result.status == 404 { return [] }
+        guard result.status == 200 else { throw PublicSourceError.http("LRCLib", result.status) }
+        return try decoder.decode([LrcLibResponse].self, from: result.data)
+    }
 
-            guard !text.isEmpty else { return nil }
-
-            let timeParts = timeStr.split(separator: ":")
-            guard timeParts.count == 2,
-                  let minutes = Double(timeParts[0]),
-                  let seconds = Double(timeParts[1]) else { return nil }
-
-            let time = minutes * 60.0 + seconds
-            return LyricLine(time: time, text: text)
+    private func request(endpoint: String, items: [URLQueryItem]) async throws -> (data: Data, status: Int) {
+        guard var components = URLComponents(url: baseURL.appendingPathComponent(endpoint), resolvingAgainstBaseURL: false) else {
+            return (Data(), 404)
         }
+        components.queryItems = items
+        guard let url = components.url else { return (Data(), 404) }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.httpShouldHandleCookies = false
+        request.timeoutInterval = 8
+        request.setValue("EvanTube/1.0.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await PublicSourceRequest.data(for: request, session: session, source: "LRCLib")
+        try Task.checkCancellation()
+        return (data, response.statusCode)
+    }
+
+    private func identityMatches(_ match: LrcLibResponse, pair: LyricsLookupMetadata.Pair, missingArtist: Bool = false) -> Bool {
+        LyricsMatchingPolicy.identityMatches(title: match.trackName, artist: match.artistName,
+                                             pair: pair, missingArtist: missingArtist)
+    }
+
+    private func choose(_ matches: [LrcLibResponse], pair: LyricsLookupMetadata.Pair,
+                        duration: Int?, key: String, missingArtist: Bool = false,
+                        failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
+        var seen: Set<Int> = []
+        let candidates = matches.prefix(31).compactMap { match -> LyricsCandidate? in
+            guard identityMatches(match, pair: pair, missingArtist: missingArtist), let id = match.id, seen.insert(id).inserted,
+                  let lyrics = lyrics(match, duration: duration) else { return nil }
+            return LyricsCandidate(id: LyricsRecordID(providerID: .lrclib, recordID: String(id)),
+                                   title: match.trackName!, artist: match.artistName!, duration: match.duration, lyrics: lyrics)
+        }
+        return LyricsMatchingPolicy.choose(candidates, key: key, missingArtist: missingArtist,
+                                           defaults: defaults, failures: failures)
+    }
+
+    private func lyrics(_ match: LrcLibResponse, duration: Int?) -> SyncedLyrics? {
+        LyricsMatchingPolicy.lyrics(syncedLRC: match.syncedLyrics ?? "", plainText: match.plainLyrics,
+                                   recordingDuration: match.duration, videoDuration: duration, provider: .lrclib)
     }
 }
 
 private struct LrcLibResponse: Codable {
-    let syncedLyrics: String?
-    let plainLyrics: String?
+    let id: Int?
     let trackName: String?
     let artistName: String?
     let duration: Double?
+    let syncedLyrics: String?
+    let plainLyrics: String?
 }

@@ -1,0 +1,97 @@
+import Foundation
+
+/// Both providers share identity, version, duration and timestamp acceptance.
+enum LyricsMatchingPolicy {
+    static func validDuration(_ duration: Int?) -> Int? {
+        duration.flatMap { (1...3600).contains($0) ? $0 : nil }
+    }
+
+    static func selectionKey(title: String, artist: String, duration: Int?) -> String {
+        // Keep the existing key so old LRCLib selections remain addressable.
+        LyricsLookupMetadata.identityKey(title) + "|" + LyricsLookupMetadata.performerKey(artist)
+            + "|" + String(validDuration(duration) ?? 0)
+    }
+
+    static func identityMatches(title: String?, artist: String?, pair: LyricsLookupMetadata.Pair,
+                                missingArtist: Bool = false) -> Bool {
+        guard let title, let artist, !artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        return LyricsLookupMetadata.identityKey(title) == LyricsLookupMetadata.identityKey(pair.title)
+            && (missingArtist || LyricsLookupMetadata.matchingPerformerKey(artist)
+                == LyricsLookupMetadata.matchingPerformerKey(pair.artist))
+    }
+
+    static func checkCancellation(_ error: Error? = nil) throws {
+        try Task.checkCancellation()
+        if error is CancellationError || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+    }
+
+    static func lyrics(syncedLRC: String, plainText: String?, recordingDuration: Double?,
+                       videoDuration: Int?, provider: LyricsProviderID) -> SyncedLyrics? {
+        let timed = parseLRC(syncedLRC)
+        let video = validDuration(videoDuration)
+        let compatible = video.flatMap { video in
+            recordingDuration.map { $0.isFinite && $0 > 0 && abs($0 - Double(video)) <= 1 }
+        } ?? false
+        if compatible, let video, !timed.isEmpty,
+           timed.allSatisfy({ $0.time.isFinite && $0.time >= 0 && $0.time <= Double(video) + 1 }) {
+            return SyncedLyrics(lines: timed, source: provider.displayName, providerID: provider)
+        }
+        let plain = plainLines(plainText ?? "")
+        let fallback = plain.isEmpty ? plainLines(syncedLRC) : plain
+        guard !fallback.isEmpty else { return nil }
+        return SyncedLyrics(lines: fallback.map { LyricLine(time: 0, text: $0) },
+                            source: provider.displayName + " (plain)", isTimeSynced: false, providerID: provider)
+    }
+
+    static func choose(_ candidates: [LyricsCandidate], key: String, missingArtist: Bool,
+                       defaults: UserDefaults, failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
+        var seen = Set<LyricsRecordID>()
+        let unique = candidates.filter { seen.insert($0.id).inserted }
+        guard !unique.isEmpty else { return nil }
+        let remembered = LyricsSelectionStore.selectedRecord(for: key, defaults: defaults)
+            .flatMap { id in unique.first { $0.id == id } }
+        let chosen = remembered ?? (!missingArtist && unique.count == 1 ? unique[0] : nil)
+        return SyncedLyrics(lines: chosen?.lyrics.lines ?? [], source: chosen?.lyrics.source ?? "",
+                            isTimeSynced: chosen?.lyrics.isTimeSynced ?? false,
+                            candidates: unique, selectionKey: key, providerID: chosen?.providerID,
+                            sourceFailures: failures)
+    }
+
+    static func parseLRC(_ input: String) -> [LyricLine] {
+        guard let pattern = try? NSRegularExpression(pattern: "\\[(\\d{1,3}):(\\d{2}(?:[.:]\\d+)?)\\]") else { return [] }
+        var output: [LyricLine] = []
+        for line in input.components(separatedBy: .newlines) {
+            guard line.hasPrefix("[") else { continue }
+            let matches = pattern.matches(in: line, range: NSRange(line.startIndex..., in: line))
+            guard let last = matches.last, let tail = Range(last.range, in: line) else { continue }
+            // Timestamp matches must form a contiguous prefix, never tags embedded in lyric text.
+            var end = 0
+            guard matches.allSatisfy({ match in
+                guard match.range.location == end else { return false }
+                end = NSMaxRange(match.range)
+                return true
+            }) else { continue }
+            let text = String(line[tail.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            for match in matches {
+                guard let m = Range(match.range(at: 1), in: line), let s = Range(match.range(at: 2), in: line),
+                      let minutes = Double(line[m]),
+                      let seconds = Double(line[s].replacingOccurrences(of: ":", with: ".")),
+                      minutes.isFinite, seconds.isFinite, (0..<60).contains(seconds) else { continue }
+                output.append(LyricLine(time: minutes * 60 + seconds, text: text))
+            }
+        }
+        return output.sorted { $0.time < $1.time }
+    }
+
+    private static func plainLines(_ input: String) -> [String] {
+        input.components(separatedBy: .newlines).compactMap { original in
+            var text = original.trimmingCharacters(in: .whitespacesAndNewlines)
+            if text.hasPrefix("[!text]") { text.removeFirst(7) }
+            text = text.replacingOccurrences(of: "^(?:\\[\\d{1,3}:\\d{2}(?:[.:]\\d+)?\\])+", with: "", options: .regularExpression)
+            text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text.range(of: "^\\[(?:ar|ti|al|by|offset|length|re|ve):", options: [.regularExpression, .caseInsensitive]) == nil else { return nil }
+            return text
+        }
+    }
+}

@@ -15,6 +15,8 @@ final class AudioCacheManager: @unchecked Sendable {
 
     private struct State {
         var entries: [String: CacheEntry] = [:]
+        // Active playback owns these paths until the player releases them.
+        var playbackProtectedPaths: Set<String> = []
     }
 
     // MARK: - Properties
@@ -26,9 +28,9 @@ final class AudioCacheManager: @unchecked Sendable {
 
     // MARK: - Init
 
-    init(maxCacheSize: Int64 = 200 * 1024 * 1024) {
+    init(maxCacheSize: Int64 = 200 * 1024 * 1024, directory: URL? = nil) {
         self.maxCacheSize = maxCacheSize
-        self.cacheDirectory = FileManager.default.temporaryDirectory
+        self.cacheDirectory = directory ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("LovelyMusic", isDirectory: true)
         self.state = OSAllocatedUnfairLock(initialState: State())
 
@@ -111,6 +113,15 @@ final class AudioCacheManager: @unchecked Sendable {
         }
     }
 
+    /// Automatic cleanup must never unlink a file held by a current AVPlayer.
+    func setPlaybackProtectedFiles(_ files: [URL]) {
+        state.withLock { state in
+            state.playbackProtectedPaths = Set(files.filter(\.isFileURL).map {
+                $0.standardizedFileURL.path
+            })
+        }
+    }
+
     var totalSize: Int64 {
         state.withLock { state in
             state.entries.values.reduce(0) { $0 + $1.fileSize }
@@ -149,7 +160,8 @@ final class AudioCacheManager: @unchecked Sendable {
         state.withLock { state in
             // Pass 1: drop entries superseded by a downloaded copy.
             var supersededFreed: Int64 = 0
-            for (videoId, entry) in state.entries where knownDownloadIds.contains(videoId) {
+            for (videoId, entry) in state.entries where knownDownloadIds.contains(videoId)
+                && !state.playbackProtectedPaths.contains(entry.fileURL.standardizedFileURL.path) {
                 try? FileManager.default.removeItem(at: entry.fileURL)
                 supersededFreed += entry.fileSize
                 state.entries.removeValue(forKey: videoId)
@@ -166,6 +178,7 @@ final class AudioCacheManager: @unchecked Sendable {
             // in `rebuildEntriesFromDisk`.
             let suffix = "_remuxed.m4a"
             let trackedPaths = Set(state.entries.values.map { $0.fileURL.standardizedFileURL.path })
+                .union(state.playbackProtectedPaths)
             guard
                 let files = try? FileManager.default.contentsOfDirectory(
                     at: cacheDirectory,
@@ -243,7 +256,9 @@ final class AudioCacheManager: @unchecked Sendable {
 
         while currentTotal > maxCacheSize, !state.entries.isEmpty {
             guard
-                let victim = state.entries.values.min(by: { $0.lastAccessDate < $1.lastAccessDate })
+                let victim = state.entries.values.filter {
+                    !state.playbackProtectedPaths.contains($0.fileURL.standardizedFileURL.path)
+                }.min(by: { $0.lastAccessDate < $1.lastAccessDate })
             else {
                 break
             }
@@ -262,7 +277,7 @@ final class AudioCacheManager: @unchecked Sendable {
             let targetSize = maxCacheSize / 2
             var currentTotal = state.entries.values.reduce(0) { $0 + $1.fileSize }
             let sorted = state.entries.values.sorted { $0.lastAccessDate < $1.lastAccessDate }
-            for entry in sorted {
+            for entry in sorted where !state.playbackProtectedPaths.contains(entry.fileURL.standardizedFileURL.path) {
                 guard currentTotal > targetSize else { break }
                 try? FileManager.default.removeItem(at: entry.fileURL)
                 currentTotal -= entry.fileSize

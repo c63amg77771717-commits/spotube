@@ -47,6 +47,9 @@ final class AudioEngine {
         didSet {
             guard oldValue?.id != currentTrack?.id else { return }
             hasReportedPlaybackStart = false
+            // An error belongs to its selected recording, including the prefetch path.
+            lastError = nil
+            lastErrorKind = .transient
             lastFailedSongId = nil
             PersonalMusicTaste.shared.begin(currentTrack)
             invalidateCrossfadePreparation(clearReservation: true)
@@ -191,7 +194,12 @@ final class AudioEngine {
     var downloadManager: DownloadManager?
 
     /// Optional LRU cache manager for remuxed audio files.
-    var audioCacheManager: AudioCacheManager?
+    var audioCacheManager: AudioCacheManager? {
+        didSet {
+            oldValue?.setPlaybackProtectedFiles([])
+            updateAudioCachePlaybackProtection()
+        }
+    }
 
     /// A file URL that has already passed the production local-source checks.
     /// Its initializer is intentionally unavailable outside AudioEngine so a
@@ -220,7 +228,9 @@ final class AudioEngine {
     }
 
     // MARK: - Private
-    private var player: AVPlayer?
+    private var player: AVPlayer? {
+        didSet { updateAudioCachePlaybackProtection() }
+    }
     private var timeObserver: Any?
     private var itemObservations: [NSKeyValueObservation] = []
     private var timeControlObserver: NSKeyValueObservation?
@@ -228,6 +238,7 @@ final class AudioEngine {
     private var streamResolvedAt: Date?
     private var userInitiatedPause: Bool = false
     private var isInterrupted = false
+    private(set) var requiresManualPlaybackRecovery = false
     private var resumeAfterInterruption = false
     private var hasReportedPlaybackStart = false
     private var recoveryPosition: TimeInterval?
@@ -239,7 +250,18 @@ final class AudioEngine {
     private var errorLogObserver: NSObjectProtocol?
     private var accessLogObserver: NSObjectProtocol?
     private var downloadTask: URLSessionTask?
-    private(set) var localFileURL: URL?
+    private(set) var localFileURL: URL? {
+        didSet { updateAudioCachePlaybackProtection() }
+    }
+
+    // Active playback owns these paths until the player releases them.
+    private func updateAudioCachePlaybackProtection() {
+        let primaryURL = (player?.currentItem?.asset as? AVURLAsset)?.url
+        let crossfadeURL = (crossfadePlayer?.currentItem?.asset as? AVURLAsset)?.url
+        audioCacheManager?.setPlaybackProtectedFiles(
+            [localFileURL, primaryURL, crossfadeURL].compactMap { $0 }
+        )
+    }
 
     private struct GuardedResolvedContext {
         let descriptor: StreamDescriptor
@@ -360,7 +382,9 @@ final class AudioEngine {
     private var attemptedCrossfadeLocalURL: URL?
     private var activeCrossfadeToken: CrossfadePreparationToken?
     /// Secondary AVPlayer used exclusively during crossfade transitions.
-    private var crossfadePlayer: AVPlayer?
+    private var crossfadePlayer: AVPlayer? {
+        didSet { updateAudioCachePlaybackProtection() }
+    }
     /// Observers attached to the crossfade player item.
     private var crossfadeItemObservations: [NSKeyValueObservation] = []
     /// Time observer for the crossfade player.
@@ -414,8 +438,10 @@ final class AudioEngine {
         setupInterruptionHandling()
         setupAudioProcessingObservers()
         AudioSessionManager.onResume = { [weak self] in
-            guard let self, self.resumeAfterInterruption, !self.userInitiatedPause else { return }
+            guard let self, self.isInterrupted, self.resumeAfterInterruption, !self.userInitiatedPause else { return }
             self.isInterrupted = false
+            self.resumeAfterInterruption = false
+            self.recoveryService.resetRetry()
             self.setPlaybackIntent(true)
         }
     }
@@ -808,7 +834,8 @@ final class AudioEngine {
                 savePlaybackState()
             }
         case .stallDetected(let trackID, let position):
-            guard currentTrack?.id == trackID else { return }
+            guard currentTrack?.id == trackID, isPlaying, !userInitiatedPause,
+                  !isInterrupted, !requiresManualPlaybackRecovery else { return }
             recoveryPosition = position.isFinite ? max(0, position) : currentTime
             recordPlaybackDiagnostic(.engineStall)
             if let coordinator = guardedCoordinator {
@@ -927,12 +954,16 @@ final class AudioEngine {
         // keeps the interruption intact instead of pretending playback resumed.
         if shouldPlay, explicitUserAction, isInterrupted {
             guard AudioSessionManager.activate() else {
+                requiresManualPlaybackRecovery = true
                 lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
                 return
             }
             isInterrupted = false
             resumeAfterInterruption = false
+            // One fresh recovery budget for this completed interruption only.
+            recoveryService.resetRetry()
         }
+        if shouldPlay { requiresManualPlaybackRecovery = false }
         if !shouldPlay && !isPlaying && userInitiatedPause { return }
         userInitiatedPause = !shouldPlay
         if !shouldPlay { resumeAfterInterruption = false }
@@ -1530,6 +1561,7 @@ final class AudioEngine {
 
     private func loadAndPlay(song: Song, seekTo initialSeek: TimeInterval? = nil,
                              isLoadingRecovery: Bool = false) {
+        requiresManualPlaybackRecovery = false
         if !isLoadingRecovery { loadingRecoveryAttemptCount = 0 }
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -3671,6 +3703,7 @@ final class AudioEngine {
         // the old song during song transitions, then pause.
         player?.replaceCurrentItem(with: nil)
         player?.pause()
+        updateAudioCachePlaybackProtection()
     }
 
     // MARK: - Crossfade
@@ -4350,7 +4383,10 @@ final class AudioEngine {
     /// selected song/queue/position, then let play rebuild the audio session.
     func handleMediaServicesReset() {
         let position = pendingSeekTime ?? currentTime
+        invalidateCrossfadePreparation(clearReservation: false)
+        prefetchManager.cancelPrefetch()
         stop()
+        requiresManualPlaybackRecovery = true
         if let observer = timeObserver { player?.removeTimeObserver(observer) }
         timeObserver = nil
         timeControlObserver?.invalidate()
@@ -4414,12 +4450,18 @@ final class AudioEngine {
             }
             nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
         case .ended:
+            let wasInterrupted = isInterrupted
             isInterrupted = false
             let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-            let shouldResume = resumeAfterInterruption && !userInitiatedPause && options.contains(.shouldResume)
+            let shouldResume = wasInterrupted && resumeAfterInterruption && !userInitiatedPause && options.contains(.shouldResume)
             resumeAfterInterruption = false
-            if shouldResume { setPlaybackIntent(true) }
+            if shouldResume {
+                // A second independent interruption must not inherit the first
+                // interruption's exhausted retry. Duplicate end/play events do.
+                recoveryService.resetRetry()
+                setPlaybackIntent(true)
+            }
             recordPlaybackDiagnostic(.interruptionEnded)
         @unknown default:
             Log.audio.warning("Unexpected state encountered")

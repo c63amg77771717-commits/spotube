@@ -11,6 +11,15 @@ struct SyncedLyricsScrollView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let lyrics: SyncedLyrics
 
+    @State private var selectedCandidateID: LyricsRecordID?
+
+    private var displayLyrics: SyncedLyrics {
+        let remembered = lyrics.selectionKey.flatMap { LyricsSelectionStore.selectedRecord(for: $0) }
+        guard let id = selectedCandidateID ?? remembered,
+              let candidate = lyrics.candidates.first(where: { $0.id == id }) else { return lyrics }
+        return candidate.lyrics
+    }
+
     @State private var currentLineId: UUID?
     @State private var containerHeight: CGFloat = 300
 
@@ -26,8 +35,7 @@ struct SyncedLyricsScrollView: View {
     @State private var translationError: String?
 
     private var lyricsFingerprint: String {
-        guard let first = lyrics.lines.first else { return "" }
-        return "\(lyrics.lines.count)_\(first.text)"
+        return "\(lyrics.selectionKey ?? "")_\(lyrics.candidates.map(\.id))_\(lyrics.lines.first?.text ?? "")"
     }
 
     var body: some View {
@@ -36,8 +44,8 @@ struct SyncedLyricsScrollView: View {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: Theme.Spacing.md) {
                         // Small top padding — lyrics align near the top
-                        Spacer().frame(height: Theme.Spacing.xl)
-                        ForEach(lyrics.lines) { line in
+                        Spacer().frame(height: !lyrics.candidates.isEmpty || !displayLyrics.isTimeSynced ? Theme.Spacing.xl * 4 : Theme.Spacing.xl * 2)
+                        ForEach(displayLyrics.lines) { line in
                             lyricLine(line)
                                 .id(line.id)
                         }
@@ -74,7 +82,8 @@ struct SyncedLyricsScrollView: View {
                     }
                 )
                 .onChange(of: playbackProgress.currentTime) { _, newTime in
-                    let newId = lyrics.lines.last { $0.time <= newTime }?.id
+                    guard displayLyrics.isTimeSynced else { return }
+                    let newId = displayLyrics.lines.last { $0.time <= newTime }?.id
                     guard newId != currentLineId else { return }
                     currentLineId = newId
                     if let newId, !isUserScrolling {
@@ -96,8 +105,57 @@ struct SyncedLyricsScrollView: View {
                     .padding(.top, Theme.Spacing.sm)
             }
         }
+        .overlay(alignment: .topLeading) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if displayLyrics.lines.isEmpty {
+                    Text(LocalizationManager.text("Choose a matching performer and version"))
+                        .accessibilityIdentifier("lyrics_candidate_prompt")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                } else if !displayLyrics.isTimeSynced {
+                    Text(LocalizationManager.text("Lyrics timing unavailable"))
+                        .accessibilityIdentifier("lyrics_plain_notice")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                if !displayLyrics.source.isEmpty {
+                    Text(displayLyrics.source)
+                        .accessibilityIdentifier("lyrics_provider_attribution")
+                        .font(Theme.Typography.caption2)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                if !lyrics.sourceFailures.isEmpty {
+                    Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
+                         + lyrics.sourceFailures.map { $0.providerID.displayName }.joined(separator: ", "))
+                        .accessibilityIdentifier("lyrics_source_unavailable")
+                        .font(Theme.Typography.caption2)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                if !lyrics.candidates.isEmpty, (lyrics.candidates.count > 1 || lyrics.lines.isEmpty), let key = lyrics.selectionKey {
+                    Menu {
+                        ForEach(lyrics.candidates) { candidate in
+                            Button {
+                                LyricsSelectionStore.select(candidate.id, for: key)
+                                selectedCandidateID = candidate.id
+                                currentLineId = nil
+                                translatedLines.removeAll()
+                                showTranslation = false
+                            } label: {
+                                Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
+                            }
+                            .accessibilityIdentifier(candidate.accessibilityID)
+                        }
+                    } label: {
+                        Label(LocalizationManager.text("Choose lyrics version"), systemImage: "list.bullet")
+                            .font(Theme.Typography.caption)
+                    }
+                    .accessibilityIdentifier("lyrics_version_picker")
+                }
+            }
+            .padding(.horizontal, Theme.Spacing.xl)
+        }
         .overlay(alignment: .bottom) {
-            if isUserScrolling {
+            if isUserScrolling && displayLyrics.isTimeSynced {
                 Button {
                     withAnimation { isUserScrolling = false }
                     autoScrollResumeTask?.cancel()
@@ -113,11 +171,13 @@ struct SyncedLyricsScrollView: View {
             }
         }
         .onChange(of: lyricsFingerprint) { _, _ in
+            selectedCandidateID = nil
+            currentLineId = nil
             translatedLines.removeAll()
             showTranslation = false
         }
         .modifier(LyricsTranslationModifier(
-            lyrics: lyrics,
+            lyrics: displayLyrics,
             targetLanguage: UserDefaults.standard.string(forKey: "language") ?? "zh-Hant",
             showTranslation: $showTranslation,
             translatedLines: $translatedLines,
@@ -148,11 +208,11 @@ struct SyncedLyricsScrollView: View {
 
     @ViewBuilder
     private func lyricLine(_ line: LyricLine) -> some View {
-        let isCurrent = line.id == currentLineId
+        let isCurrent = displayLyrics.isTimeSynced && line.id == currentLineId
         VStack(spacing: Theme.Spacing.xxs) {
             Text(line.text)
                 .font(isCurrent ? currentLineFont : lineFont)
-                .foregroundStyle(isCurrent ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textTertiary.opacity(0.6)))
+                .foregroundStyle(isCurrent ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textTertiary.opacity(displayLyrics.isTimeSynced ? 0.6 : 1)))
                 .frame(maxWidth: .infinity, alignment: .center)
                 .multilineTextAlignment(.center)
                 .animation(.easeInOut(duration: 0.3), value: isCurrent)
@@ -192,7 +252,7 @@ struct SyncedLyricsScrollView: View {
             .background(.ultraThinMaterial, in: Circle())
         }
         .accessibilityLabel(showTranslation ? "Hide translation" : "Translate lyrics")
-        .disabled(isTranslating)
+        .disabled(isTranslating || displayLyrics.lines.isEmpty)
     }
 
     // MARK: - Translation Trigger

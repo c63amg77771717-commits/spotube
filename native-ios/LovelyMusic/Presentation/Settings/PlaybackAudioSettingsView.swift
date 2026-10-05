@@ -208,6 +208,21 @@ struct PlaybackAudioSettingsView: View {
                     SettingsDivider()
 
                     SettingsRow(
+                        icon: "text.magnifyingglass",
+                        iconColor: .cyan,
+                        title: "LrcApi secondary lyrics"
+                    ) {
+                        CustomToggle(isOn: $viewModel.isLrcApiEnabled)
+                            .accessibilityIdentifier("lyrics_lrcapi_enabled")
+                    }
+                    Text(LocalizationManager.text("Uses song title and performer when LRCLib has no reliable match."))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .padding(.horizontal, Theme.Spacing.lg)
+
+                    SettingsDivider()
+
+                    SettingsRow(
                         icon: "textformat.size",
                         iconColor: .purple,
                         title: "Lyrics Font Size"
@@ -269,6 +284,9 @@ struct PlaybackAudioSettingsView: View {
         .animation(Theme.AnimationPresets.gentle, value: viewModel.autoSkipOnError)
         .animation(Theme.AnimationPresets.gentle, value: viewModel.autoplayRelatedSongs)
         .animation(Theme.AnimationPresets.gentle, value: viewModel.crossfadeDuration)
+        .onChange(of: viewModel.isLrcApiEnabled) { _, _ in
+            playerVM.lyricsSourceSettingsChanged()
+        }
         .onAppear {
             playerVM.isDockHidden = true
         }

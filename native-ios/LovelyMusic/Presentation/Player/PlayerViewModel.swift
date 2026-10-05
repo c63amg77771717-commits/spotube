@@ -269,6 +269,7 @@ final class PlayerViewModel {
     // MARK: - Actions
 
     func play(song: Song, fromQueue: [Song] = []) {
+        autoSkipTask?.cancel()
         telemetryManager.trackEvent("song_play", parameters: ["song_id": song.id, "title": song.title])
         retryCount = 0
         consecutiveAutoSkipFailures = 0
@@ -322,6 +323,22 @@ final class PlayerViewModel {
         Task { [weak self] in await self?.loadLyrics(for: song) }
     }
 
+    private func cancelLyricsRequest() {
+        lyricsTask?.cancel()
+        lyricsGeneration += 1
+        lyricsTrackID = nil
+        lyrics = nil
+        lyricsError = nil
+        isLoadingLyrics = false
+    }
+
+    /// Settings changes stop in-flight requests before replacing the lookup.
+    func lyricsSourceSettingsChanged() {
+        cancelLyricsRequest()
+        guard let song = currentSong else { return }
+        requestLyrics(for: song)
+    }
+
     func loadLyrics(for song: Song) async {
         guard currentSong?.id == song.id else { return }
         lyricsTask?.cancel()
@@ -339,7 +356,12 @@ final class PlayerViewModel {
                     allowVideoCredits: song.hasYouTubeOrigin && !song.isEpisode && song.id.utf8.allSatisfy { $0 < 128 })
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
-                self.lyrics = result?.lines.isEmpty == false ? result : nil
+                if let result, !result.lines.isEmpty || !result.candidates.isEmpty {
+                    // Candidate-only results must reach the player's selection UI.
+                    self.lyrics = result
+                } else {
+                    self.lyrics = nil
+                }
             } catch {
                 guard self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
@@ -421,6 +443,7 @@ final class PlayerViewModel {
     }
 
     private func performNext(userInitiated: Bool = true) {
+        autoSkipTask?.cancel()
         retryCount = 0
         // Only reset the consecutive-failure counter on *user-initiated* skips.
         // Auto-skip due to error must keep accumulating so we can break out of
@@ -438,6 +461,7 @@ final class PlayerViewModel {
     }
 
     func previous() {
+        autoSkipTask?.cancel()
         retryCount = 0
         consecutiveAutoSkipFailures = 0
         streamError = nil
@@ -609,6 +633,7 @@ final class PlayerViewModel {
     var currentIndex: Int { audioEngine.currentIndex }
 
     func playFromQueue(at index: Int) {
+        autoSkipTask?.cancel()
         guard index < queue.count else { return }
         retryCount = 0
         streamError = nil
@@ -620,6 +645,7 @@ final class PlayerViewModel {
     }
 
     func playFromAutoplayQueue(at index: Int) {
+        autoSkipTask?.cancel()
         retryCount = 0
         streamError = nil
         streamErrorCategory = nil
@@ -691,8 +717,26 @@ final class PlayerViewModel {
                 NSError(domain: "LovelyMusic.Playback", code: -1, userInfo: [NSLocalizedDescriptionKey: error]),
                 additionalInfo: ["video_id": videoId]
             )
-            streamError = userReadableError(from: error)
-            streamErrorCategory = PlaybackErrorCategory.classify(error)
+            if let failedID = audioEngine.lastFailedSongId, failedID != currentSong?.id {
+                streamError = nil
+                streamErrorCategory = nil
+                autoSkipTask?.cancel()
+                return
+            }
+            let category = PlaybackErrorCategory.classify(error)
+            let retryIsPending = !audioEngine.requiresManualPlaybackRecovery
+                && audioEngine.lastErrorKind != .permanent && retryCount == 0
+                && currentSong != nil
+                && category != .sourceNotConfigured && category != .verificationRequired
+                && category != .authRequired
+            // One bounded automatic retry is still resolving this attempt.
+            // Preserve the engine diagnostic, but do not render it as a final UI failure.
+            streamError = retryIsPending ? nil : userReadableError(from: error)
+            streamErrorCategory = retryIsPending ? nil : category
+            if audioEngine.requiresManualPlaybackRecovery {
+                autoSkipTask?.cancel()
+                return
+            }
             let isPermanent = audioEngine.lastErrorKind == .permanent
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
@@ -728,7 +772,8 @@ final class PlayerViewModel {
                     autoSkipTask?.cancel()
                     autoSkipTask = Task { [weak self] in
                         try? await Task.sleep(for: .milliseconds(500))
-                        guard let self, !Task.isCancelled, self.streamError != nil else { return }
+                        guard let self, !Task.isCancelled, self.streamError != nil,
+                              self.currentSong?.id == videoId, self.audioEngine.lastError == error else { return }
                         self.autoNext()
                     }
                 }
@@ -741,7 +786,8 @@ final class PlayerViewModel {
                 autoSkipTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(1))
                     guard let self, !Task.isCancelled, self.currentSong?.id == videoId,
-                          self.streamError != nil, self.audioEngine.lastError == error else { return }
+                          self.audioEngine.lastError == error,
+                          !self.audioEngine.requiresManualPlaybackRecovery else { return }
                     self.retryCurrentSong()
                 }
             } else if autoSkipEnabled {
@@ -758,7 +804,8 @@ final class PlayerViewModel {
                 autoSkipTask?.cancel()
                 autoSkipTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(2))
-                    guard let self, !Task.isCancelled, self.streamError != nil, !self.queue.isEmpty
+                    guard let self, !Task.isCancelled, self.streamError != nil, !self.queue.isEmpty,
+                          self.currentSong?.id == videoId, self.audioEngine.lastError == error
                     else { return }
                     self.autoNext()
                 }
@@ -822,6 +869,11 @@ final class PlayerViewModel {
                     // re-triggering `loadVideoStream`, while allowing a genuine
                     // next/previous to load video again. (ExecPlan T3.)
                     if self.previousObservedTrackId != song.id {
+                        self.cancelLyricsRequest()
+                        self.autoSkipTask?.cancel()
+                        self.retryCount = 0
+                        self.streamError = nil
+                        self.streamErrorCategory = nil
                         self.previousObservedTrackId = song.id
                         self.lastHandledVideoTrackId = nil
                     }
@@ -841,12 +893,7 @@ final class PlayerViewModel {
                     // Reload lyrics for the new track
                     self.requestLyrics(for: song)
                 } else {
-                    self.lyricsTask?.cancel()
-                    self.lyricsGeneration += 1
-                    self.lyricsTrackID = nil
-                    self.lyrics = nil
-                    self.lyricsError = nil
-                    self.isLoadingLyrics = false
+                    self.cancelLyricsRequest()
                 }
 
                 self.observeTrackChanges()

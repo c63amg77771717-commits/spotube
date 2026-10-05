@@ -134,6 +134,10 @@ final class SettingsViewModel {
         didSet { UserDefaults.standard.set(lyricsFontSize.rawValue, forKey: "lyricsFontSize") }
     }
 
+    var isLrcApiEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(isLrcApiEnabled, forKey: LyricsSecondarySettings.enabledKey) }
+    }
+
     var showLyricsTranslation: Bool = true {
         didSet { UserDefaults.standard.set(showLyricsTranslation, forKey: "showLyricsTranslation") }
     }
@@ -186,6 +190,7 @@ final class SettingsViewModel {
         self.pauseSearchHistory = UserDefaults.standard.bool(forKey: "pauseSearchHistory")
         self.hideExplicitContent = UserDefaults.standard.bool(forKey: "hideExplicitContent")
         self.disableScreenshots = UserDefaults.standard.bool(forKey: "disableScreenshots")
+        self.isLrcApiEnabled = LyricsSecondarySettings.isEnabled()
         self.showLyricsAutomatically = UserDefaults.standard.bool(forKey: "showLyricsAutomatically")
         self.lyricsFontSize =
             LyricsFontSize(

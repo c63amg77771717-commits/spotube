@@ -59,7 +59,8 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
             CODE_SIGNING_ALLOWED=NO \
             build
-      - name: Test MB3 import and playlist sync
+      - name: Test playback, lyrics, MB3 import and playlist sync
+        id: unit_tests
         working-directory: native-ios
         run: |
           # Tests use fixtures and must never spend the production search quota.
@@ -81,11 +82,18 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:EvanTubeTests \
+            -resultBundlePath "$RUNNER_TEMP/evantube-unit-tests.xcresult" \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
             test
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.unit_tests.outcome != 'skipped'
+        with:
+          name: EvanTube-unit-test-results
+          path: ${{ runner.temp }}/evantube-unit-tests.xcresult
+          if-no-files-found: warn
       - name: Capture Traditional Chinese settings previews
         id: settings_preview
         working-directory: native-ios
@@ -115,7 +123,10 @@ jobs:
             EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
             EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
             EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
-            EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch; do
+            EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch \
+            EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
+            EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch \
+            EvanTubeLrcApiSecondaryUITests/testCrossProviderSelectionAndAttributionSurviveActualRelaunch; do
             xcrun simctl shutdown all
             xcrun simctl bootstatus "$simulator_id" -b
             xcodebuild \

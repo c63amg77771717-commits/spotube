@@ -58,7 +58,7 @@ import XCTest
     func testActualPlayerKeepsEmptyArtistAndEnablesVerifiedSingleCreditLookup() async {
         let repository = AutomaticIdentityLyricsRepository()
         let engine = AudioEngine()
-        let original = Song(id: "IdneKLhsWOQ", title: "Taylor Swift - Wildest Dreams", artistName: "", artistId: nil, albumName: nil, albumId: nil, duration: 235, thumbnailURL: nil)
+        let original = Song(id: "CCCCCCCCCCC", title: "Fixture Artist - Fixture Song", artistName: "", artistId: nil, albumName: nil, albumId: nil, duration: 235, thumbnailURL: nil)
         engine.restorePlaybackState(.init(queue: [original], autoplayQueue: [], currentIndex: 0, currentTime: 0, wasPlaying: false, shuffleEnabled: false, repeatMode: AudioEngine.RepeatMode.off.rawValue, savedAt: Date()))
         let vm = model(repository, engine: engine)
         await vm.loadLyrics(for: original)
@@ -165,6 +165,20 @@ import XCTest
         XCTAssertNil(vm.lyricsError)
         XCTAssertFalse(vm.isLoadingLyrics)
     }
+    func testMediaServiceResetNeverTriggersViewModelAutoplayOrSkip() async throws {
+        let engine = AudioEngine()
+        let vm = model(AutomaticEmptyLyricsRepository(), engine: engine)
+        engine.handleMediaServicesReset()
+        await drain()
+        XCTAssertTrue(engine.requiresManualPlaybackRecovery)
+        XCTAssertNotNil(vm.streamError)
+        try await Task.sleep(for: .milliseconds(1300))
+        XCTAssertFalse(engine.isPlaying)
+        XCTAssertEqual(engine.currentTrack?.id, "AAAAAAAAAAA")
+        XCTAssertTrue(engine.requiresManualPlaybackRecovery,
+                      "The one-second transient retry must not run after a system reset")
+    }
+
     func testForegroundRetriesFailedLyricsWithoutReselectingSong() async {
         let repository = AutomaticRetryLyricsRepository()
         let vm = model(repository)
