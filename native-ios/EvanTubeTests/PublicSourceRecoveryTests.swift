@@ -18,6 +18,18 @@ final class PublicSourceRecoveryTests: XCTestCase {
             XCTAssertEqual(count, attempts)
         }
     }
+    func testPrimaryWithAlternateSourceDoesNotSpendTimeOnDuplicateRetries() async throws {
+        await PublicRecoveryState.shared.reset()
+        let session = session()
+        defer { session.invalidateAndCancel() }
+        let (_, response) = try await PublicSourceRequest.data(
+            for: URLRequest(url: URL(string: "https://fixture.test/unavailable")!),
+            session: session, source: "Fixture", retryTransient: false)
+        XCTAssertEqual(response.statusCode, 503)
+        let attempts = await PublicRecoveryState.shared.count("unavailable")
+        XCTAssertEqual(attempts, 1, "Give the alternate source a chance after the first primary failure")
+    }
+
     func testRetryAfterIsRespectedWithinBoundAndLongWaitDoesNotRetry() {
         XCTAssertEqual(PublicSourceRequest.retryDelay(status: 429, retryAfter: "3"), 3)
         XCTAssertNil(PublicSourceRequest.retryDelay(status: 429, retryAfter: "60"))

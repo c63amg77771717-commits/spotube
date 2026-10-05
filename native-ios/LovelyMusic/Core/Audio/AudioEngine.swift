@@ -234,6 +234,7 @@ final class AudioEngine {
     var onPlaybackStarted: ((Song) -> Void)?
     private(set) var pendingSeekTime: TimeInterval?
     private var interruptionObserver: NSObjectProtocol?
+    private var mediaServicesResetObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var errorLogObserver: NSObjectProtocol?
     private var accessLogObserver: NSObjectProtocol?
@@ -431,6 +432,9 @@ final class AudioEngine {
             }
             if let intObs = self.interruptionObserver {
                 NotificationCenter.default.removeObserver(intObs)
+            }
+            if let resetObs = self.mediaServicesResetObserver {
+                NotificationCenter.default.removeObserver(resetObs)
             }
             if let routeObs = self.routeChangeObserver {
                 NotificationCenter.default.removeObserver(routeObs)
@@ -890,12 +894,45 @@ final class AudioEngine {
     }
 
     func playPause() {
-        setPlaybackIntent(!isPlaying)
+        setPlaybackIntent(!isPlaying, explicitUserAction: true)
     }
 
-    private func setPlaybackIntent(_ shouldPlay: Bool) {
+    /// Returning to the app must reconcile the real player, not just its UI flag.
+    /// An active interruption still requires a system end notification or explicit play.
+    func applicationDidBecomeActive() {
+        guard isPlaying, !userInitiatedPause, !isInterrupted else { return }
+        setPlaybackIntent(true)
+    }
+
+    private func reloadSelectedTrack() {
+        guard var song = currentTrack else { return }
+        let position = pendingSeekTime ?? currentTime
+        // A failed/missing player must not reuse its expired remote URL. Local
+        // downloads and cache are still preferred inside loadAndPlay.
+        let existingURL = song.streamURL.flatMap { URL(string: $0) }
+        if existingURL?.isFileURL != true
+            || existingURL.map({ !FileManager.default.fileExists(atPath: $0.path) }) == true {
+            song.streamURL = nil
+            song.streamContentLength = nil
+            currentTrack = song
+            updateQueuedStream(songID: song.id, streamURL: nil, contentLength: nil)
+        }
+        loadAndPlay(song: song, seekTo: position)
+    }
+
+    private func setPlaybackIntent(_ shouldPlay: Bool, explicitUserAction: Bool = false) {
         guard !shouldPlay || currentTrack != nil else { return }
-        if shouldPlay && isPlaying { return }
+        // iOS may omit interruption-ended while the process is suspended.
+        // Only an explicit play can challenge that stale state; activation failure
+        // keeps the interruption intact instead of pretending playback resumed.
+        if shouldPlay, explicitUserAction, isInterrupted {
+            guard AudioSessionManager.activate() else {
+                lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
+                return
+            }
+            isInterrupted = false
+            resumeAfterInterruption = false
+        }
         if !shouldPlay && !isPlaying && userInitiatedPause { return }
         userInitiatedPause = !shouldPlay
         if !shouldPlay { resumeAfterInterruption = false }
@@ -926,10 +963,14 @@ final class AudioEngine {
             savePlaybackState()
         } else {
             isPlaying = true
-            if let item = player?.currentItem, item.status != .failed {
+            let localFileMissing = localFileURL.map {
+                !FileManager.default.fileExists(atPath: $0.path)
+            } ?? false
+            if let item = player?.currentItem, item.status != .failed,
+               player?.status != .failed, !localFileMissing {
                 resumePlayer()
-            } else if resolveTask == nil, backgroundRemuxTask == nil, let song = currentTrack {
-                loadAndPlay(song: song, seekTo: currentTime)
+            } else if resolveTask == nil, backgroundRemuxTask == nil {
+                reloadSelectedTrack()
             }
         }
         // The `isPlaying` didSet above mirrors playback state onto the
@@ -4193,7 +4234,7 @@ final class AudioEngine {
 
     func handleRemotePlay() {
         recordPlaybackDiagnostic(.remotePlay)
-        setPlaybackIntent(true)
+        setPlaybackIntent(true, explicitUserAction: true)
     }
 
     func handleRemotePause() {
@@ -4305,7 +4346,33 @@ final class AudioEngine {
         applyEqualizer()
     }
 
+    /// Media-service resets invalidate AVPlayer and its observers. Keep the
+    /// selected song/queue/position, then let play rebuild the audio session.
+    func handleMediaServicesReset() {
+        let position = pendingSeekTime ?? currentTime
+        stop()
+        if let observer = timeObserver { player?.removeTimeObserver(observer) }
+        timeObserver = nil
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
+        player = nil
+        isInterrupted = false
+        resumeAfterInterruption = false
+        currentTime = position
+        pendingSeekTime = position
+        AudioSessionManager.setCategory()
+        lastError = "音訊工作階段已重設，按播放可接續目前歌曲。"
+        nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: position, rate: 0)
+        savePlaybackState()
+    }
+
     private func setupInterruptionHandling() {
+        mediaServicesResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(), queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.handleMediaServicesReset() }
+        }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),

@@ -195,6 +195,10 @@ struct EvanTubeHomeView: View {
         .task {
             viewModel.loadHome()
             viewModel.loadRecentlyPlayed()
+        }
+        .task(id: "\(isTabActive)-\(scenePhase == .active)") {
+            guard isTabActive, scenePhase == .active,
+                  feeds.chart == nil || feeds.chartError != nil else { return }
             await feeds.refresh(region: region.code)
         }
         .task(id: recommendationRefreshKey) {
@@ -359,7 +363,14 @@ struct EvanTubeHomeView: View {
                         .lineLimit(1)
                 }
             }
-            if let error = feeds.chartError { emptyCard(error) }
+            if let error = feeds.chartError {
+                emptyCard(error)
+                Button("重新載入排行榜") {
+                    Task { await feeds.changeRegion(region.code) }
+                }
+                .disabled(feeds.isLoadingChart)
+                .accessibilityIdentifier("chart_retry")
+            }
             if let chart = feeds.chart, !chart.items.isEmpty {
                 sourceLabel(chart)
                 ForEach(chart.items) { item in onlineRow(item) }

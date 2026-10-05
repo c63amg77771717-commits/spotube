@@ -14,7 +14,7 @@ enum PublicSourceError: Error, LocalizedError {
 
 enum PublicSourceRequest {
     static func data(for request: URLRequest, session: URLSession = .shared,
-                     source: String) async throws -> (Data, HTTPURLResponse) {
+                     source: String, retryTransient: Bool = true) async throws -> (Data, HTTPURLResponse) {
         for attempt in 0...1 {
             try Task.checkCancellation()
             do {
@@ -22,14 +22,14 @@ enum PublicSourceRequest {
                 guard let http = response as? HTTPURLResponse else {
                     throw PublicSourceError.invalidResponse(source)
                 }
-                if attempt == 0, let delay = retryDelay(status: http.statusCode,
+                if retryTransient, attempt == 0, let delay = retryDelay(status: http.statusCode,
                                                        retryAfter: http.value(forHTTPHeaderField: "Retry-After")) {
                     try await Task.sleep(for: .seconds(delay))
                     continue
                 }
                 return (data, http)
             } catch let error as URLError {
-                guard attempt == 0, [.timedOut, .networkConnectionLost, .cannotConnectToHost,
+                guard retryTransient, attempt == 0, [.timedOut, .networkConnectionLost, .cannotConnectToHost,
                                      .cannotFindHost, .dnsLookupFailed].contains(error.code) else { throw error }
                 try await Task.sleep(for: .milliseconds(250))
             }

@@ -171,7 +171,6 @@ enum EvanTubeOnlineFeedService {
             let feed: EvanTubeOnlineFeed
             do { feed = try await appleChart(region: region, session: session) }
             catch is CancellationError { throw CancellationError() }
-            catch let error as URLError where error.code == .badServerResponse { throw error }
             catch {
                 if let error = error as? URLError, error.code == .cancelled { throw error }
                 feed = try await iTunesChart(region: region, session: session)
@@ -198,7 +197,7 @@ enum EvanTubeOnlineFeedService {
     }
 
     private static func appleChart(region: String, session: URLSession) async throws -> EvanTubeOnlineFeed {
-        let root = try await json("https://rss.marketingtools.apple.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json", session: session, source: "Apple Music")
+        let root = try await json("https://rss.marketingtools.apple.com/api/v2/\(region.lowercased())/music/most-played/20/songs.json", session: session, source: "Apple Music", timeout: 8, retryTransient: false)
         guard let feed = root["feed"] as? [String: Any],
               let rows = feed["results"] as? [[String: Any]] else { throw URLError(.badServerResponse) }
         let items = rows.compactMap { row -> EvanTubeOnlineItem? in
@@ -280,12 +279,12 @@ enum EvanTubeOnlineFeedService {
         )
     }
 
-    private static func json(_ address: String, session: URLSession = .shared, source: String = "線上來源") async throws -> [String: Any] {
+    private static func json(_ address: String, session: URLSession = .shared, source: String = "線上來源", timeout: TimeInterval = 15, retryTransient: Bool = true) async throws -> [String: Any] {
         guard let url = URL(string: address) else { throw URLError(.badURL) }
         var request = URLRequest(url: url)
-        request.timeoutInterval = 15
+        request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await PublicSourceRequest.data(for: request, session: session, source: source)
+        let (data, response) = try await PublicSourceRequest.data(for: request, session: session, source: source, retryTransient: retryTransient)
         guard response.statusCode == 200 else { throw PublicSourceError.http(source, response.statusCode) }
         guard data.count <= 2 * 1024 * 1024,
               let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {

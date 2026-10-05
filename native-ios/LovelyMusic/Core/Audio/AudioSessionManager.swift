@@ -25,12 +25,15 @@ enum AudioSessionManager {
     /// Idempotent: calling on an already-active session is a no-op. Activation
     /// errors are logged but do not throw — `AVPlayer` will surface its own
     /// playback failure if the session genuinely cannot become active.
-    static func activate() {
+    @discardableResult
+    static func activate() -> Bool {
         do {
             try AVAudioSession.sharedInstance().setActive(true)
             Log.audioSession.info("Audio session activated for playback")
+            return true
         } catch {
             Log.audioSession.error("Activation failed, code=\((error as NSError).code)")
+            return false
         }
     }
 

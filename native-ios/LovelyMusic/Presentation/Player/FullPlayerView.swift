@@ -644,9 +644,15 @@ struct FullPlayerView: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.Colors.brandGradient)
-                    Text("暫無歌詞")
+                    Text("找不到這首歌的相符歌詞")
                         .font(Theme.Typography.subheadline)
                         .foregroundStyle(Theme.Colors.textSecondary)
+                    Text("歌詞查詢依歌曲名稱與歌手配對；影片標題可能與歌曲資料不同。")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                    Button("重試取得歌詞") { playerVM.retryLyrics() }
+                        .accessibilityIdentifier("lyrics_retry")
                 }
                 Spacer()
             }

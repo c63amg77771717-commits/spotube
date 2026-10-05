@@ -305,6 +305,18 @@ final class PlayerViewModel {
         }
     }
 
+    func retryInterruptedLyrics() {
+        guard !isLoadingLyrics, lyrics == nil,
+              lyricsTrackID == nil || lyricsError != nil,
+              let song = currentSong else { return }
+        requestLyricsAfterFailure(for: song)
+    }
+
+    private func requestLyricsAfterFailure(for song: Song) {
+        lyricsTrackID = nil
+        requestLyrics(for: song)
+    }
+
     func retryLyrics() {
         guard let song = currentSong else { return }
         Task { [weak self] in await self?.loadLyrics(for: song) }
@@ -329,9 +341,14 @@ final class PlayerViewModel {
                       self.currentSong?.id == song.id else { return }
                 self.lyrics = result?.lines.isEmpty == false ? result : nil
             } catch {
-                guard !Task.isCancelled, self.lyricsGeneration == generation,
+                guard self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
-                self.lyricsError = "歌詞取得失敗（\(error.localizedDescription)），請重試"
+                if Task.isCancelled || error is CancellationError
+                    || (error as? URLError)?.code == .cancelled {
+                    self.lyricsTrackID = nil
+                } else {
+                    self.lyricsError = "歌詞取得失敗（\(error.localizedDescription)），請重試"
+                }
             }
             guard self.lyricsGeneration == generation else { return }
             self.isLoadingLyrics = false
@@ -342,7 +359,10 @@ final class PlayerViewModel {
         } onCancel: {
             task.cancel()
         }
-        if lyricsGeneration == generation { isLoadingLyrics = false }
+        if lyricsGeneration == generation {
+            isLoadingLyrics = false
+            if task.isCancelled { lyricsTrackID = nil }
+        }
     }
 
     func playPause() {

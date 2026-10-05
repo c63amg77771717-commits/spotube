@@ -81,7 +81,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
 
         if let syncedLyrics = lrcResponse.syncedLyrics, !syncedLyrics.isEmpty {
             let lines = parseLRC(syncedLyrics)
-            return SyncedLyrics(lines: lines, source: "LrcLib")
+            if !lines.isEmpty { return SyncedLyrics(lines: lines, source: "LrcLib") }
         }
 
         if let plainLyrics = lrcResponse.plainLyrics, !plainLyrics.isEmpty {

@@ -12,9 +12,23 @@ enum LyricsLookupMetadata {
     }
 
     static func cleaned(title: String, artist: String, allowVideoCredits: Bool) -> Pair? {
-        let parts = title.components(separatedBy: " - ")
+        var lookupInput = title
+        if allowVideoCredits {
+            lookupInput = lookupInput.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
+            if lookupInput.filter({ $0 == "《" }).count == 1,
+               lookupInput.filter({ $0 == "》" }).count == 1,
+               let open = lookupInput.firstIndex(of: "《"), let close = lookupInput.firstIndex(of: "》"),
+               open < close, !lookupInput[..<open].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !lookupInput[lookupInput.index(after: close)...].contains("《") {
+                let credit = String(lookupInput[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let track = String(lookupInput[lookupInput.index(after: open)..<close])
+                let suffix = String(lookupInput[lookupInput.index(after: close)...])
+                lookupInput = credit + " - " + track + suffix
+            }
+        }
+        let parts = lookupInput.components(separatedBy: " - ")
         guard parts.count <= 2, allowVideoCredits || parts.count == 2 else { return nil }
-        var lookupTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        var lookupTitle = lookupInput.trimmingCharacters(in: .whitespacesAndNewlines)
         var lookupArtist = artist.trimmingCharacters(in: .whitespacesAndNewlines)
         if parts.count == 2 {
             let credit = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -24,7 +38,7 @@ enum LyricsLookupMetadata {
                 lookupArtist = credit
             } else { return nil }
         }
-        let bare = "(?:official\\s+(?:music\\s+video|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
+        let bare = "(?:official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
         let bracketed = "(?:\(bare)|官方頻道|官方频道)"
         let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|\\s+\(bare))\\s*$"
         while let range = lookupTitle.range(of: suffix, options: .regularExpression) {

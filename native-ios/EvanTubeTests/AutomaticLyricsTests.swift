@@ -165,6 +165,29 @@ import XCTest
         XCTAssertNil(vm.lyricsError)
         XCTAssertFalse(vm.isLoadingLyrics)
     }
+    func testForegroundRetriesFailedLyricsWithoutReselectingSong() async {
+        let repository = AutomaticRetryLyricsRepository()
+        let vm = model(repository)
+        await drain()
+        XCTAssertNotNil(vm.lyricsError)
+        vm.retryInterruptedLyrics()
+        await drain()
+        XCTAssertNil(vm.lyricsError)
+        XCTAssertEqual(vm.lyrics?.lines.first?.text, "retried")
+        XCTAssertEqual(vm.currentSong?.id, "AAAAAAAAAAA")
+    }
+
+    func testProviderCancellationIsNotStickyForTheSameSong() async {
+        let repository = AutomaticCancelledLyricsRepository()
+        let vm = model(repository)
+        await drain()
+        XCTAssertFalse(vm.isLoadingLyrics)
+        XCTAssertNil(vm.lyricsError, "Suspension cancellation is not a missing lyric")
+        vm.retryInterruptedLyrics()
+        await drain()
+        XCTAssertEqual(vm.lyrics?.lines.first?.text, "resumed")
+    }
+
     func testFailureIsRetryableAndSuccessfulRetryClearsError() async {
         let repository = AutomaticRetryLyricsRepository()
         let vm = model(repository)
@@ -219,5 +242,14 @@ private actor AutomaticRetryLyricsRepository: LyricsRepositoryProtocol {
         attempts += 1
         if attempts == 1 { throw URLError(.notConnectedToInternet) }
         return SyncedLyrics(lines: [LyricLine(time: 0, text: "retried")], source: "fixture")
+    }
+}
+
+private actor AutomaticCancelledLyricsRepository: LyricsRepositoryProtocol {
+    private var attempts = 0
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
+        attempts += 1
+        if attempts == 1 { throw URLError(.cancelled) }
+        return SyncedLyrics(lines: [LyricLine(time: 0, text: "resumed")], source: "fixture")
     }
 }

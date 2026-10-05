@@ -453,6 +453,61 @@ final class PlaybackReliabilityTests: XCTestCase {
         service.stopStallDetection()
     }
 
+    func testMediaServicesResetAllowsSameSelectionToResumeWithoutSelectingAgain() async throws {
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        let selected = song(url: try fixtureURL())
+        let next = song(id: "reliable002")
+        engine.play(song: selected, fromQueue: [selected, next], seekTo: 17)
+        NotificationCenter.default.post(name: AVAudioSession.mediaServicesWereResetNotification,
+                                       object: AVAudioSession.sharedInstance())
+        await Task.yield()
+        XCTAssertFalse(engine.isPlaying)
+        XCTAssertEqual(engine.currentTrack?.id, selected.id)
+        XCTAssertEqual(engine.queue.map(\.id), [selected.id, next.id])
+        XCTAssertEqual(engine.currentTime, 17, accuracy: 0.001)
+        engine.handleRemotePlay()
+        XCTAssertTrue(engine.isPlaying)
+        XCTAssertEqual(engine.localFileURL, URL(string: selected.streamURL!))
+        XCTAssertEqual(engine.currentTime, 17, accuracy: 0.001)
+    }
+
+    func testExplicitPlayCanRecoverMissingInterruptionEndAfterSuspension() async throws {
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        engine.play(song: song(url: try fixtureURL()))
+        postInterruption(.began)
+        await Task.yield()
+        XCTAssertFalse(engine.isPlaying)
+        engine.applicationDidBecomeActive()
+        XCTAssertFalse(engine.isPlaying, "Foreground alone must not override a system interruption")
+        engine.handleRemotePlay()
+        XCTAssertTrue(engine.isPlaying, "Successful audio activation on explicit play clears a stale interruption")
+        engine.handleRemotePause()
+        engine.applicationDidBecomeActive()
+        XCTAssertFalse(engine.isPlaying, "Returning to foreground must preserve a manual pause")
+    }
+
+    func testMissingLocalArtifactResolvesAgainAndKeepsPositionAndQueue() async throws {
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        let missing = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+        let selected = song(url: missing)
+        let next = song(id: "reliable002")
+        engine.restorePlaybackState(state(queue: [selected, next], position: 31))
+        let invoked = expectation(description: "A disappeared temp file re-enters the resolver")
+        engine.streamURLResolver = { id in
+            XCTAssertEqual(id, selected.id)
+            invoked.fulfill()
+            throw InnerTubeError.timeout
+        }
+        engine.handleRemotePlay()
+        await fulfillment(of: [invoked], timeout: 2)
+        XCTAssertEqual(engine.currentTrack?.id, selected.id)
+        XCTAssertEqual(engine.currentTime, 31, accuracy: 0.001)
+        XCTAssertEqual(engine.queue.map(\.id), [selected.id, next.id])
+    }
+
     private func song(id: String = "reliable001", url: URL? = nil) -> Song {
         var result = Song(id: id, title: "Reliability fixture", artistName: "Fixture", artistId: nil,
                           albumName: nil, albumId: nil, duration: 180, thumbnailURL: nil)

@@ -19,6 +19,14 @@ final class OnlineFeedRegressionTests: XCTestCase {
         XCTAssertEqual(feed.items.first?.id, "876543210")
         XCTAssertEqual(feed.items.first?.title, "Regional fixture")
     }
+    func testMalformedPrimaryStillUsesValidSameRegionFallback() async throws {
+        URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
+        defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
+        let feed = try await EvanTubeOnlineFeedService.chart(region: "QQ")
+        XCTAssertTrue(feed.sourceName.contains("iTunes · QQ"))
+        XCTAssertEqual(feed.items.first?.title, "Regional fixture")
+    }
+
     func testChartUsesCanonicalAppleHostWithoutLegacyRedirect() async throws {
         URLProtocol.registerClass(OnlineFeedResponseProtocol.self)
         defer { URLProtocol.unregisterClass(OnlineFeedResponseProtocol.self) }
@@ -211,7 +219,7 @@ private final class ChartSearchResponseProtocol: URLProtocol {
 private final class OnlineFeedResponseProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool {
         guard let url = request.url, ["rss.applemarketingtools.com", "rss.marketingtools.apple.com", "itunes.apple.com"].contains(url.host ?? "") else { return false }
-        return ["rr", "vv", "ww", "xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
+        return ["qq", "rr", "vv", "ww", "xx", "yy", "zz"].contains { url.path.contains("/\($0)/") }
     }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
@@ -225,9 +233,11 @@ private final class OnlineFeedResponseProtocol: URLProtocol {
             return
         }
         let json: String
-        if url.host == "itunes.apple.com" {
+        if url.path.contains("/zz/") {
+            json = #"{"unexpected":[]}"#
+        } else if url.host == "itunes.apple.com" {
             json = #"{"feed":{"updated":{"label":"2026-10-04T10:00:00Z"},"entry":[{"id":{"attributes":{"im:id":"876543210"}},"im:name":{"label":"Regional fixture"},"im:artist":{"label":"Regional artist"},"im:image":[{"label":"https://example.com/art.png"}]}]}}"#
-        } else if url.path.contains("/zz/") {
+        } else if url.path.contains("/qq/") {
             json = #"{"unexpected":[]}"#
         } else if url.path.contains("/yy/") {
             json = #"{"feed":{"results":[]}}"#

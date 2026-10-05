@@ -2,6 +2,20 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsMetadataLookupTests: XCTestCase {
+    func testVerifiedVideoUnicodeAndBracketedCreditsProduceExactMatchingLyrics() async throws {
+        for title in ["Rick Astley – Never Gonna Give You Up (Official Video)",
+                      "Rick Astley《Never Gonna Give You Up》 Official Audio"] {
+            await LyricsMetadataRequests.shared.reset()
+            let result = try await lyrics(title, artist: "")
+            XCTAssertEqual(result?.lines.first?.text, "Matched fixture")
+            let requests = await LyricsMetadataRequests.shared.pairs
+            XCTAssertEqual(requests, ["Rick Astley|Never Gonna Give You Up"])
+        }
+        XCTAssertNil(LyricsLookupMetadata.cleaned(title: "Rick Astley & Guest《Song》", artist: "", allowVideoCredits: true))
+        let live = LyricsLookupMetadata.cleaned(title: "Rick Astley《Song Live》 (Official Video)", artist: "", allowVideoCredits: true)
+        XCTAssertEqual(live?.title, "Song Live")
+    }
+
     func testVerifiedVideoEmptyArtistUsesSingleCreditBeforeInvalidRequest() async throws {
         await LyricsMetadataRequests.shared.reset()
         let result = try await lyrics("Rick Astley - Never Gonna Give You Up", artist: "  ")
