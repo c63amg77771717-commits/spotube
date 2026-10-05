@@ -42,4 +42,11 @@ final class LrcApiPreviewHTTPFixture: URLProtocol {
     }
     override func stopLoading() { }
 }
+/// Default Debug Review response for layout tests. Explicit lyric fixtures above still use real adapters.
+struct ReviewLyricsFixtureRepository: LyricsRepositoryProtocol {
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
+        return nil
+    }
+}
 #endif

@@ -115,6 +115,9 @@ final class DIContainer {
             let session = LyricsCandidatePreviewHTTPFixture.session(
                 resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")
             lyricsRepo = LrcLibService(session: session)
+        } else if isReviewMode {
+            // Layout previews must not send demo metadata to production lyric APIs.
+            lyricsRepo = ReviewLyricsFixtureRepository()
         } else {
             lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())
         }
