@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { fullPlayerProgress, fullPlayerButton, currentRef } from './accessibility-selectors.mjs';
 
 const { createAgentDeviceClient } = await import(pathToFileURL(process.env.AGENT_DEVICE_ENTRY));
 const app = 'com.c63amg77771717.evantube';
@@ -66,8 +67,9 @@ async function waitID(id, timeoutMs = 20000) {
 async function waitText(text, timeoutMs = 20000) {
   return step('wait-text', () => client.command.wait({ text, timeoutMs }));
 }
-async function pressID(id, settle = true) {
-  return step(`press-${id}`, () => client.interactions.press({ selector: `id="${id}"`, settle }));
+async function pressID(id, settle = true, role) {
+  const selector = `${role ? `role="${role}" ` : ''}id="${id}"`;
+  return step(`press-${id}`, () => client.interactions.press({ selector, settle }));
 }
 async function pressLabel(label, settle = true) {
   return step('press-label', () => client.interactions.press({ selector: `label="${label}"`, settle }));
@@ -110,7 +112,7 @@ function preferences() {
 async function settings() {
   await pressLabel('Close player');
   await pressID('tab_library');
-  await pressID('library_settings');
+  await pressID('library_settings', true, 'button');
   await step('open-playback-settings', () => client.interactions.find({ locator: 'text', query: 'Playback & Audio', action: 'click' }));
   await step('scroll-to-secondary-switch', () => client.interactions.scroll({ direction: 'down',
     until: 'id="lyrics_lrcapi_enabled"', settle: true }));
@@ -133,8 +135,8 @@ async function assertNoPlaybackError() {
 }
 async function progress() {
   const snap = await snapshot();
-  const node = snap.nodes.find(n => n.label === 'Playback progress' || n.label?.startsWith('Progress:'));
-  assert(node, 'Playback progress must expose elapsed time');
+  // The agent snapshot can include the covered dock. Require the full-player slider.
+  const node = fullPlayerProgress(snap);
   const match = `${node.label ?? ''} ${node.value ?? ''}`.match(/(\d+):(\d+)/);
   assert(match, `Unreadable playback progress: ${node.label} ${node.value}`);
   return { seconds: Number(match[1]) * 60 + Number(match[2]), node };
@@ -176,9 +178,15 @@ const cases = [
   }],
   ['next-previous-transient-recovery', { mode: 'transient' }, async () => {
     await fullPlayer(); await assertNoPlaybackError();
+    // Pause the actual full-player button so automation latency cannot cross the >3s restart threshold.
+    const pauseSnapshot = await snapshot();
+    const pauseButton = fullPlayerButton(pauseSnapshot, 'Pause');
+    await step('pause-before-seek', () => client.interactions.press({ ref: currentRef(pauseSnapshot, pauseButton) }));
+    await step('paused-state', () => client.command.wait({ selector: 'role="button" label="Play"', timeoutMs: 5000 }));
     const { node } = await progress();
-    // Seek to the beginning before Previous, matching the player's >3s restart semantics.
     await step('seek-to-start', () => client.interactions.press({ x: node.rect.x + 1, y: node.rect.y + node.rect.height / 2 }));
+    const start = await progress();
+    assert(start.seconds <= 3, `Seek must actually reach the beginning before Previous: ${start.seconds}s`);
     // Previous wraps to an unresolved track, so its injected error cannot be bypassed by the cache.
     await pressLabel('Previous track', false); await waitText('Agent Last');
     await waitLocalResolution('agent_last'); await assertNoPlaybackError(); await screenshot('previous-recovered');

@@ -202,7 +202,10 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             object: app.buttons["dock_play_pause"].firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 15), .completed)
         save(app, name: "10-歌曲整列播放")
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)).tap()
+        let menu = app.buttons["song_menu_demo_song_morning_light"].firstMatch
+        XCTAssertTrue(menu.waitForExistence(timeout: 15))
+        XCTAssertTrue(menu.isHittable)
+        menu.tap()
         XCTAssertTrue(app.buttons["加入歌單"].firstMatch.waitForExistence(timeout: 5),
                       "The trailing menu must remain independently tappable")
     }
