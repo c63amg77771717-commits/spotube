@@ -36,6 +36,14 @@ replace('LovelyMusic/App/DIContainer.swift',
         } else if isReviewMode, ProcessInfo.processInfo.environment["EVANTUBE_LRCAPI_FIXTURE"] == "1" {''')
 replace('LovelyMusic/App/DIContainer.swift', 'secondary: LrcApiService(session: session), secondaryEnabled: { true })',
     'secondary: LrcApiService(session: session))')
+# Observe the actual preference API in each new test App process, without writing or synchronizing it.
+replace('LovelyMusic/App/DIContainer.swift',
+    'let session = LrcApiPreviewHTTPFixture.session(\n                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")',
+    '''let session = LrcApiPreviewHTTPFixture.session(
+                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")
+            AgentDeviceFixtureLog.record(["kind": "launch_preferences",
+                "pid": Int(ProcessInfo.processInfo.processIdentifier),
+                "secondaryEnabled": LyricsSecondarySettings.isEnabled()])''')
 replace('LovelyMusic/Presentation/Navigation/ContentView.swift', '''                playerVM.play(song: Song(
                     id: "demo_song_morning_light", title: "Arcadia", artistName: "Kevin MacLeod",
                     artistId: nil, albumName: "Peaceful Moments", albumId: nil,

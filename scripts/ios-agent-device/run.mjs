@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { fullPlayerProgress, fullPlayerButton, currentRef } from './accessibility-selectors.mjs';
 import { retryUndispatchedRunnerBusy } from './runner-recovery.mjs';
+import { observePersistedPreferences } from './preferences-observer.mjs';
 
 const { createAgentDeviceClient } = await import(pathToFileURL(process.env.AGENT_DEVICE_ENTRY));
 const app = 'com.c63amg77771717.evantube';
@@ -103,7 +104,7 @@ function fixtureEvents() {
   save(`${caseName}-fixture-events.json`, events);
   return events;
 }
-function preferences() {
+function readPreferencesFile() {
   const container = simctl(['get_app_container', udid, app, 'data']);
   const file = path.join(container, 'Library/Preferences', `${app}.plist`);
   const code = `import json,plistlib,sys; d=plistlib.load(open(sys.argv[1],'rb')); print(json.dumps({k:v for k,v in d.items() if k == 'lyrics.secondary.lrcapi.enabled' or k.startswith('lyrics.selection.')}))`;
@@ -112,6 +113,18 @@ function preferences() {
   const value = JSON.parse(result.stdout);
   save(`${caseName}-preferences-${sequence}.json`, value);
   return value;
+}
+async function preferences(expectedEnabled) {
+  // Read the preference in the newly launched App process as well as the raw plist.
+  const launches = fixtureEvents().filter(event => event.kind === 'launch_preferences');
+  const latest = launches.at(-1);
+  assert.equal(latest?.secondaryEnabled, expectedEnabled,
+    'The fresh App process must read the expected source preference');
+  assert(launches.length >= 2 && latest.pid !== launches.at(-2).pid,
+    'Preference evidence must come from an actual new App process');
+  return step('observe-persisted-source-preference', () => observePersistedPreferences(
+    readPreferencesFile, expectedEnabled, { sleep,
+      record: observations => save(`${caseName}-preferences-observations-${sequence}.json`, observations) }));
 }
 async function settings() {
   await pressLabel('Close player');
@@ -172,12 +185,12 @@ const cases = [
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LRCLib UI recording');
     await waitID('lyrics_plain_notice'); await screenshot('primary-with-secondary-off');
-    const disabled = preferences(); assert.equal(disabled['lyrics.secondary.lrcapi.enabled'], false);
+    const disabled = await preferences(false); assert.equal(disabled['lyrics.secondary.lrcapi.enabled'], false);
     const saved = disabled['lyrics.selection.arcadia|kevinmacleod|98']; assert(saved, 'The remembered recording must survive disabling its source');
     await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LrcApi UI first recording');
-    const enabled = preferences(); assert.equal(enabled['lyrics.secondary.lrcapi.enabled'], true);
+    const enabled = await preferences(true); assert.equal(enabled['lyrics.secondary.lrcapi.enabled'], true);
     assert.deepEqual(enabled['lyrics.selection.arcadia|kevinmacleod|98'], saved);
     await screenshot('remembered-lrcapi-after-reenable');
   }],
