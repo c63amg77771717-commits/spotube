@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { fullPlayerProgress, fullPlayerButton, currentRef } from './accessibility-selectors.mjs';
+import { retryUndispatchedRunnerBusy } from './runner-recovery.mjs';
 
 const { createAgentDeviceClient } = await import(pathToFileURL(process.env.AGENT_DEVICE_ENTRY));
 const app = 'com.c63amg77771717.evantube';
@@ -59,7 +60,7 @@ async function launch(reset = true) {
   const snap = await step('initial-snapshot', () => client.capture.snapshot());
   const deny = snap.nodes.find(n => ["Don't Allow", "Don\u2019t Allow"].includes(n.label));
   if (deny) await step('dismiss-preview-notification', () => client.interactions.press({
-    ref: snap.refsGeneration ? `${deny.ref}~s${snap.refsGeneration}` : deny.ref }));
+    ref: currentRef(snap, deny) }));
 }
 async function waitID(id, timeoutMs = 20000) {
   return step(`wait-${id}`, () => client.command.wait({ selector: `id="${id}"`, timeoutMs }));
@@ -67,9 +68,12 @@ async function waitID(id, timeoutMs = 20000) {
 async function waitText(text, timeoutMs = 20000) {
   return step('wait-text', () => client.command.wait({ text, timeoutMs }));
 }
-async function pressID(id, settle = true, role) {
+async function pressID(id, settle = true, role, readinessTimeoutMs) {
   const selector = `${role ? `role="${role}" ` : ''}id="${id}"`;
-  return step(`press-${id}`, () => client.interactions.press({ selector, settle }));
+  return retryUndispatchedRunnerBusy(
+    attempt => step(`press-${id}-attempt-${attempt}`, () => client.interactions.press({
+      selector, settle, ...(readinessTimeoutMs ? { readinessTimeoutMs } : {}) })),
+    sleep, evidence => save(`${caseName}-runner-busy-recovery-${sequence}.json`, evidence));
 }
 async function pressLabel(label, settle = true) {
   return step('press-label', () => client.interactions.press({ selector: `label="${label}"`, settle }));
@@ -115,7 +119,7 @@ async function settings() {
   await pressID('library_settings', true, 'button');
   await step('open-playback-settings', () => client.interactions.find({ locator: 'text', query: 'Playback & Audio', action: 'click' }));
   await step('scroll-to-secondary-switch', () => client.interactions.scroll({ direction: 'down',
-    until: 'id="lyrics_lrcapi_enabled"', settle: true }));
+    until: 'id="lyrics_lrcapi_enabled"', settle: false }));
   await waitID('lyrics_lrcapi_enabled');
 }
 async function waitLocalResolution(id) {
@@ -145,8 +149,9 @@ async function progress() {
 const cases = [
   ['plain-candidate-and-relaunch', { candidates: true }, async () => {
     await fullPlayer(); await waitID('lyrics_candidate_prompt');
-    await pressID('lyrics_version_picker'); await waitID('lyrics_candidate_102');
-    await screenshot('candidate-list'); await pressID('lyrics_candidate_102');
+    await pressID('lyrics_version_picker', false);
+    await screenshot('candidate-list');
+    await pressID('lyrics_candidate_102', false, 'button', 20000);
     await waitText('Candidate UI second recording'); await waitID('lyrics_plain_notice');
     await absent('lyrics_candidate_prompt'); await screenshot('selected-plain');
     await step('agent-close-app', () => client.apps.close({ app }));
@@ -155,21 +160,21 @@ const cases = [
     await screenshot('remembered-after-relaunch');
   }],
   ['cross-provider-setting-and-memory', { sources: true }, async () => {
-    await fullPlayer(); await pressID('lyrics_version_picker');
+    await fullPlayer(); await pressID('lyrics_version_picker', false);
     await waitID('lyrics_candidate_lrcapi_101'); await screenshot('provider-candidates');
     await pressID('lyrics_candidate_lrcapi_101'); await waitText('LrcApi UI first recording');
     const attribution = await step('provider-attribution', () => client.interactions.get({
       selector: 'id="lyrics_provider_attribution"', format: 'text' }));
     assert(JSON.stringify(attribution).includes('LrcApi'));
     await screenshot('selected-lrcapi');
-    await settings(); await pressID('lyrics_lrcapi_enabled'); await sleep(1800);
+    await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await screenshot('secondary-off');
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LRCLib UI recording');
     await waitID('lyrics_plain_notice'); await screenshot('primary-with-secondary-off');
     const disabled = preferences(); assert.equal(disabled['lyrics.secondary.lrcapi.enabled'], false);
     const saved = disabled['lyrics.selection.arcadia|kevinmacleod|98']; assert(saved, 'The remembered recording must survive disabling its source');
-    await settings(); await pressID('lyrics_lrcapi_enabled'); await sleep(1800);
+    await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LrcApi UI first recording');
     const enabled = preferences(); assert.equal(enabled['lyrics.secondary.lrcapi.enabled'], true);

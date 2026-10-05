@@ -22,5 +22,6 @@ export function fullPlayerButton(snapshot, label) {
 
 export function currentRef(snapshot, node) {
   assert(node.ref, 'Actionable snapshot node must have a reference');
-  return snapshot.refsGeneration ? `${node.ref}~s${snapshot.refsGeneration}` : node.ref;
+  const ref = node.ref.startsWith('@') ? node.ref : `@${node.ref}`;
+  return snapshot.refsGeneration ? `${ref}~s${snapshot.refsGeneration}` : ref;
 }
