@@ -59,6 +59,8 @@ struct ContentView: View {
                     .environment(\.isTabActive, selectedTab == .home)
                     .opacity(selectedTab == .home ? 1 : 0)
                     .allowsHitTesting(selectedTab == .home)
+                    .accessibilityHidden(selectedTab != .home)
+                    .zIndex(selectedTab == .home ? 1 : 0)
                 }
 
                 if loadedTabs.contains(.search) {
@@ -71,6 +73,8 @@ struct ContentView: View {
                     .environment(\.isTabActive, selectedTab == .search)
                     .opacity(selectedTab == .search ? 1 : 0)
                     .allowsHitTesting(selectedTab == .search)
+                    .accessibilityHidden(selectedTab != .search)
+                    .zIndex(selectedTab == .search ? 1 : 0)
                 }
 
                 if loadedTabs.contains(.library) {
@@ -83,6 +87,8 @@ struct ContentView: View {
                     .environment(\.isTabActive, selectedTab == .library)
                     .opacity(selectedTab == .library ? 1 : 0)
                     .allowsHitTesting(selectedTab == .library)
+                    .accessibilityHidden(selectedTab != .library)
+                    .zIndex(selectedTab == .library ? 1 : 0)
                 }
             }
             .onChange(of: selectedTab) { _, newTab in

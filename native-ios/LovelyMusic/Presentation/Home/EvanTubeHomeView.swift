@@ -121,7 +121,8 @@ struct EvanTubeHomeView: View {
     private var isAutomationPreview: Bool {
         #if DEBUG
         ProcessInfo.processInfo.environment["REVIEW_MODE"] == "1"
-            && CommandLine.arguments.contains("-evantubeSettingsPreview")
+            && ["-evantubeSettingsPreview", "-evantubeSearchPreview",
+                "-evantubePlaylistRemovalPreview"].contains(where: CommandLine.arguments.contains)
         #else
         false
         #endif

@@ -76,8 +76,18 @@ jobs:
           ) &
           monitor_pid=$!
           trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
-          for test in             testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection             testSelectedRecordingIsRememberedAcrossActualAppRelaunch; do
-            xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug               -destination "platform=iOS Simulator,id=$EVANTUBE_PICKER_SIMULATOR"               -derivedDataPath "$RUNNER_TEMP/evantube-picker-derived" -parallel-testing-enabled NO               -only-testing:"LovelyMusicUITests/EvanTubeLyricsCandidateUITests/$test"               -resultBundlePath "$RUNNER_TEMP/evantube-picker-$test.xcresult"               CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-               CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-picker.entitlements" test-without-building               2>&1 | tee "$EVANTUBE_PICKER_EVIDENCE/$test.log"
+          for test in \
+            EvanTubeSettingsPreviewTests/testLibrarySearchAndSongRowTap \
+            EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
+            EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch; do
+            xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
+              -destination "platform=iOS Simulator,id=$EVANTUBE_PICKER_SIMULATOR" \
+              -derivedDataPath "$RUNNER_TEMP/evantube-picker-derived" -parallel-testing-enabled NO \
+              -only-testing:"LovelyMusicUITests/$test" \
+              -resultBundlePath "$RUNNER_TEMP/evantube-picker-${test//\//-}.xcresult" \
+              CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+              CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-picker.entitlements" test-without-building \
+              2>&1 | tee "$EVANTUBE_PICKER_EVIDENCE/${test//\//-}.log"
           done
       - name: Export valid failure evidence independently
         if: always()

@@ -178,29 +178,32 @@ final class EvanTubeSettingsPreviewTests: XCTestCase {
             "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW", "-evantubeSearchPreview"]
         app.launchEnvironment["REVIEW_MODE"] = "1"
         app.launch()
-        XCTAssertTrue(app.buttons["tab_library"].waitForExistence(timeout: 30))
-        app.buttons["tab_library"].tap()
+        XCTAssertTrue(app.buttons["tab_library"].firstMatch.waitForExistence(timeout: 30))
+        app.buttons["tab_library"].firstMatch.tap()
         let playlist = app.buttons.matching(NSPredicate(
             format: "label BEGINSWITH %@", "搜尋與點擊測試")).firstMatch
         XCTAssertTrue(playlist.waitForExistence(timeout: 15))
-        app.buttons["tab_search"].tap()
-        XCTAssertTrue(app.buttons["search_scope_library"].waitForExistence(timeout: 15))
-        app.buttons["search_scope_library"].tap()
-        let query = app.textFields["search_query"]
+        app.buttons["tab_search"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["search_scope_library"].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.buttons["tab_search"].firstMatch.isSelected)
+        save(app, name: "09-search-library-scope-before-tap")
+        XCTAssertTrue(app.buttons["search_scope_library"].firstMatch.isHittable)
+        app.buttons["search_scope_library"].firstMatch.tap()
+        let query = app.textFields["search_query"].firstMatch
         XCTAssertTrue(query.exists)
         query.tap()
         query.typeText("Arcadia\n")
-        let row = app.buttons["song_row_demo_song_morning_light"]
+        let row = app.buttons["song_row_demo_song_morning_light"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 15))
-        XCTAssertFalse(app.staticTexts["尚未設定線上音源"].exists)
+        XCTAssertFalse(app.staticTexts["尚未設定線上音源"].firstMatch.exists)
         save(app, name: "09-媒體庫搜尋")
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.68, dy: 0.5)).tap()
         let playing = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == '暫停'"),
-            object: app.buttons["dock_play_pause"])
+            object: app.buttons["dock_play_pause"].firstMatch)
         XCTAssertEqual(XCTWaiter.wait(for: [playing], timeout: 15), .completed)
         save(app, name: "10-歌曲整列播放")
         row.coordinate(withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)).tap()
-        XCTAssertTrue(app.buttons["加入歌單"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.buttons["加入歌單"].firstMatch.waitForExistence(timeout: 5),
                       "The trailing menu must remain independently tappable")
     }
 
