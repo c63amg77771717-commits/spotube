@@ -3,9 +3,10 @@ import argparse, json, pathlib, subprocess
 p=argparse.ArgumentParser()
 p.add_argument('--results-root',type=pathlib.Path,required=True)
 p.add_argument('--evidence',type=pathlib.Path,required=True)
+p.add_argument('--prefix',default='evantube-')
 a=p.parse_args(); a.evidence.mkdir(parents=True,exist_ok=True)
 rows=[]
-for bundle in sorted(a.results_root.glob('evantube-*.xcresult')):
+for bundle in sorted(a.results_root.glob(a.prefix+'*.xcresult')):
     target=a.evidence/bundle.stem; target.mkdir(parents=True,exist_ok=True)
     summary=subprocess.run(['xcrun','xcresulttool','get','test-results','summary','--path',str(bundle)],text=True,capture_output=True)
     (target/'summary.stderr.log').write_text(summary.stderr,encoding='utf-8')

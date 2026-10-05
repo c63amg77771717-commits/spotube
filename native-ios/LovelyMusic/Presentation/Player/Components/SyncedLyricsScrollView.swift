@@ -12,6 +12,7 @@ struct SyncedLyricsScrollView: View {
     let lyrics: SyncedLyrics
 
     @State private var selectedCandidateID: LyricsRecordID?
+    @State private var showingCandidates = false
 
     private var displayLyrics: SyncedLyrics {
         let remembered = lyrics.selectionKey.flatMap { LyricsSelectionStore.selectedRecord(for: $0) }
@@ -125,6 +126,7 @@ struct SyncedLyricsScrollView: View {
             }
         }
         .onChange(of: lyricsFingerprint) { _, _ in
+            showingCandidates = false
             selectedCandidateID = nil
             currentLineId = nil
             translatedLines.removeAll()
@@ -158,7 +160,7 @@ struct SyncedLyricsScrollView: View {
         }
     }
 
-    /// A sibling of the scroll view keeps the candidate menu hittable by touch and VoiceOver.
+    /// Keep the candidate control outside the lyric scroll view and expose a single button.
     private var lyricsStatusHeader: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             if displayLyrics.lines.isEmpty {
@@ -186,26 +188,20 @@ struct SyncedLyricsScrollView: View {
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
             if !lyrics.candidates.isEmpty, (lyrics.candidates.count > 1 || lyrics.lines.isEmpty), let key = lyrics.selectionKey {
-                Menu {
-                    ForEach(lyrics.candidates) { candidate in
-                        Button {
-                            LyricsSelectionStore.select(candidate.id, for: key)
-                            selectedCandidateID = candidate.id
-                            currentLineId = nil
-                            translatedLines.removeAll()
-                            showTranslation = false
-                        } label: {
-                            Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
-                        }
-                        .accessibilityIdentifier(candidate.accessibilityID)
-                    }
+                Button {
+                    showingCandidates = true
                 } label: {
                     Label(LocalizationManager.text("Choose lyrics version"), systemImage: "list.bullet")
                         .font(Theme.Typography.caption)
                         .frame(minHeight: 44, alignment: .leading)
                         .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.Colors.brandGradientStart)
                 .accessibilityIdentifier("lyrics_version_picker")
+                .sheet(isPresented: $showingCandidates) {
+                    candidatePicker(selectionKey: key)
+                }
             }
         }
         .padding(.horizontal, Theme.Spacing.xl)
@@ -213,6 +209,46 @@ struct SyncedLyricsScrollView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("lyrics_status_header")
+    }
+
+    private func candidatePicker(selectionKey: String) -> some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: Theme.Spacing.sm) {
+                    ForEach(lyrics.candidates) { candidate in
+                        Button {
+                            LyricsSelectionStore.select(candidate.id, for: selectionKey)
+                            selectedCandidateID = candidate.id
+                            currentLineId = nil
+                            translatedLines.removeAll()
+                            showTranslation = false
+                            showingCandidates = false
+                        } label: {
+                            Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
+                                .font(Theme.Typography.body)
+                                .foregroundStyle(Theme.Colors.textPrimary)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .padding(Theme.Spacing.md)
+                                .background(Theme.Colors.textPrimary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier(candidate.accessibilityID)
+                    }
+                }
+                .padding(Theme.Spacing.xl)
+            }
+            .background(Theme.Colors.background)
+            .navigationTitle(LocalizationManager.text("Choose lyrics version"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingCandidates = false }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Lyric Line

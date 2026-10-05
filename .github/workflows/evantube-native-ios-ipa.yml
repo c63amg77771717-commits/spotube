@@ -114,7 +114,11 @@ jobs:
           trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
           ui_status=0
           # Each case gets a fresh simulator process; app data survives the reboot.
+          set -o pipefail
           for test in \
+            EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
+            EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch \
+            EvanTubeLrcApiSecondaryUITests/testCrossProviderSelectionAndAttributionSurviveActualRelaunch \
             EvanTubeSettingsPreviewTests/testLibraryGearAndSettingsPreview \
             EvanTubeSettingsPreviewTests/testLaunchBrandingPreview \
             EvanTubeSettingsPreviewTests/testLibraryPlaylistOpensWhenTappingTheEmptyPartOfItsRow \
@@ -123,10 +127,7 @@ jobs:
             EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
             EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
             EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
-            EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch \
-            EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
-            EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch \
-            EvanTubeLrcApiSecondaryUITests/testCrossProviderSelectionAndAttributionSurviveActualRelaunch; do
+            EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch; do
             xcrun simctl shutdown all
             xcrun simctl bootstatus "$simulator_id" -b
             xcodebuild \
@@ -142,17 +143,13 @@ jobs:
               CODE_SIGNING_ALLOWED=YES \
               CODE_SIGN_IDENTITY=- \
               CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
-              test || ui_status=1
+              test 2>&1 | tee "$RUNNER_TEMP/evantube-ui-diagnostics/${test//\//-}.log" || { ui_status=1; break; }
           done
           exit "$ui_status"
       - name: Export settings preview attachments
         if: always() && steps.settings_preview.outcome != 'skipped'
         run: |
-          xcrun xcresulttool merge "$RUNNER_TEMP"/evantube-previews-*.xcresult \
-            --output-path "$RUNNER_TEMP/evantube-previews.xcresult"
-          xcrun xcresulttool export attachments \
-            --path "$RUNNER_TEMP/evantube-previews.xcresult" \
-            --output-path "$RUNNER_TEMP/evantube-previews"
+          python3 scripts/ios-picker-diagnostic/export_results.py --results-root "$RUNNER_TEMP" --evidence "$RUNNER_TEMP/evantube-preview-evidence" --prefix evantube-previews-
       - uses: actions/upload-artifact@v4
         if: always() && steps.settings_preview.outcome != 'skipped'
         with:
@@ -161,6 +158,18 @@ jobs:
             ${{ runner.temp }}/evantube-previews
             ${{ runner.temp }}/evantube-ui-diagnostics
             native-ios/LovelyMusic.xcodeproj/project.pbxproj
+          if-no-files-found: error
+      - name: Save compact UI evidence
+        if: always() && steps.settings_preview.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-build19-ui-compact
+          path: |
+            ${{ runner.temp }}/evantube-preview-evidence/**/*.png
+            ${{ runner.temp }}/evantube-preview-evidence/**/*.txt
+            ${{ runner.temp }}/evantube-preview-evidence/**/*.json
+            ${{ runner.temp }}/evantube-preview-evidence/**/*.log
+            ${{ runner.temp }}/evantube-ui-diagnostics/*.log
           if-no-files-found: error
       - name: Package IPA
         if: success()
@@ -173,4 +182,32 @@ jobs:
         with:
           name: EvanTube-native-iOS-unsigned
           path: EvanTube-native-iOS.ipa
+          if-no-files-found: error
+      - name: Prepare verified IPA transfer parts
+        id: ipa_parts
+        run: python3 scripts/ios-picker-diagnostic/split_ipa.py --ipa EvanTube-native-iOS.ipa --output "$RUNNER_TEMP/evantube-ipa-parts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-build19-ipa-part0
+          path: |
+            ${{ runner.temp }}/evantube-ipa-parts/*.part00
+            ${{ runner.temp }}/evantube-ipa-parts/manifest.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: steps.ipa_parts.outputs.has_part_1 == 'true'
+        with:
+          name: EvanTube-build19-ipa-part1
+          path: ${{ runner.temp }}/evantube-ipa-parts/*.part01
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: steps.ipa_parts.outputs.has_part_2 == 'true'
+        with:
+          name: EvanTube-build19-ipa-part2
+          path: ${{ runner.temp }}/evantube-ipa-parts/*.part02
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: steps.ipa_parts.outputs.has_part_3 == 'true'
+        with:
+          name: EvanTube-build19-ipa-part3
+          path: ${{ runner.temp }}/evantube-ipa-parts/*.part03
           if-no-files-found: error

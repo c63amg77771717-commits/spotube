@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/evantube-picker-diagnostic.yml'
       - 'scripts/ios-picker-diagnostic/**'
+      - 'native-ios/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [baseline, label-identifier]
+        variant: [production]
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -48,7 +49,8 @@ jobs:
           set -o pipefail
           xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" -parallel-testing-enabled NO \
-            -only-testing:LovelyMusicUITests/EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
+            -only-testing:LovelyMusicUITests/EvanTubeLyricsCandidateUITests \
+            -only-testing:LovelyMusicUITests/EvanTubeLrcApiSecondaryUITests \
             -resultBundlePath "$RUNNER_TEMP/evantube-picker.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-picker.entitlements" test \

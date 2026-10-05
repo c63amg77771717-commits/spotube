@@ -101,6 +101,7 @@ jobs:
         run: |
           brew install xcodegen
           # This test build uses local transports, never production credentials.
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
           /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
           python3 - <<'PY'
           import os, plistlib
