@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: evantube-agent-device-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   package:

@@ -56,7 +56,7 @@ async function launch(reset = true) {
     '-AppleLocale', 'en_US', '-playerLyricsVisible', 'YES', '-evantubeSettingsPreview'], env));
   await step('agent-open-foreground', () => client.apps.open({ app, platform: 'ios', udid, foreground: true }));
   const snap = await step('initial-snapshot', () => client.capture.snapshot());
-  const deny = snap.nodes.find(n => ["Don't Allow", 'Don’t Allow'].includes(n.label));
+  const deny = snap.nodes.find(n => ["Don't Allow", "Don\u2019t Allow"].includes(n.label));
   if (deny) await step('dismiss-preview-notification', () => client.interactions.press({
     ref: snap.refsGeneration ? `${deny.ref}~s${snap.refsGeneration}` : deny.ref }));
 }
@@ -123,10 +123,10 @@ async function assertNoPlaybackError() {
 }
 async function progress() {
   const snap = await snapshot();
-  const node = snap.nodes.find(n => n.label === 'Playback progress');
-  assert(node?.value, 'Playback progress must expose elapsed time');
-  const match = node.value.match(/(\d+):(\d+)/);
-  assert(match, `Unreadable playback progress: ${node.value}`);
+  const node = snap.nodes.find(n => n.label === 'Playback progress' || n.label?.startsWith('Progress:'));
+  assert(node, 'Playback progress must expose elapsed time');
+  const match = `${node.label ?? ''} ${node.value ?? ''}`.match(/(\d+):(\d+)/);
+  assert(match, `Unreadable playback progress: ${node.label} ${node.value}`);
   return { seconds: Number(match[1]) * 60 + Number(match[2]), node };
 }
 
@@ -166,26 +166,34 @@ const cases = [
   }],
   ['next-previous-transient-recovery', { mode: 'transient' }, async () => {
     await fullPlayer(); await assertNoPlaybackError();
-    await pressLabel('Next track', false); await waitText('Agent Next');
-    await assertNoPlaybackError(); await screenshot('next-recovered');
     const { node } = await progress();
     // Seek to the beginning before Previous, matching the player's >3s restart semantics.
     await step('seek-to-start', () => client.interactions.press({ x: node.rect.x + 1, y: node.rect.y + node.rect.height / 2 }));
-    await pressLabel('Previous track', false); await waitText('Arcadia');
+    // Previous wraps to an unresolved track, so its injected error cannot be bypassed by the cache.
+    await pressLabel('Previous track', false); await waitText('Agent Last');
     await assertNoPlaybackError(); await screenshot('previous-recovered');
+    await pressLabel('Next track', false); await waitText('Arcadia');
+    await pressLabel('Next track', false); await waitText('Agent Next');
+    await assertNoPlaybackError(); await screenshot('next-recovered');
     const events = fixtureEvents().filter(e => e.kind === 'audio');
-    for (const id of ['demo_song_morning_light', 'agent_next']) {
+    for (const id of ['agent_last', 'agent_next']) {
       const rows = events.filter(e => e.videoID === id);
       assert(rows.some(e => e.outcome === 'transient') && rows.some(e => e.outcome === 'local_wav'), `${id} must show a real failure followed by successful local resolution`);
     }
-    assert(events.filter(e => e.videoID === 'demo_song_morning_light' && e.outcome === 'transient').length >= 2,
-      'Previous must receive a distinct transient failure, rather than reuse the initial success');
     assert(events.length <= 8, 'Automatic retry must remain bounded');
   }],
   ['cancel-stale-lyrics-on-next', { mode: 'stale' }, async () => {
     await fullPlayer(); await waitText('Agent lyrics Arcadia');
     await pressLabel('Next track', false);
-    // No settle delay: cancel the in-flight Agent Next request while it is deliberately slow.
+    // Confirm the slow transport has started before cancelling it; retain the strict cancellation oracle.
+    await step('wait-delayed-lyrics-start', async () => {
+      const deadline = Date.now() + 3000;
+      while (Date.now() < deadline) {
+        if (fixtureEvents().some(e => e.kind === 'lyrics_start' && e.title === 'Agent Next' && e.delayed)) return;
+        await sleep(100);
+      }
+      assert.fail('Agent Next must start its real delayed URLProtocol transport before cancellation');
+    });
     await pressLabel('Next track', false); await waitText('Agent Last');
     await waitText('Agent lyrics Agent Last'); await sleep(9000);
     await waitText('Agent lyrics Agent Last'); await screenshot('last-song-keeps-own-lyrics');
