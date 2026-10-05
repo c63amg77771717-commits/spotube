@@ -39,120 +39,74 @@ struct SyncedLyricsScrollView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            ScrollViewReader { proxy in
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: Theme.Spacing.md) {
-                        // Small top padding — lyrics align near the top
-                        Spacer().frame(height: !lyrics.candidates.isEmpty || !displayLyrics.isTimeSynced ? Theme.Spacing.xl * 4 : Theme.Spacing.xl * 2)
-                        ForEach(displayLyrics.lines) { line in
-                            lyricLine(line)
-                                .id(line.id)
-                        }
-                        // Bottom spacer lets the last line scroll to center.
-                        // Uses `containerRelativeFrame` so we no longer need
-                        // an outer `GeometryReader` to read parent height —
-                        // this avoids a layout invalidation per scroll frame.
-                        Color.clear
-                            .frame(height: 1)
-                            .containerRelativeFrame(.vertical) { length, _ in
-                                length * 0.5
+        VStack(spacing: 0) {
+            lyricsStatusHeader
+            ZStack(alignment: .topTrailing) {
+                ScrollViewReader { proxy in
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(spacing: Theme.Spacing.md) {
+                            // Small top padding — lyrics align near the top
+                            Spacer().frame(height: Theme.Spacing.xl)
+                            ForEach(displayLyrics.lines) { line in
+                                lyricLine(line)
+                                    .id(line.id)
                             }
+                            // Bottom spacer lets the last line scroll to center.
+                            // Uses `containerRelativeFrame` so we no longer need
+                            // an outer `GeometryReader` to read parent height —
+                            // this avoids a layout invalidation per scroll frame.
+                            Color.clear
+                                .frame(height: 1)
+                                .containerRelativeFrame(.vertical) { length, _ in
+                                    length * 0.5
+                                }
+                        }
+                        .padding(.horizontal, Theme.Spacing.xl)
                     }
-                    .padding(.horizontal, Theme.Spacing.xl)
-                }
-                .onScrollPhaseChange { _, newPhase in
-                    if newPhase == .interacting {
-                        withAnimation { isUserScrolling = true }
-                        autoScrollResumeTask?.cancel()
-                        autoScrollResumeTask = Task {
-                            try? await Task.sleep(for: .seconds(5))
-                            guard !Task.isCancelled else { return }
-                            await MainActor.run {
-                                withAnimation { isUserScrolling = false }
+                    .onScrollPhaseChange { _, newPhase in
+                        if newPhase == .interacting {
+                            withAnimation { isUserScrolling = true }
+                            autoScrollResumeTask?.cancel()
+                            autoScrollResumeTask = Task {
+                                try? await Task.sleep(for: .seconds(5))
+                                guard !Task.isCancelled else { return }
+                                await MainActor.run {
+                                    withAnimation { isUserScrolling = false }
+                                }
                             }
                         }
                     }
-                }
-                .mask(
-                    VStack(spacing: 0) {
-                        LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .init(x: 0.5, y: 0.06))
-                        Color.white
-                        LinearGradient(colors: [.white, .clear], startPoint: .init(x: 0.5, y: 0.85), endPoint: .bottom)
-                    }
-                )
-                .onChange(of: playbackProgress.currentTime) { _, newTime in
-                    guard displayLyrics.isTimeSynced else { return }
-                    let newId = displayLyrics.lines.last { $0.time <= newTime }?.id
-                    guard newId != currentLineId else { return }
-                    currentLineId = newId
-                    if let newId, !isUserScrolling {
-                        if reduceMotion {
-                            proxy.scrollTo(newId, anchor: .center)
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.5)) {
+                    .mask(
+                        VStack(spacing: 0) {
+                            LinearGradient(colors: [.clear, .white], startPoint: .top, endPoint: .init(x: 0.5, y: 0.06))
+                            Color.white
+                            LinearGradient(colors: [.white, .clear], startPoint: .init(x: 0.5, y: 0.85), endPoint: .bottom)
+                        }
+                    )
+                    .onChange(of: playbackProgress.currentTime) { _, newTime in
+                        guard displayLyrics.isTimeSynced else { return }
+                        let newId = displayLyrics.lines.last { $0.time <= newTime }?.id
+                        guard newId != currentLineId else { return }
+                        currentLineId = newId
+                        if let newId, !isUserScrolling {
+                            if reduceMotion {
                                 proxy.scrollTo(newId, anchor: .center)
+                            } else {
+                                withAnimation(.easeInOut(duration: 0.5)) {
+                                    proxy.scrollTo(newId, anchor: .center)
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // Translate button
-            if showLyricsTranslationStored {
-                translateButton
-                    .padding(.trailing, Theme.Spacing.sm)
-                    .padding(.top, Theme.Spacing.sm)
-            }
-        }
-        .overlay(alignment: .topLeading) {
-            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-                if displayLyrics.lines.isEmpty {
-                    Text(LocalizationManager.text("Choose a matching performer and version"))
-                        .accessibilityIdentifier("lyrics_candidate_prompt")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                } else if !displayLyrics.isTimeSynced {
-                    Text(LocalizationManager.text("Lyrics timing unavailable"))
-                        .accessibilityIdentifier("lyrics_plain_notice")
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-                if !displayLyrics.source.isEmpty {
-                    Text(displayLyrics.source)
-                        .accessibilityIdentifier("lyrics_provider_attribution")
-                        .font(Theme.Typography.caption2)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-                if !lyrics.sourceFailures.isEmpty {
-                    Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
-                         + lyrics.sourceFailures.map { $0.providerID.displayName }.joined(separator: ", "))
-                        .accessibilityIdentifier("lyrics_source_unavailable")
-                        .font(Theme.Typography.caption2)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                }
-                if !lyrics.candidates.isEmpty, (lyrics.candidates.count > 1 || lyrics.lines.isEmpty), let key = lyrics.selectionKey {
-                    Menu {
-                        ForEach(lyrics.candidates) { candidate in
-                            Button {
-                                LyricsSelectionStore.select(candidate.id, for: key)
-                                selectedCandidateID = candidate.id
-                                currentLineId = nil
-                                translatedLines.removeAll()
-                                showTranslation = false
-                            } label: {
-                                Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
-                            }
-                            .accessibilityIdentifier(candidate.accessibilityID)
-                        }
-                    } label: {
-                        Label(LocalizationManager.text("Choose lyrics version"), systemImage: "list.bullet")
-                            .font(Theme.Typography.caption)
-                    }
-                    .accessibilityIdentifier("lyrics_version_picker")
+                // Translate button
+                if showLyricsTranslationStored {
+                    translateButton
+                        .padding(.trailing, Theme.Spacing.sm)
+                        .padding(.top, Theme.Spacing.sm)
                 }
             }
-            .padding(.horizontal, Theme.Spacing.xl)
         }
         .overlay(alignment: .bottom) {
             if isUserScrolling && displayLyrics.isTimeSynced {
@@ -202,6 +156,63 @@ struct SyncedLyricsScrollView: View {
                     }
             }
         }
+    }
+
+    /// A sibling of the scroll view keeps the candidate menu hittable by touch and VoiceOver.
+    private var lyricsStatusHeader: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+            if displayLyrics.lines.isEmpty {
+                Text(LocalizationManager.text("Choose a matching performer and version"))
+                    .accessibilityIdentifier("lyrics_candidate_prompt")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            } else if !displayLyrics.isTimeSynced {
+                Text(LocalizationManager.text("Lyrics timing unavailable"))
+                    .accessibilityIdentifier("lyrics_plain_notice")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            if !displayLyrics.source.isEmpty {
+                Text(displayLyrics.source)
+                    .accessibilityIdentifier("lyrics_provider_attribution")
+                    .font(Theme.Typography.caption2)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            if !lyrics.sourceFailures.isEmpty {
+                Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
+                     + lyrics.sourceFailures.map { $0.providerID.displayName }.joined(separator: ", "))
+                    .accessibilityIdentifier("lyrics_source_unavailable")
+                    .font(Theme.Typography.caption2)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+            }
+            if !lyrics.candidates.isEmpty, (lyrics.candidates.count > 1 || lyrics.lines.isEmpty), let key = lyrics.selectionKey {
+                Menu {
+                    ForEach(lyrics.candidates) { candidate in
+                        Button {
+                            LyricsSelectionStore.select(candidate.id, for: key)
+                            selectedCandidateID = candidate.id
+                            currentLineId = nil
+                            translatedLines.removeAll()
+                            showTranslation = false
+                        } label: {
+                            Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
+                        }
+                        .accessibilityIdentifier(candidate.accessibilityID)
+                    }
+                } label: {
+                    Label(LocalizationManager.text("Choose lyrics version"), systemImage: "list.bullet")
+                        .font(Theme.Typography.caption)
+                        .frame(minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityIdentifier("lyrics_version_picker")
+            }
+        }
+        .padding(.horizontal, Theme.Spacing.xl)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("lyrics_status_header")
     }
 
     // MARK: - Lyric Line

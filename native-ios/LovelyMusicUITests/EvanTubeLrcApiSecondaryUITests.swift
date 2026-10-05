@@ -13,6 +13,11 @@ final class EvanTubeLrcApiSecondaryUITests: XCTestCase {
         app.launch()
         openFullPlayer(app)
         XCTAssertTrue(app.buttons["lyrics_version_picker"].waitForExistence(timeout: 10))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = "cross-provider-candidate-menu-touch-target"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertTrue(app.buttons["lyrics_version_picker"].isHittable)
         app.buttons["lyrics_version_picker"].tap()
         let choice = app.buttons["lyrics_candidate_lrcapi_101"]
         XCTAssertTrue(choice.waitForExistence(timeout: 5))

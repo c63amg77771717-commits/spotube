@@ -1,0 +1,139 @@
+name: EvanTube agent-device iOS verification
+
+on:
+  push:
+    branches: [codex/ios-neonoir-20260930]
+    paths:
+      - 'scripts/ios-agent-device/**'
+      - '.github/workflows/evantube-agent-device-ios.yml'
+      - 'native-ios/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: evantube-agent-device-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Wait for the IPA built from the same native source tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRODUCT_REF: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          from urllib.parse import quote
+          base = 'https://api.github.com/repos/c63amg77771717-commits/spotube'
+          def get(path):
+              request = urllib.request.Request(base + path, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              return json.load(urllib.request.urlopen(request, timeout=20))
+          expected_tree = get('/contents/native-ios?ref=' + quote(os.environ['PRODUCT_REF'], safe=''))
+          expected_files = [(item['name'], item['sha']) for item in expected_tree]
+          for attempt in range(101):
+              runs = get('/actions/workflows/evantube-native-ios-ipa.yml/runs?branch=codex%2Fios-neonoir-20260930&per_page=5')['workflow_runs']
+              matching = []
+              for run in runs:
+                  source = get('/contents/native-ios?ref=' + run['head_sha'])
+                  if [(item['name'], item['sha']) for item in source] == expected_files:
+                      matching.append(run)
+              if not matching:
+                  if attempt == 100:
+                      raise SystemExit('No IPA workflow for this native source tree; do not test a different product')
+                  print('Waiting for matching IPA workflow to start', flush=True)
+                  time.sleep(30)
+                  continue
+              run = matching[0]
+              if run['status'] == 'completed':
+                  assert run['conclusion'] == 'success', 'IPA workflow failed: ' + run['html_url']
+                  artifacts = get('/actions/runs/' + str(run['id']) + '/artifacts')['artifacts']
+                  assert any(a['name'] == 'EvanTube-native-iOS-unsigned' and not a['expired'] for a in artifacts)
+                  print('Packaged IPA ready:', run['html_url'])
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+                      out.write('Testing Debug simulator fixtures derived from packaged build19 source: ' + run['html_url'] + '\n')
+                  break
+              if attempt == 100:
+                  raise SystemExit('IPA packaging did not complete; agent-device tests not started')
+              print('Waiting for IPA packaging', run['id'], run['status'], 'attempt', attempt + 1, flush=True)
+              time.sleep(30)
+          PY
+  simulator:
+    needs: package
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      AGENT_DEVICE_NO_UPDATE_NOTIFIER: '1'
+      AGENT_DEVICE_STATE_DIR: ${{ runner.temp }}/evantube-agent-device-state
+      EVANTUBE_AGENT_EVIDENCE: ${{ runner.temp }}/evantube-agent-device-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install verified official agent-device version
+        run: |
+          expected='sha512-nD2QNRTbQo3mMEnpOTqgguIreY98lri+VfWBo0Njzc+CLBrISHApUJD2Cs2P8zfzvZCvbGibX1D+LP/B/qeQrQ=='
+          actual=$(npm view agent-device@0.21.20 dist.integrity --registry=https://registry.npmjs.org)
+          test "$actual" = "$expected"
+          npm install --prefix "$RUNNER_TEMP/evantube-agent-device" --registry=https://registry.npmjs.org --ignore-scripts --no-audit --no-fund agent-device@0.21.20
+          echo "AGENT_DEVICE_ENTRY=$RUNNER_TEMP/evantube-agent-device/node_modules/agent-device/dist/src/index.js" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin" >> "$GITHUB_PATH"
+          mkdir -p "$EVANTUBE_AGENT_EVIDENCE"
+          node --version > "$EVANTUBE_AGENT_EVIDENCE/node-version.txt"
+          "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin/agent-device" --version > "$EVANTUBE_AGENT_EVIDENCE/agent-device-version.txt"
+      - name: Prepare isolated simulator fixtures
+        run: |
+          python3 scripts/ios-agent-device/prepare_simulator_fixture.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_AGENT_EVIDENCE"
+      - name: Build existing EvanTube app for the simulator
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          # This test build uses local transports, never production credentials.
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'evantube-agent-device.entitlements'
+          path.write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True,
+          }))
+          PY
+          xcodegen generate
+          xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusic -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-agent-derived" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-agent-device.entitlements" build
+      - name: Install on selected iPhone simulator and check toolchain
+        run: |
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"] == "iPhone 16 Pro" and d.get("isAvailable", False)))')
+          echo "EVANTUBE_SIMULATOR_UDID=$simulator_id" >> "$GITHUB_ENV"
+          xcrun simctl bootstatus "$simulator_id" -b
+          xcrun simctl install "$simulator_id" "$RUNNER_TEMP/evantube-agent-derived/Build/Products/Debug-iphonesimulator/LovelyMusic.app"
+          agent-device doctor --platform ios --app com.c63amg77771717.evantube --json > "$EVANTUBE_AGENT_EVIDENCE/doctor.json"
+          agent-device prepare ios-runner --platform ios --udid "$simulator_id" --timeout 420000 --json > "$EVANTUBE_AGENT_EVIDENCE/prepare.json"
+      - name: Verify playback, candidates, source settings, cancellation and resume
+        run: node scripts/ios-agent-device/run.mjs
+      - name: Save simulator results and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-build19-agent-device-evidence
+          path: |
+            ${{ runner.temp }}/evantube-agent-device-evidence
+          if-no-files-found: error
+          retention-days: 30
+      - name: Stop this workflow's local automation daemon
+        if: always()
+        run: agent-device daemon stop --state-dir "$AGENT_DEVICE_STATE_DIR"
