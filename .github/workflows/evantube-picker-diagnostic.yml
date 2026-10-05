@@ -16,10 +16,6 @@ jobs:
   picker:
     runs-on: macos-14
     timeout-minutes: 35
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: [baseline, modal-ax]
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -30,7 +26,7 @@ jobs:
           EVANTUBE_PICKER_EVIDENCE: ${{ runner.temp }}/evantube-picker-evidence
         run: |
           echo "EVANTUBE_PICKER_EVIDENCE=$EVANTUBE_PICKER_EVIDENCE" >> "$GITHUB_ENV"
-          python3 scripts/ios-picker-diagnostic/prepare.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_PICKER_EVIDENCE" --variant "${{ matrix.variant }}"
+          python3 scripts/ios-picker-diagnostic/prepare.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_PICKER_EVIDENCE"
       - name: Generate existing native project
         working-directory: native-ios
         run: |
@@ -81,8 +77,6 @@ jobs:
           monitor_pid=$!
           trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
           for test in             testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection             testSelectedRecordingIsRememberedAcrossActualAppRelaunch; do
-            xcrun simctl shutdown "$EVANTUBE_PICKER_SIMULATOR"
-            xcrun simctl bootstatus "$EVANTUBE_PICKER_SIMULATOR" -b
             xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug               -destination "platform=iOS Simulator,id=$EVANTUBE_PICKER_SIMULATOR"               -derivedDataPath "$RUNNER_TEMP/evantube-picker-derived" -parallel-testing-enabled NO               -only-testing:"LovelyMusicUITests/EvanTubeLyricsCandidateUITests/$test"               -resultBundlePath "$RUNNER_TEMP/evantube-picker-$test.xcresult"               CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-               CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-picker.entitlements" test-without-building               2>&1 | tee "$EVANTUBE_PICKER_EVIDENCE/$test.log"
           done
       - name: Export valid failure evidence independently
@@ -92,7 +86,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-picker-diagnostic-${{ matrix.variant }}
+          name: EvanTube-build19-picker-diagnostic
           path: |
             ${{ runner.temp }}/evantube-picker-evidence/**/*.png
             ${{ runner.temp }}/evantube-picker-evidence/**/*.txt
@@ -104,7 +98,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-picker-xcresult-${{ matrix.variant }}
+          name: EvanTube-build19-picker-xcresult
           path: ${{ runner.temp }}/evantube-picker-*.xcresult
           if-no-files-found: warn
           retention-days: 30

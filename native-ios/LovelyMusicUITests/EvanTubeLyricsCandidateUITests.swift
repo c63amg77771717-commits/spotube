@@ -7,38 +7,38 @@ final class EvanTubeLyricsCandidateUITests: XCTestCase {
         let app = launch(resetSelection: true)
         defer { app.terminate() }
         openFullPlayer(app)
-        let picker = app.buttons["lyrics_version_picker"]
+        let picker = app.buttons["lyrics_version_picker"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 10), "Repository candidates must reach the actual full-player selector")
-        XCTAssertTrue(app.staticTexts["lyrics_candidate_prompt"].exists)
-        XCTAssertFalse(app.staticTexts["找不到這首歌的相符歌詞"].exists)
+        XCTAssertTrue(app.staticTexts["lyrics_candidate_prompt"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["找不到這首歌的相符歌詞"].firstMatch.exists)
         savePickerEvidence(app)
         XCTAssertTrue(picker.isHittable, "Candidate menu must be reachable without synthetic scroll actions")
         picker.tap()
         chooseSecond(app)
-        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["lyrics_plain_notice"].exists)
-        XCTAssertFalse(app.staticTexts["lyrics_candidate_prompt"].exists)
+        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["lyrics_plain_notice"].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["lyrics_candidate_prompt"].firstMatch.exists)
     }
 
     func testSelectedRecordingIsRememberedAcrossActualAppRelaunch() {
         continueAfterFailure = false
         let app = launch(resetSelection: true)
         openFullPlayer(app)
-        let picker = app.buttons["lyrics_version_picker"]
+        let picker = app.buttons["lyrics_version_picker"].firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 10))
         savePickerEvidence(app)
         XCTAssertTrue(picker.isHittable, "Candidate menu must be reachable without synthetic scroll actions")
         picker.tap()
         chooseSecond(app)
-        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].firstMatch.waitForExistence(timeout: 5))
         app.terminate()
         app.launchEnvironment["EVANTUBE_LYRICS_CANDIDATE_RESET"] = "0"
         app.launch()
         defer { app.terminate() }
         openFullPlayer(app)
-        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts["lyrics_candidate_prompt"].exists)
-        XCTAssertTrue(app.staticTexts["lyrics_plain_notice"].exists)
+        XCTAssertTrue(app.staticTexts["Candidate UI second recording"].firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["lyrics_candidate_prompt"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["lyrics_plain_notice"].firstMatch.exists)
     }
 
     private func savePickerEvidence(_ app: XCUIApplication) {

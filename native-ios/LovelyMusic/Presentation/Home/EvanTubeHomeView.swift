@@ -117,6 +117,16 @@ struct EvanTubeHomeView: View {
     @Environment(\.isTabActive) private var isTabActive
     @Environment(\.scenePhase) private var scenePhase
 
+    // Explicit Debug automation previews use local fixtures, not changing online feeds.
+    private var isAutomationPreview: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["REVIEW_MODE"] == "1"
+            && CommandLine.arguments.contains("-evantubeSettingsPreview")
+        #else
+        false
+        #endif
+    }
+
     private var recommendationRefreshKey: String {
         "\(preferenceRevision)-\(hideExplicitContent)-\(isTabActive)-\(scenePhase == .active)-"
             + recommendations.prefix(60).map(\.id).joined(separator: ",")
@@ -187,6 +197,7 @@ struct EvanTubeHomeView: View {
             .presentationDetents([.medium])
         }
         .refreshable {
+            guard !isAutomationPreview else { return }
             viewModel.refresh()
             viewModel.loadRecentlyPlayed()
             await refreshPersonal(force: true)
@@ -197,7 +208,7 @@ struct EvanTubeHomeView: View {
             viewModel.loadRecentlyPlayed()
         }
         .task(id: "\(isTabActive)-\(scenePhase == .active)") {
-            guard isTabActive, scenePhase == .active,
+            guard !isAutomationPreview, isTabActive, scenePhase == .active,
                   feeds.chart == nil || feeds.chartError != nil else { return }
             await feeds.refresh(region: region.code)
         }
@@ -333,6 +344,7 @@ struct EvanTubeHomeView: View {
     }
 
     @MainActor private func refreshPersonal(force: Bool = false) async {
+        guard !isAutomationPreview else { return }
         let favorites = (try? await container.manageFavoritesUseCase.getAllFavorites()) ?? []
         guard !Task.isCancelled else { return }
         await personal.refresh(favorites: favorites, fallback: recommendations, force: force, discover: { seed in
@@ -353,7 +365,7 @@ struct EvanTubeHomeView: View {
                     ForEach(EvanTubeRegion.all) { option in
                         Button(option.label) {
                             region = option
-                            Task { await feeds.changeRegion(option.code) }
+                            Task { if !isAutomationPreview { await feeds.changeRegion(option.code) } }
                         }
                     }
                 } label: {
@@ -366,7 +378,7 @@ struct EvanTubeHomeView: View {
             if let error = feeds.chartError {
                 emptyCard(error)
                 Button("重新載入排行榜") {
-                    Task { await feeds.changeRegion(region.code) }
+                    Task { if !isAutomationPreview { await feeds.changeRegion(region.code) } }
                 }
                 .disabled(feeds.isLoadingChart)
                 .accessibilityIdentifier("chart_retry")

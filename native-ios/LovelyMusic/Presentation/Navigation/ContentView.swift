@@ -95,6 +95,7 @@ struct ContentView: View {
             .onChange(of: libraryPath.count) { _, _ in scrollTracker.resetToVisible() }
             .background(Theme.Colors.backgroundPrimary)
             .environment(\.dockBottomInset, bottomInsetValue)
+            .accessibilityHidden(playerVM.isFullPlayerPresented)
 
             // Floating dock — sits at the bottom of the ZStack.
             // No Spacer needed: `ZStack(alignment: .bottom)` handles
@@ -119,7 +120,7 @@ struct ContentView: View {
             .offset(y: dockHidden ? dockHideOffset : 0)
             .opacity(dockHidden ? 0 : 1)
             .allowsHitTesting(!dockHidden)
-            .accessibilityHidden(dockHidden)
+            .accessibilityHidden(dockHidden || playerVM.isFullPlayerPresented)
             .animation(Theme.AnimationPresets.smooth, value: dockHidden)
         }
         .fullScreenCover(

@@ -79,6 +79,7 @@ jobs:
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme EvanTubeTests \
+            -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:EvanTubeTests \
@@ -113,8 +114,13 @@ jobs:
           sampler_pid=$!
           trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
           ui_status=0
-          # Each case gets a fresh simulator process; app data survives the reboot.
+          # Build the same original UI runner once; each case still launches its own app.
           set -o pipefail
+          xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" build-for-testing
           for test in \
             EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
             EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch \
@@ -128,11 +134,10 @@ jobs:
             EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
             EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
             EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch; do
-            xcrun simctl shutdown all
-            xcrun simctl bootstatus "$simulator_id" -b
             xcodebuild \
               -project LovelyMusic.xcodeproj \
               -scheme LovelyMusicUITests \
+              -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
               -configuration Debug \
               -destination "platform=iOS Simulator,id=$simulator_id" \
               -parallel-testing-enabled NO \
@@ -143,7 +148,7 @@ jobs:
               CODE_SIGNING_ALLOWED=YES \
               CODE_SIGN_IDENTITY=- \
               CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
-              test 2>&1 | tee "$RUNNER_TEMP/evantube-ui-diagnostics/${test//\//-}.log" || { ui_status=1; break; }
+              test-without-building 2>&1 | tee "$RUNNER_TEMP/evantube-ui-diagnostics/${test//\//-}.log" || { ui_status=1; break; }
           done
           exit "$ui_status"
       - name: Export settings preview attachments
