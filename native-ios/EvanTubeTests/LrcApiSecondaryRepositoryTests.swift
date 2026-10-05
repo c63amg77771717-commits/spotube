@@ -188,6 +188,7 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
         do { _ = try await task.value; XCTFail("Expected cancellation") }
         catch { XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled) }
         XCTAssertFalse(f.requests.contains { $0.url?.host == "api.lrc.cx" })
+        try await waitForTransportStop(f)
         XCTAssertGreaterThan(f.stopCount, 0)
     }
 
@@ -201,7 +202,18 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
         do { _ = try await task.value; XCTFail("Cancelled response cannot surface lyrics") }
         catch { XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled) }
         XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, 1)
+        try await waitForTransportStop(f)
         XCTAssertGreaterThan(f.stopCount, 0)
+    }
+
+    // URLSession cancellation can finish its async continuation before URLProtocol.stopLoading.
+    // Await that transport callback explicitly instead of assuming their queue ordering.
+    private func waitForTransportStop(_ f: SecondaryContext) async throws {
+        for _ in 0..<200 {
+            if f.stopCount > 0 { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Cancelled fixture transport did not stop")
     }
 
     private func waitForRequest(_ f: SecondaryContext, host: String) async throws {

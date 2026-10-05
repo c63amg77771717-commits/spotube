@@ -143,10 +143,14 @@ final class WebSessionRecoveryTests: XCTestCase {
             throw InnerTubeError.videoUnavailable(reason: "Sign in to confirm you're not a bot")
         }
         model.play(song: selected, fromQueue: [selected])
-        for _ in 0..<100 where model.streamError == nil {
+        // The first transient error is diagnostic while one automatic retry is pending.
+        // Synchronize on the engine failure so this manual retry precedes that timer.
+        for _ in 0..<100 where engine.lastError == nil {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertNotNil(model.streamError, "Transient failure must schedule the delayed retry")
+        XCTAssertNotNil(engine.lastError)
+        XCTAssertEqual(requests, 1)
+        XCTAssertNil(model.streamError, "A pending bounded retry is not a final UI error")
         model.retryCurrentSong()
         for _ in 0..<100 where model.streamErrorCategory != .verificationRequired {
             try await Task.sleep(for: .milliseconds(10))
