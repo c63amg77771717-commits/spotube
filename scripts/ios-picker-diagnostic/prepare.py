@@ -8,23 +8,6 @@ header=a.repo/'native-ios/LovelyMusic/Presentation/Player/Components/SyncedLyric
 header_before=header.read_bytes()
 file=a.repo/'native-ios/LovelyMusicUITests/EvanTubeLyricsCandidateUITests.swift'
 before=file.read_bytes(); text=file.read_text(encoding='utf-8')
-marker='''        attachment.name = "lyrics-candidate-menu-touch-target"
-        attachment.lifetime = .keepAlways
-        add(attachment)'''
-assert text.count(marker)==1
-replacement=marker+'''
-        let hierarchy = XCTAttachment(string: app.debugDescription)
-        hierarchy.name = "lyrics-candidate-accessibility-hierarchy"
-        hierarchy.lifetime = .keepAlways
-        add(hierarchy)
-        let picker = app.buttons["lyrics_version_picker"]
-        let report = "picker frame=\\(picker.frame), exists=\\(picker.exists), enabled=\\(picker.isEnabled), hittable=\\(picker.isHittable), label=\\(picker.label); header frame=\\(app.descendants(matching: .any)[\"lyrics_status_header\"].firstMatch.frame); app frame=\\(app.frame)"
-        print("EVANTUBE_PICKER_DIAGNOSTIC " + report)
-        let geometry = XCTAttachment(string: report)
-        geometry.name = "lyrics-candidate-geometry-and-hit-test"
-        geometry.lifetime = .keepAlways
-        add(geometry)'''
-file.write_text(text.replace(marker,replacement),encoding='utf-8')
 secrets=a.repo/'native-ios/LovelyMusic/Resources/Secrets.plist'
 import plistlib
 template=a.repo/'native-ios/Secrets.plist.example'
