@@ -1,0 +1,871 @@
+{
+  "scope": "Actual captured metadata and timestamp tags; lyric words replaced with synthetic fixture text. Same fixture bytes for before/after. Search responses conditional on capturePair; wrong baseline query was not sent live. Runtime artist unavailable in export and intentionally empty.",
+  "cases": [
+    {
+      "songID": "dtVR0oi_N4U",
+      "title": "李杰明 W.M.L x 陳忻玥 Vicky Chen【I'm Alive】Official MV",
+      "artist": "",
+      "duration": 185,
+      "capturePair": {
+        "track_name": "I'm Alive",
+        "artist_name": "李杰明 & 陳忻玥"
+      },
+      "responses": {
+        "LRCLib": [
+          {
+            "id": 37472447,
+            "trackName": "I'm Alive",
+            "artistName": "李杰明, 陳忻玥",
+            "albumName": "I'm Alive",
+            "duration": 172.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:14.30]Captured fixture line\n[00:15.58]Captured fixture line\n[00:17.07]Captured fixture line\n[00:18.39]Captured fixture line\n[00:19.65]Captured fixture line\n[00:21.18]Captured fixture line\n[00:22.62]Captured fixture line\n[00:24.45]Captured fixture line\n[00:26.46]Captured fixture line\n[00:28.01]Captured fixture line\n[00:31.05]Captured fixture line\n[00:33.25]Captured fixture line\n[00:34.83]Captured fixture line\n[00:36.28]Captured fixture line\n[00:37.84]Captured fixture line\n[00:39.59]Captured fixture line\n[00:41.32]Captured fixture line\n[00:43.04]Captured fixture line\n[00:44.78]Captured fixture line\n[00:46.35]Captured fixture line\n[00:48.23]Captured fixture line\n[00:49.23]Captured fixture line\n[00:50.18]Captured fixture line\n[00:51.55]Captured fixture line\n[00:53.45]Captured fixture line\n[00:54.87]Captured fixture line\n[00:57.62]Captured fixture line\n[01:01.81]Captured fixture line\n[01:04.61]Captured fixture line\n[01:08.84]Captured fixture line\n[01:10.87]Captured fixture line\n[01:12.22]Captured fixture line\n[01:15.72]Captured fixture line\n[01:22.43]Captured fixture line\n[01:37.91]Captured fixture line\n[01:40.57]Captured fixture line\n[01:41.32]Captured fixture line\n[01:43.83]Captured fixture line\n[01:44.73]Captured fixture line\n[01:47.38]Captured fixture line\n[01:48.15]Captured fixture line\n[01:50.89]Captured fixture line\n[01:51.34]Captured fixture line\n[01:52.89]Captured fixture line\n[01:54.57]Captured fixture line\n[01:56.38]Captured fixture line\n[01:58.68]Captured fixture line\n[02:01.20]Captured fixture line\n[02:03.53]Captured fixture line\n[02:04.87]Captured fixture line\n[02:07.36]Captured fixture line\n[02:11.36]Captured fixture line\n[02:14.21]Captured fixture line\n[02:18.44]Captured fixture line\n[02:19.72]Captured fixture line\n[02:21.68]Captured fixture line\n[02:25.32]Captured fixture line\n[02:31.95]Captured fixture line\n[02:33.58]Captured fixture line\n[02:36.13]Captured fixture line\n[02:37.09]Captured fixture line\n[02:39.35]Captured fixture line\n[02:40.36]Captured fixture line\n[02:42.91]Captured fixture line\n[02:43.78]Captured fixture line\n[02:45.87]Captured fixture line\n[02:48.89]"
+          }
+        ],
+        "LrcApi": [
+          {
+            "album": "I'm Alive - Single",
+            "title": "I'm Alive",
+            "duration": 172.283,
+            "lrc": "[00:13.523]Captured fixture line\n[00:14.372]Captured fixture line\n[00:15.654]Captured fixture line\n[00:17.027]Captured fixture line\n[00:18.264]Captured fixture line\n[00:19.588]Captured fixture line\n[00:20.873]Captured fixture line\n[00:22.590]Captured fixture line\n[00:24.339]Captured fixture line\n[00:25.862]Captured fixture line\n[00:27.833]Captured fixture line\n[00:28.263]Captured fixture line\n[00:30.885]Captured fixture line\n[00:33.068]Captured fixture line\n[00:34.353]Captured fixture line\n[00:36.067]Captured fixture line\n[00:37.827]Captured fixture line\n[00:39.579]Captured fixture line\n[00:41.321]Captured fixture line\n[00:43.049]Captured fixture line\n[00:44.789]Captured fixture line\n[00:46.298]Captured fixture line\n[00:48.138]Captured fixture line\n[00:50.019]Captured fixture line\n[00:51.775]Captured fixture line\n[00:53.464]Captured fixture line\n[00:54.749]Captured fixture line\n[00:57.849]Captured fixture line\n[01:01.717]Captured fixture line\n[01:04.753]Captured fixture line\n[01:08.670]Captured fixture line\n[01:12.175]Captured fixture line\n[01:15.602]Captured fixture line\n[01:22.421]Captured fixture line\n[01:29.549]Captured fixture line\n[01:37.843]Captured fixture line\n[01:40.403]Captured fixture line\n[01:41.287]Captured fixture line\n[01:43.852]Captured fixture line\n[01:44.795]Captured fixture line\n[01:47.317]Captured fixture line\n[01:48.314]Captured fixture line\n[01:51.334]Captured fixture line\n[01:52.867]Captured fixture line\n[01:54.640]Captured fixture line\n[01:56.299]Captured fixture line\n[01:58.252]Captured fixture line\n[02:01.308]Captured fixture line\n[02:03.480]Captured fixture line\n[02:04.191]Captured fixture line\n[02:07.428]Captured fixture line\n[02:11.272]Captured fixture line\n[02:14.345]Captured fixture line\n[02:18.195]Captured fixture line\n[02:21.735]Captured fixture line\n[02:25.157]Captured fixture line\n[02:31.989]Captured fixture line\n[02:33.468]Captured fixture line\n[02:36.147]Captured fixture line\n[02:36.949]Captured fixture line\n[02:39.060]Captured fixture line\n[02:39.552]Captured fixture line\n[02:40.429]Captured fixture line\n[02:43.059]Captured fixture line\n[02:43.899]Captured fixture line\n[02:46.147]Captured fixture line",
+            "id": "1608356126",
+            "artist": "陈忻玥 & 李杰明"
+          },
+          {
+            "album": "I'm Alive",
+            "title": "I'm Alive",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:14.491]Captured fixture line\n[00:15.695]Captured fixture line\n[00:17.210]Captured fixture line\n[00:18.205]Captured fixture line\n[00:19.656]Captured fixture line\n[00:21.162]Captured fixture line\n[00:22.663]Captured fixture line\n[00:24.426]Captured fixture line\n[00:26.429]Captured fixture line\n[00:27.933]Captured fixture line\n[00:30.943]Captured fixture line\n[00:33.205]Captured fixture line\n[00:34.966]Captured fixture line\n[00:36.470]Captured fixture line\n[00:37.973]Captured fixture line\n[00:39.735]Captured fixture line\n[00:41.488]Captured fixture line\n[00:43.249]Captured fixture line\n[00:44.997]Captured fixture line\n[00:46.510]Captured fixture line\n[00:48.260]Captured fixture line\n[00:49.016]Captured fixture line\n[00:50.265]Captured fixture line\n[00:52.023]Captured fixture line\n[00:53.526]Captured fixture line\n[00:55.288]Captured fixture line\n[00:57.540]Captured fixture line\n[01:01.811]Captured fixture line\n[01:04.573]Captured fixture line\n[01:08.845]Captured fixture line\n[01:10.595]Captured fixture line\n[01:12.352]Captured fixture line\n[01:15.864]Captured fixture line\n[01:22.640]Captured fixture line\n[01:38.197]Captured fixture line\n[01:40.460]Captured fixture line\n[01:41.462]Captured fixture line\n[01:43.968]Captured fixture line\n[01:45.224]Captured fixture line\n[01:47.473]Captured fixture line\n[01:48.480]Captured fixture line\n[01:50.988]Captured fixture line\n[01:51.684]Captured fixture line\n[01:53.182]Captured fixture line\n[01:54.692]Captured fixture line\n[01:56.442]Captured fixture line\n[01:58.643]Captured fixture line\n[02:01.406]Captured fixture line\n[02:03.852]Captured fixture line\n[02:04.853]Captured fixture line\n[02:07.617]Captured fixture line\n[02:11.128]Captured fixture line\n[02:14.138]Captured fixture line\n[02:18.405]Captured fixture line\n[02:20.165]Captured fixture line\n[02:21.921]Captured fixture line\n[02:25.431]Captured fixture line\n[02:31.945]Captured fixture line\n[02:33.705]Captured fixture line\n[02:36.162]Captured fixture line\n[02:37.165]Captured fixture line\n[02:39.671]Captured fixture line\n[02:40.672]Captured fixture line\n[02:43.191]Captured fixture line\n[02:43.935]Captured fixture line\n[02:46.500]Captured fixture line",
+            "id": "QW50S5QBE3m_U3pe8H0W",
+            "artist": "李杰明&陈忻玥"
+          },
+          {
+            "album": "I'm Alive",
+            "title": "I'm Alive",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:14.491]Captured fixture line\n[00:15.695]Captured fixture line\n[00:17.210]Captured fixture line\n[00:18.205]Captured fixture line\n[00:19.656]Captured fixture line\n[00:21.162]Captured fixture line\n[00:22.663]Captured fixture line\n[00:24.426]Captured fixture line\n[00:26.429]Captured fixture line\n[00:27.933]Captured fixture line\n[00:30.943]Captured fixture line\n[00:33.205]Captured fixture line\n[00:34.966]Captured fixture line\n[00:36.470]Captured fixture line\n[00:37.973]Captured fixture line\n[00:39.735]Captured fixture line\n[00:41.488]Captured fixture line\n[00:43.249]Captured fixture line\n[00:44.997]Captured fixture line\n[00:46.510]Captured fixture line\n[00:48.260]Captured fixture line\n[00:49.016]Captured fixture line\n[00:50.265]Captured fixture line\n[00:52.023]Captured fixture line\n[00:53.526]Captured fixture line\n[00:55.288]Captured fixture line\n[00:57.540]Captured fixture line\n[01:01.811]Captured fixture line\n[01:04.573]Captured fixture line\n[01:08.845]Captured fixture line\n[01:10.595]Captured fixture line\n[01:12.352]Captured fixture line\n[01:15.864]Captured fixture line\n[01:22.640]Captured fixture line\n[01:38.197]Captured fixture line\n[01:40.460]Captured fixture line\n[01:41.462]Captured fixture line\n[01:43.968]Captured fixture line\n[01:45.224]Captured fixture line\n[01:47.473]Captured fixture line\n[01:48.480]Captured fixture line\n[01:50.988]Captured fixture line\n[01:51.684]Captured fixture line\n[01:53.182]Captured fixture line\n[01:54.692]Captured fixture line\n[01:56.442]Captured fixture line\n[01:58.643]Captured fixture line\n[02:01.406]Captured fixture line\n[02:03.852]Captured fixture line\n[02:04.853]Captured fixture line\n[02:07.617]Captured fixture line\n[02:11.128]Captured fixture line\n[02:14.138]Captured fixture line\n[02:18.405]Captured fixture line\n[02:20.165]Captured fixture line\n[02:21.921]Captured fixture line\n[02:25.431]Captured fixture line\n[02:31.945]Captured fixture line\n[02:33.705]Captured fixture line\n[02:36.162]Captured fixture line\n[02:37.165]Captured fixture line\n[02:39.671]Captured fixture line\n[02:40.672]Captured fixture line\n[02:43.191]Captured fixture line\n[02:43.935]Captured fixture line\n[02:46.500]Captured fixture line",
+            "id": "48029387a2f10d6b59f620aaa093fe81",
+            "artist": "李杰明&陈忻玥"
+          },
+          {
+            "album": "V",
+            "title": "I'm Alive (feat. 李杰明)",
+            "duration": 172.283,
+            "lrc": "[00:13.523]Captured fixture line\n[00:14.372]Captured fixture line\n[00:15.654]Captured fixture line\n[00:17.027]Captured fixture line\n[00:18.264]Captured fixture line\n[00:19.588]Captured fixture line\n[00:20.873]Captured fixture line\n[00:22.590]Captured fixture line\n[00:24.339]Captured fixture line\n[00:25.862]Captured fixture line\n[00:27.833]Captured fixture line\n[00:28.263]Captured fixture line\n[00:30.885]Captured fixture line\n[00:33.068]Captured fixture line\n[00:34.353]Captured fixture line\n[00:36.067]Captured fixture line\n[00:37.827]Captured fixture line\n[00:39.579]Captured fixture line\n[00:41.321]Captured fixture line\n[00:43.049]Captured fixture line\n[00:44.789]Captured fixture line\n[00:46.298]Captured fixture line\n[00:48.138]Captured fixture line\n[00:50.019]Captured fixture line\n[00:51.775]Captured fixture line\n[00:53.464]Captured fixture line\n[00:54.749]Captured fixture line\n[00:57.849]Captured fixture line\n[01:01.717]Captured fixture line\n[01:04.753]Captured fixture line\n[01:08.670]Captured fixture line\n[01:12.175]Captured fixture line\n[01:15.602]Captured fixture line\n[01:22.421]Captured fixture line\n[01:29.549]Captured fixture line\n[01:37.843]Captured fixture line\n[01:40.403]Captured fixture line\n[01:41.287]Captured fixture line\n[01:43.852]Captured fixture line\n[01:44.795]Captured fixture line\n[01:47.317]Captured fixture line\n[01:48.314]Captured fixture line\n[01:51.334]Captured fixture line\n[01:52.867]Captured fixture line\n[01:54.640]Captured fixture line\n[01:56.299]Captured fixture line\n[01:58.252]Captured fixture line\n[02:01.308]Captured fixture line\n[02:03.480]Captured fixture line\n[02:04.191]Captured fixture line\n[02:07.428]Captured fixture line\n[02:11.272]Captured fixture line\n[02:14.345]Captured fixture line\n[02:18.195]Captured fixture line\n[02:21.735]Captured fixture line\n[02:25.157]Captured fixture line\n[02:31.989]Captured fixture line\n[02:33.468]Captured fixture line\n[02:36.147]Captured fixture line\n[02:36.949]Captured fixture line\n[02:39.060]Captured fixture line\n[02:39.552]Captured fixture line\n[02:40.429]Captured fixture line\n[02:43.059]Captured fixture line\n[02:43.899]Captured fixture line\n[02:46.147]Captured fixture line",
+            "id": "1771958337",
+            "artist": "陈忻玥"
+          },
+          {
+            "album": "V",
+            "title": "I'm Alive (feat. 李杰明)",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:14.491]Captured fixture line\n[00:15.695]Captured fixture line\n[00:17.210]Captured fixture line\n[00:18.205]Captured fixture line\n[00:19.656]Captured fixture line\n[00:21.162]Captured fixture line\n[00:22.663]Captured fixture line\n[00:24.426]Captured fixture line\n[00:26.429]Captured fixture line\n[00:27.933]Captured fixture line\n[00:30.943]Captured fixture line\n[00:33.205]Captured fixture line\n[00:34.966]Captured fixture line\n[00:36.470]Captured fixture line\n[00:37.973]Captured fixture line\n[00:39.735]Captured fixture line\n[00:41.488]Captured fixture line\n[00:43.249]Captured fixture line\n[00:44.997]Captured fixture line\n[00:46.510]Captured fixture line\n[00:48.260]Captured fixture line\n[00:49.016]Captured fixture line\n[00:50.265]Captured fixture line\n[00:52.023]Captured fixture line\n[00:53.526]Captured fixture line\n[00:55.288]Captured fixture line\n[00:57.540]Captured fixture line\n[01:01.811]Captured fixture line\n[01:04.573]Captured fixture line\n[01:08.845]Captured fixture line\n[01:10.595]Captured fixture line\n[01:12.352]Captured fixture line\n[01:15.864]Captured fixture line\n[01:22.640]Captured fixture line\n[01:38.197]Captured fixture line\n[01:40.460]Captured fixture line\n[01:41.462]Captured fixture line\n[01:43.968]Captured fixture line\n[01:45.224]Captured fixture line\n[01:47.473]Captured fixture line\n[01:48.480]Captured fixture line\n[01:50.988]Captured fixture line\n[01:51.684]Captured fixture line\n[01:53.182]Captured fixture line\n[01:54.692]Captured fixture line\n[01:56.442]Captured fixture line\n[01:58.643]Captured fixture line\n[02:01.406]Captured fixture line\n[02:03.852]Captured fixture line\n[02:04.853]Captured fixture line\n[02:07.617]Captured fixture line\n[02:11.128]Captured fixture line\n[02:14.138]Captured fixture line\n[02:18.405]Captured fixture line\n[02:20.165]Captured fixture line\n[02:21.921]Captured fixture line\n[02:25.431]Captured fixture line\n[02:31.945]Captured fixture line\n[02:33.705]Captured fixture line\n[02:36.162]Captured fixture line\n[02:37.165]Captured fixture line\n[02:39.671]Captured fixture line\n[02:40.672]Captured fixture line\n[02:43.191]Captured fixture line\n[02:43.935]Captured fixture line\n[02:46.500]Captured fixture line",
+            "id": "lHZ1S5QBE3m_U3pey3ye",
+            "artist": "陈忻玥&李杰明"
+          },
+          {
+            "album": "Am I Who I Am",
+            "title": "Am I Who I Am",
+            "duration": 177.241,
+            "lrc": "[Verse]\n[00:06.669]Captured fixture line\n[00:09.519]Captured fixture line\n[00:12.157]Captured fixture line\n[00:13.754]Captured fixture line\n[Verse]\n[00:17.711]Captured fixture line\n[00:20.575]Captured fixture line\n[00:23.254]Captured fixture line\n[00:24.769]Captured fixture line\n[Verse]\n[00:30.946]Captured fixture line\n[00:36.386]Captured fixture line\n[00:41.929]Captured fixture line\n[00:47.459]Captured fixture line\n[Verse]\n[00:50.100]Captured fixture line\n[00:52.813]Captured fixture line\n[00:55.148]Captured fixture line\n[00:58.426]Captured fixture line\n[Verse]\n[01:00.775]Captured fixture line\n[01:06.161]Captured fixture line\n[01:10.471]Captured fixture line\n[01:16.011]Captured fixture line\n[Verse]\n[01:23.943]Captured fixture line\n[01:26.767]Captured fixture line\n[01:29.534]Captured fixture line\n[01:31.018]Captured fixture line\n[Verse]\n[01:35.110]Captured fixture line\n[01:37.757]Captured fixture line\n[01:40.437]Captured fixture line\n[01:42.022]Captured fixture line\n[Verse]\n[01:48.131]Captured fixture line\n[01:53.766]Captured fixture line\n[01:59.328]Captured fixture line\n[02:04.782]Captured fixture line\n[Verse]\n[02:07.326]Captured fixture line\n[02:10.169]Captured fixture line\n[02:12.524]Captured fixture line\n[02:15.648]Captured fixture line\n[Verse]\n[02:18.066]Captured fixture line\n[02:23.391]Captured fixture line\n[02:27.773]Captured fixture line\n[Verse]\n[02:29.396]Captured fixture line\n[02:32.105]Captured fixture line\n[02:34.388]Captured fixture line\n[02:37.754]Captured fixture line\n[Verse]\n[02:40.143]Captured fixture line\n[02:45.437]Captured fixture line\n[02:49.736]Captured fixture line",
+            "id": "1503604982",
+            "artist": "陈忻玥"
+          },
+          {
+            "album": "Who I Am - Single",
+            "title": "Who I Am",
+            "duration": 225.172,
+            "lrc": "[Verse]\n[00:11.575]Captured fixture line\n[00:22.677]Captured fixture line\n[00:33.770]Captured fixture line\n[00:44.123]Captured fixture line\n[Verse]\n[00:50.970]Captured fixture line\n[00:56.422]Captured fixture line\n[01:01.921]Captured fixture line\n[01:07.474]Captured fixture line\n[Verse]\n[01:13.693]Captured fixture line\n[01:16.473]Captured fixture line\n[01:19.226]Captured fixture line\n[01:21.924]Captured fixture line\n[Verse]\n[01:24.023]Captured fixture line\n[01:29.548]Captured fixture line\n[Verse]\n[01:34.243]Captured fixture line\n[01:45.379]Captured fixture line\n[01:56.426]Captured fixture line\n[02:06.726]Captured fixture line\n[Verse]\n[02:13.677]Captured fixture line\n[02:19.177]Captured fixture line\n[02:24.672]Captured fixture line\n[02:30.194]Captured fixture line\n[Verse]\n[02:36.396]Captured fixture line\n[02:39.175]Captured fixture line\n[02:41.978]Captured fixture line\n[02:44.676]Captured fixture line\n[Verse]\n[02:46.822]Captured fixture line\n[02:52.343]Captured fixture line\n[Verse]\n[02:56.424]Captured fixture line\n[03:01.928]Captured fixture line\n[03:07.379]Captured fixture line\n[03:12.976]Captured fixture line\n[Verse]\n[03:20.575]Captured fixture line\n[03:23.321]Captured fixture line\n[03:26.173]Captured fixture line\n[03:28.894]Captured fixture line\n[03:31.628]Captured fixture line\n[03:34.375]Captured fixture line\n[03:37.075]Captured fixture line",
+            "id": "1585827408",
+            "artist": "陈忻玥"
+          },
+          {
+            "album": "V",
+            "title": "Who I Am",
+            "duration": 225.172,
+            "lrc": "[Verse]\n[00:11.575]Captured fixture line\n[00:22.677]Captured fixture line\n[00:33.770]Captured fixture line\n[00:44.123]Captured fixture line\n[Verse]\n[00:50.970]Captured fixture line\n[00:56.422]Captured fixture line\n[01:01.921]Captured fixture line\n[01:07.474]Captured fixture line\n[Verse]\n[01:13.693]Captured fixture line\n[01:16.473]Captured fixture line\n[01:19.226]Captured fixture line\n[01:21.924]Captured fixture line\n[Verse]\n[01:24.023]Captured fixture line\n[01:29.548]Captured fixture line\n[Verse]\n[01:34.243]Captured fixture line\n[01:45.379]Captured fixture line\n[01:56.426]Captured fixture line\n[02:06.726]Captured fixture line\n[Verse]\n[02:13.677]Captured fixture line\n[02:19.177]Captured fixture line\n[02:24.672]Captured fixture line\n[02:30.194]Captured fixture line\n[Verse]\n[02:36.396]Captured fixture line\n[02:39.175]Captured fixture line\n[02:41.978]Captured fixture line\n[02:44.676]Captured fixture line\n[Verse]\n[02:46.822]Captured fixture line\n[02:52.343]Captured fixture line\n[Verse]\n[02:56.424]Captured fixture line\n[03:01.928]Captured fixture line\n[03:07.379]Captured fixture line\n[03:12.976]Captured fixture line\n[Verse]\n[03:20.575]Captured fixture line\n[03:23.321]Captured fixture line\n[03:26.173]Captured fixture line\n[03:28.894]Captured fixture line\n[03:31.628]Captured fixture line\n[03:34.375]Captured fixture line\n[03:37.075]Captured fixture line",
+            "id": "1771958348",
+            "artist": "陈忻玥"
+          },
+          {
+            "album": "Invisible Me (Rough Cut)",
+            "title": "I'm the Luckiest Man Alive",
+            "duration": 162.16,
+            "lrc": null,
+            "id": "1076919602",
+            "artist": "杰森·李"
+          },
+          {
+            "album": "French 60's EP & SP Collection",
+            "title": "I'm Alive",
+            "lrc": null,
+            "id": "GXd1S5QBE3m_U3pe6HsH",
+            "artist": "Tommy James&the Shondells"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "0f442d004dbe037d3fdf3a08f1f2a8e7e9fa755ed5688afe221a3f3317c075fe",
+        "LrcApi": "47d09c4ff111930b1ccc0a99ef485f8fddc8c5df07fd644c4dedc3fefdc88d0a"
+      }
+    },
+    {
+      "songID": "zZmtt5g4tHs",
+      "title": "秋原依 - 錯季【動態歌詞】「春的顏色不走進秋季 有些愛情就經不起季節輪替」♪",
+      "artist": "",
+      "duration": 274,
+      "capturePair": {
+        "track_name": "錯季",
+        "artist_name": "秋原依"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "album": "错季 - Single",
+            "title": "错季",
+            "duration": 275.733,
+            "lrc": "[Verse]\n[00:34.596]Captured fixture line\n[00:41.999]Captured fixture line\n[00:49.525]Captured fixture line\n[00:55.275]Captured fixture line\n[Verse]\n[01:04.641]Captured fixture line\n[01:11.898]Captured fixture line\n[01:19.328]Captured fixture line\n[01:25.030]Captured fixture line\n[01:28.578]Captured fixture line\n[Verse]\n[01:32.549]Captured fixture line\n[01:35.519]Captured fixture line\n[01:39.322]Captured fixture line\n[01:41.620]Captured fixture line\n[Verse]\n[01:47.527]Captured fixture line\n[01:50.530]Captured fixture line\n[01:54.155]Captured fixture line\n[01:58.503]Captured fixture line\n[Verse]\n[02:15.821]Captured fixture line\n[02:23.164]Captured fixture line\n[02:30.530]Captured fixture line\n[02:36.253]Captured fixture line\n[02:39.759]Captured fixture line\n[Verse]\n[02:43.714]Captured fixture line\n[02:46.794]Captured fixture line\n[02:50.546]Captured fixture line\n[02:52.707]Captured fixture line\n[Verse]\n[02:58.733]Captured fixture line\n[03:01.796]Captured fixture line\n[03:05.407]Captured fixture line\n[03:09.784]Captured fixture line\n[Verse]\n[03:15.391]Captured fixture line\n[03:18.981]Captured fixture line\n[03:22.833]Captured fixture line\n[03:26.171]Captured fixture line\n[03:32.536]Captured fixture line\n[03:35.453]Captured fixture line\n[03:40.567]Captured fixture line\n[Verse]\n[03:45.664]Captured fixture line\n[03:48.613]Captured fixture line\n[03:52.319]Captured fixture line\n[03:54.833]Captured fixture line\n[Verse]\n[04:00.561]Captured fixture line\n[04:03.595]Captured fixture line\n[04:07.161]Captured fixture line\n[04:11.666]Captured fixture line",
+            "id": "1666372812",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (合集) - EP",
+            "title": "错季 (加速版)",
+            "duration": 172.263,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1671925228",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (合集) - EP",
+            "title": "错季 (Live版)",
+            "duration": 187.908,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1671924848",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (Remix版) - Single",
+            "title": "错季 (Remix版)",
+            "duration": 285.606,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1674715910",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 - Single",
+            "title": "错季 (伴奏版)",
+            "duration": 275.733,
+            "lrc": null,
+            "id": "1666373064",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (合集) - EP",
+            "title": "错季 (变速版)",
+            "duration": 208.196,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1671925220",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (DJ名龙版) - Single",
+            "title": "错季 (DJ名龙版)",
+            "duration": 290.435,
+            "lrc": "[Chorus]\n[00:02.208]Captured fixture line\n[00:05.068]Captured fixture line\n[00:08.548]Captured fixture line\n[00:10.778]Captured fixture line\n[00:16.090]Captured fixture line\n[00:18.960]Captured fixture line\n[00:22.209]Captured fixture line\n[00:26.353]Captured fixture line\n[Verse]\n[00:33.777]Captured fixture line\n[00:40.698]Captured fixture line\n[00:47.700]Captured fixture line\n[00:52.897]Captured fixture line\n[PreChorus]\n[01:01.543]Captured fixture line\n[01:08.463]Captured fixture line\n[01:15.271]Captured fixture line\n[01:20.553]Captured fixture line\n[Chorus]\n[01:27.407]Captured fixture line\n[01:30.265]Captured fixture line\n[01:33.753]Captured fixture line\n[01:35.992]Captured fixture line\n[01:41.314]Captured fixture line\n[01:44.168]Captured fixture line\n[01:47.429]Captured fixture line\n[01:51.588]Captured fixture line\n[PreChorus]\n[02:25.009]Captured fixture line\n[02:31.967]Captured fixture line\n[02:38.700]Captured fixture line\n[02:43.972]Captured fixture line\n[Chorus]\n[02:50.564]Captured fixture line\n[02:53.754]Captured fixture line\n[02:57.258]Captured fixture line\n[02:59.461]Captured fixture line\n[03:04.803]Captured fixture line\n[03:07.626]Captured fixture line\n[03:10.953]Captured fixture line\n[03:15.056]Captured fixture line\n[Verse]\n[03:20.276]Captured fixture line\n[03:23.800]Captured fixture line\n[03:27.206]Captured fixture line\n[03:30.154]Captured fixture line\n[03:36.123]Captured fixture line\n[03:38.803]Captured fixture line\n[03:43.574]Captured fixture line\n[Chorus]\n[03:48.350]Captured fixture line\n[03:51.180]Captured fixture line\n[03:54.666]Captured fixture line\n[03:56.865]Captured fixture line\n[04:02.156]Captured fixture line\n[04:05.088]Captured fixture line\n[04:08.255]Captured fixture line\n[04:12.526]Captured fixture line",
+            "id": "1666366270",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季 (说唱版) - Single",
+            "title": "错季 (说唱版)",
+            "duration": 169.212,
+            "lrc": "[Verse]\n[00:02.335]Captured fixture line\n[00:08.076]Captured fixture line\n[Chorus]\n[00:15.509]Captured fixture line\n[00:18.583]Captured fixture line\n[00:22.373]Captured fixture line\n[00:24.747]Captured fixture line\n[Verse]\n[00:31.504]Captured fixture line\n[00:33.385]Captured fixture line\n[00:34.996]Captured fixture line\n[00:36.681]Captured fixture line\n[Verse]\n[00:38.931]Captured fixture line\n[00:40.427]Captured fixture line\n[00:42.767]Captured fixture line\n[00:44.193]Captured fixture line\n[Verse]\n[00:46.225]Captured fixture line\n[00:47.654]Captured fixture line\n[00:49.931]Captured fixture line\n[00:51.388]Captured fixture line\n[Verse]\n[00:53.700]Captured fixture line\n[00:55.349]Captured fixture line\n[00:57.244]Captured fixture line\n[00:59.125]Captured fixture line\n[Chorus]\n[01:00.575]Captured fixture line\n[01:03.584]Captured fixture line\n[01:07.345]Captured fixture line\n[01:09.675]Captured fixture line\n[Chorus]\n[01:15.473]Captured fixture line\n[01:18.583]Captured fixture line\n[01:22.087]Captured fixture line\n[01:26.588]Captured fixture line\n[Verse]\n[01:46.457]Captured fixture line\n[01:48.148]Captured fixture line\n[01:49.844]Captured fixture line\n[01:51.688]Captured fixture line\n[Verse]\n[01:53.686]Captured fixture line\n[01:55.349]Captured fixture line\n[01:57.262]Captured fixture line\n[01:59.162]Captured fixture line\n[Chorus]\n[02:00.518]Captured fixture line\n[02:03.581]Captured fixture line\n[02:07.360]Captured fixture line\n[02:09.747]Captured fixture line\n[Chorus]\n[02:15.491]Captured fixture line\n[02:18.605]Captured fixture line\n[02:22.069]Captured fixture line\n[02:26.616]Captured fixture line\n[Outro]\n[02:32.381]Captured fixture line\n[02:38.060]Captured fixture line",
+            "id": "1712635477",
+            "artist": "歪歪超 & 秋原依"
+          },
+          {
+            "album": "错季 (合集) - EP",
+            "title": "错季 (X0.8降速版)",
+            "duration": 214.238,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1671925235",
+            "artist": "秋原依"
+          },
+          {
+            "album": "错季",
+            "title": "错季",
+            "lrc": "[00:17.700]Captured fixture line\n[00:24.450]Captured fixture line\n[00:31.320]Captured fixture line\n[00:36.390]Captured fixture line\n[00:44.880]Captured fixture line\n[00:51.780]Captured fixture line\n[00:58.500]Captured fixture line\n[01:04.110]Captured fixture line\n[01:10.290]Captured fixture line\n[01:13.290]Captured fixture line\n[01:16.380]Captured fixture line\n[01:23.880]Captured fixture line\n[01:26.670]Captured fixture line\n[01:31.290]Captured fixture line\n[01:49.590]Captured fixture line\n[01:56.460]Captured fixture line\n[02:03.210]Captured fixture line\n[02:08.790]Captured fixture line\n[02:14.970]Captured fixture line\n[02:17.970]Captured fixture line\n[02:21.060]Captured fixture line\n[02:28.560]Captured fixture line\n[02:31.320]Captured fixture line\n[02:35.970]Captured fixture line\n[02:42.240]Captured fixture line\n[02:45.210]Captured fixture line\n[02:48.270]Captured fixture line\n[02:55.800]Captured fixture line\n[02:58.590]Captured fixture line\n[03:03.210]Captured fixture line",
+            "id": "e3N1S5QBE3m_U3peoOYk",
+            "artist": "秋依原"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "e2cace4e9ad54301d5778511e1a2d2189b8278d4f6a0cb2f43b766d01c7fb858"
+      }
+    },
+    {
+      "songID": "YghlJ-2nvZU",
+      "title": "故事終章 - 程響【動態歌詞】= 有些事我們終生難忘，有些愛深藏於心。只有故事終章，溫暖我們一生。 = Chinese music ~",
+      "artist": "",
+      "duration": 243,
+      "capturePair": {
+        "track_name": "故事終章",
+        "artist_name": "程響"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "album": "故事终章 - Single",
+            "title": "故事终章",
+            "duration": 242.538,
+            "lrc": "[Verse]\n[00:31.883]Captured fixture line\n[00:36.116]Captured fixture line\n[00:39.186]Captured fixture line\n[00:42.880]Captured fixture line\n[Verse]\n[00:46.714]Captured fixture line\n[00:50.168]Captured fixture line\n[00:53.786]Captured fixture line\n[00:57.660]Captured fixture line\n[Chorus]\n[01:01.039]Captured fixture line\n[01:05.114]Captured fixture line\n[01:08.581]Captured fixture line\n[01:12.200]Captured fixture line\n[Chorus]\n[01:15.619]Captured fixture line\n[01:19.615]Captured fixture line\n[01:23.080]Captured fixture line\n[01:26.718]Captured fixture line\n[Verse]\n[02:04.915]Captured fixture line\n[02:08.261]Captured fixture line\n[02:11.968]Captured fixture line\n[02:15.832]Captured fixture line\n[Chorus]\n[02:19.236]Captured fixture line\n[02:23.285]Captured fixture line\n[02:26.718]Captured fixture line\n[02:30.317]Captured fixture line\n[Chorus]\n[02:33.760]Captured fixture line\n[02:37.781]Captured fixture line\n[02:41.215]Captured fixture line\n[02:44.937]Captured fixture line\n[Chorus]\n[03:04.717]Captured fixture line\n[03:08.788]Captured fixture line\n[03:12.239]Captured fixture line\n[03:15.769]Captured fixture line\n[Chorus]\n[03:19.186]Captured fixture line\n[03:23.260]Captured fixture line\n[03:26.682]Captured fixture line\n[03:30.332]Captured fixture line",
+            "id": "1722198178",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:03.000]Captured fixture line\n[00:31.400]Captured fixture line\n[00:35.880]Captured fixture line\n[00:39.090]Captured fixture line\n[00:42.790]Captured fixture line\n[00:45.700]\n[00:46.720]Captured fixture line\n[00:49.930]Captured fixture line\n[00:53.380]Captured fixture line\n[00:57.560]Captured fixture line\n[01:01.020]\n[01:01.210]Captured fixture line\n[01:04.930]Captured fixture line\n[01:08.340]Captured fixture line\n[01:12.160]Captured fixture line\n[01:15.420]\n[01:15.700]Captured fixture line\n[01:19.470]Captured fixture line\n[01:23.170]Captured fixture line\n[01:26.500]Captured fixture line\n[01:33.440]\n[02:04.760]Captured fixture line\n[02:08.140]Captured fixture line\n[02:11.800]Captured fixture line\n[02:15.520]Captured fixture line\n[02:19.150]\n[02:19.340]Captured fixture line\n[02:22.960]Captured fixture line\n[02:26.690]Captured fixture line\n[02:30.250]Captured fixture line\n[02:33.570]\n[02:33.770]Captured fixture line\n[02:37.620]Captured fixture line\n[02:40.840]Captured fixture line\n[02:44.690]Captured fixture line\n[02:51.960]\n[03:04.520]Captured fixture line\n[03:08.440]Captured fixture line\n[03:11.990]Captured fixture line\n[03:15.640]Captured fixture line\n[03:19.040]\n[03:19.240]Captured fixture line\n[03:23.130]Captured fixture line\n[03:26.880]Captured fixture line\n[03:30.250]Captured fixture line\n[03:37.700]\n[03:55.000]\n[03:57.530]Captured fixture line\n[03:57.870]Captured fixture line\n[03:58.200]Captured fixture line\n[03:58.530]Captured fixture line\n[03:58.860]Captured fixture line\n[03:59.200]Captured fixture line\n[03:59.530]Captured fixture line\n[03:59.860]Captured fixture line\n[04:00.200]Captured fixture line\n[04:00.530]Captured fixture line\n[04:00.860]Captured fixture line\n[04:01.200]Captured fixture line\n[04:01.530]Captured fixture line\n[04:01.860]Captured fixture line\n[04:02.190]Captured fixture line",
+            "id": "aXF1S5QBE3m_U3peXMDc",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章",
+            "lrc": "[id:$00000000]\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[hash:44711a09a8501cf5948a1c82182d28c9]\n[al:fixture]\n[sign:]\n[qq:]\n[total:0]\n[offset:0]\n[00:00.000]Captured fixture line\n[00:00.000]Captured fixture line\n[00:00.310]Captured fixture line\n[00:02.520]Captured fixture line\n[00:03.380]Captured fixture line\n[00:04.250]Captured fixture line\n[00:05.210]Captured fixture line\n[00:05.770]Captured fixture line\n[00:06.950]Captured fixture line\n[00:08.080]Captured fixture line\n[00:08.720]Captured fixture line\n[00:09.210]Captured fixture line\n[00:09.410]Captured fixture line\n[00:10.320]Captured fixture line\n[00:11.140]Captured fixture line\n[00:13.190]Captured fixture line\n[00:15.100]Captured fixture line\n[00:16.330]Captured fixture line\n[00:18.080]Captured fixture line\n[00:21.300]Captured fixture line\n[00:22.540]Captured fixture line\n[00:32.030]Captured fixture line\n[00:35.940]Captured fixture line\n[00:39.260]Captured fixture line\n[00:42.870]Captured fixture line\n[00:46.730]Captured fixture line\n[00:50.070]Captured fixture line\n[00:53.760]Captured fixture line\n[00:57.520]Captured fixture line\n[01:01.050]Captured fixture line\n[01:05.130]Captured fixture line\n[01:08.550]Captured fixture line\n[01:12.240]Captured fixture line\n[01:15.690]Captured fixture line\n[01:19.650]Captured fixture line\n[01:23.140]Captured fixture line\n[01:26.720]Captured fixture line\n[02:04.980]Captured fixture line\n[02:08.320]Captured fixture line\n[02:11.930]Captured fixture line\n[02:15.760]Captured fixture line\n[02:19.340]Captured fixture line\n[02:23.220]Captured fixture line\n[02:26.750]Captured fixture line\n[02:30.390]Captured fixture line\n[02:33.830]Captured fixture line\n[02:37.710]Captured fixture line\n[02:41.210]Captured fixture line\n[02:44.940]Captured fixture line\n[03:04.630]Captured fixture line\n[03:08.680]Captured fixture line\n[03:12.310]Captured fixture line\n[03:15.900]Captured fixture line\n[03:19.230]Captured fixture line\n[03:23.230]Captured fixture line\n[03:26.660]Captured fixture line\n[03:30.300]Captured fixture line",
+            "id": "6193ee66384a4873b08be4b425b1dbef",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章 - Single",
+            "title": "故事终章 (DJ阿卓版)",
+            "duration": 206.25,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1721873490",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章 (伴奏)",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:31.400]Captured fixture line\n[00:35.880]Captured fixture line\n[00:39.090]Captured fixture line\n[00:42.790]Captured fixture line\n[00:45.700]\n[00:46.720]Captured fixture line\n[00:49.930]Captured fixture line\n[00:53.380]Captured fixture line\n[00:57.560]Captured fixture line\n[01:01.020]\n[01:01.210]Captured fixture line\n[01:04.930]Captured fixture line\n[01:08.340]Captured fixture line\n[01:12.160]Captured fixture line\n[01:15.420]\n[01:15.700]Captured fixture line\n[01:19.470]Captured fixture line\n[01:23.170]Captured fixture line\n[01:26.500]Captured fixture line\n[01:33.440]\n[02:04.760]Captured fixture line\n[02:08.140]Captured fixture line\n[02:11.800]Captured fixture line\n[02:15.520]Captured fixture line\n[02:19.150]\n[02:19.340]Captured fixture line\n[02:22.960]Captured fixture line\n[02:26.690]Captured fixture line\n[02:30.250]Captured fixture line\n[02:33.570]\n[02:33.770]Captured fixture line\n[02:37.620]Captured fixture line\n[02:40.840]Captured fixture line\n[02:44.690]Captured fixture line\n[02:51.960]\n[03:04.520]Captured fixture line\n[03:08.440]Captured fixture line\n[03:11.990]Captured fixture line\n[03:15.640]Captured fixture line\n[03:19.040]\n[03:19.240]Captured fixture line\n[03:23.130]Captured fixture line\n[03:26.880]Captured fixture line\n[03:30.250]Captured fixture line\n[03:37.700]\n[03:55.000]\n[04:02.530]Captured fixture line",
+            "id": "IXB1S5QBE3m_U3peLWnv",
+            "artist": "程响"
+          },
+          {
+            "album": "暖风洒温瞳",
+            "title": "故事终章",
+            "duration": 241.046,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1676574225",
+            "artist": "依莲"
+          },
+          {
+            "album": "精选歌曲0.8X合辑",
+            "title": "故事终章（0.8x）",
+            "lrc": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "-Gp0S5QBE3m_U3peeGXx",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章 (DJ阿卓版)",
+            "lrc": "[00:01.210]Captured fixture line\n[00:21.760]Captured fixture line\n[00:26.090]Captured fixture line\n[00:29.340]Captured fixture line\n[00:33.100]Captured fixture line\n[00:37.110]Captured fixture line\n[00:40.590]Captured fixture line\n[00:44.400]Captured fixture line\n[00:48.430]Captured fixture line\n[00:51.810]Captured fixture line\n[00:56.030]Captured fixture line\n[00:59.720]Captured fixture line\n[01:03.300]Captured fixture line\n[01:06.860]Captured fixture line\n[01:11.070]Captured fixture line\n[01:14.680]Captured fixture line\n[01:18.350]Captured fixture line\n[01:23.340]Captured fixture line\n[02:01.520]Captured fixture line\n[02:04.930]Captured fixture line\n[02:08.770]Captured fixture line\n[02:12.840]Captured fixture line\n[02:16.330]Captured fixture line\n[02:20.470]Captured fixture line\n[02:24.050]Captured fixture line\n[02:27.730]Captured fixture line\n[02:31.280]Captured fixture line\n[02:35.500]Captured fixture line\n[02:39.020]Captured fixture line\n[02:42.760]Captured fixture line\n[02:50.100]Captured fixture line\n[02:54.190]Captured fixture line\n[02:57.810]Captured fixture line\n[03:01.520]Captured fixture line\n[03:05.030]Captured fixture line\n[03:09.150]Captured fixture line\n[03:12.800]Captured fixture line\n[03:16.520]Captured fixture line\n[03:21.250]Captured fixture line\n[03:22.250]Captured fixture line\n[03:23.250]Captured fixture line",
+            "id": "4Wt0S5QBE3m_U3peps-O",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章 (DJ翊轩版)",
+            "lrc": "[id:$00000000]\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[hash:6b72424402cdef4ae636d2cac019af37]\n[al:fixture]\n[sign:]\n[qq:]\n[total:0]\n[offset:0]\n[00:00.000]Captured fixture line\n[00:00.840]Captured fixture line\n[00:00.990]Captured fixture line\n[00:01.230]Captured fixture line\n[00:05.210]Captured fixture line\n[00:08.670]Captured fixture line\n[00:12.260]Captured fixture line\n[00:31.690]Captured fixture line\n[00:35.650]Captured fixture line\n[00:38.790]Captured fixture line\n[00:42.430]Captured fixture line\n[00:46.160]Captured fixture line\n[00:49.630]Captured fixture line\n[00:53.170]Captured fixture line\n[00:56.960]Captured fixture line\n[01:00.360]Captured fixture line\n[01:04.380]Captured fixture line\n[01:07.800]Captured fixture line\n[01:11.330]Captured fixture line\n[01:14.690]Captured fixture line\n[01:18.590]Captured fixture line\n[01:22.080]Captured fixture line\n[01:25.700]Captured fixture line\n[01:48.970]Captured fixture line\n[01:52.280]Captured fixture line\n[01:55.860]Captured fixture line\n[01:59.670]Captured fixture line\n[02:02.980]Captured fixture line\n[02:06.970]Captured fixture line\n[02:10.440]Captured fixture line\n[02:13.990]Captured fixture line\n[02:17.380]Captured fixture line\n[02:21.300]Captured fixture line\n[02:24.710]Captured fixture line\n[02:28.340]Captured fixture line\n[02:35.260]Captured fixture line\n[02:39.230]Captured fixture line\n[02:42.670]Captured fixture line\n[02:46.200]Captured fixture line\n[02:49.620]Captured fixture line\n[02:53.440]Captured fixture line\n[02:57.020]Captured fixture line\n[03:00.550]Captured fixture line",
+            "id": "and1S5QBE3m_U3pe2jEn",
+            "artist": "程响"
+          },
+          {
+            "album": "故事终章",
+            "title": "故事终章 (DJ翊轩版)",
+            "lrc": "[00:00.000]Captured fixture line\n[00:00.600]Captured fixture line\n[00:01.200]Captured fixture line\n[00:05.250]Captured fixture line\n[00:08.610]Captured fixture line\n[00:12.150]Captured fixture line\n[00:31.560]Captured fixture line\n[00:35.700]Captured fixture line\n[00:38.850]Captured fixture line\n[00:42.330]Captured fixture line\n[00:46.260]Captured fixture line\n[00:49.590]Captured fixture line\n[00:53.160]Captured fixture line\n[00:57.000]Captured fixture line\n[01:00.330]Captured fixture line\n[01:04.350]Captured fixture line\n[01:07.710]Captured fixture line\n[01:11.250]Captured fixture line\n[01:14.700]Captured fixture line\n[01:18.630]Captured fixture line\n[01:22.200]Captured fixture line\n[01:25.590]Captured fixture line\n[01:48.930]Captured fixture line\n[01:52.260]Captured fixture line\n[01:55.860]Captured fixture line\n[01:59.730]Captured fixture line\n[02:03.030]Captured fixture line\n[02:06.990]Captured fixture line\n[02:10.350]Captured fixture line\n[02:14.010]Captured fixture line\n[02:17.340]Captured fixture line\n[02:21.300]Captured fixture line\n[02:24.750]Captured fixture line\n[02:28.260]Captured fixture line\n[02:35.340]Captured fixture line\n[02:39.180]Captured fixture line\n[02:42.630]Captured fixture line\n[02:46.230]Captured fixture line\n[02:49.620]Captured fixture line\n[02:53.550]Captured fixture line\n[02:57.000]Captured fixture line\n[03:00.510]Captured fixture line",
+            "id": "f7b7567cad24f8fb35398d5246213e2c",
+            "artist": "程响"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "8f067c8fccda157ca69d17be13ee1b9b8b4aab2a1e3cf55630a31335b3e2010b"
+      }
+    },
+    {
+      "songID": "4RVl7b0X88Y",
+      "title": "蕭敬騰 會痛的石頭-華納official HQ官方版MV",
+      "artist": "",
+      "duration": 288,
+      "capturePair": {
+        "track_name": "會痛的石頭",
+        "artist_name": "蕭敬騰"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "album": "王妃",
+            "title": "会痛的石头",
+            "duration": 288.663,
+            "lrc": "[Verse]\n[00:30.686]Captured fixture line\n[00:35.299]Captured fixture line\n[00:43.249]Captured fixture line\n[00:47.764]Captured fixture line\n[00:55.004]Captured fixture line\n[01:00.656]Captured fixture line\n[01:06.771]Captured fixture line\n[01:12.709]Captured fixture line\n[01:17.065]Captured fixture line\n[Chorus]\n[01:20.077]Captured fixture line\n[01:26.395]Captured fixture line\n[01:31.876]Captured fixture line\n[01:38.490]Captured fixture line\n[01:44.263]Captured fixture line\n[01:51.212]Captured fixture line\n[01:57.125]Captured fixture line\n[02:03.407]Captured fixture line\n[Verse]\n[02:35.261]Captured fixture line\n[02:40.079]Captured fixture line\n[02:47.740]Captured fixture line\n[02:52.525]Captured fixture line\n[02:59.801]Captured fixture line\n[03:05.197]Captured fixture line\n[03:11.554]Captured fixture line\n[03:17.361]Captured fixture line\n[03:21.598]Captured fixture line\n[Chorus]\n[03:24.818]Captured fixture line\n[03:31.094]Captured fixture line\n[03:36.548]Captured fixture line\n[03:43.219]Captured fixture line\n[03:48.948]Captured fixture line\n[03:55.963]Captured fixture line\n[04:01.837]Captured fixture line\n[04:08.129]Captured fixture line",
+            "id": "359075421",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "王妃",
+            "title": "会痛的石头",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:29.940]Captured fixture line\n[00:35.020]Captured fixture line\n[00:42.970]Captured fixture line\n[00:47.670]Captured fixture line\n[00:54.070]\n[00:54.870]Captured fixture line\n[01:00.280]Captured fixture line\n[01:06.600]Captured fixture line\n[01:12.540]Captured fixture line\n[01:19.540]\n[01:20.080]Captured fixture line\n[01:26.260]Captured fixture line\n[01:31.950]Captured fixture line\n[01:38.440]Captured fixture line\n[01:44.110]Captured fixture line\n[01:50.870]Captured fixture line\n[01:57.080]Captured fixture line\n[02:03.270]Captured fixture line\n[02:14.290]\n[02:14.290]\n[02:28.400]\n[02:34.700]Captured fixture line\n[02:39.810]Captured fixture line\n[02:47.040]Captured fixture line\n[02:52.260]Captured fixture line\n[03:00.120]Captured fixture line\n[03:05.650]Captured fixture line\n[03:11.930]Captured fixture line\n[03:17.990]Captured fixture line\n[03:24.990]\n[03:25.440]Captured fixture line\n[03:31.640]Captured fixture line\n[03:37.170]Captured fixture line\n[03:43.740]Captured fixture line\n[03:49.390]Captured fixture line\n[03:56.250]Captured fixture line\n[04:02.320]Captured fixture line\n[04:08.580]Captured fixture line\n[04:20.700]\n[04:21.300]",
+            "id": "I3R1S5QBE3m_U3perpCP",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "王妃(Live影音限定版)",
+            "title": "会痛的石头",
+            "lrc": "[00:00.000]Captured fixture line\n[00:00.170]Captured fixture line\n[00:00.340]Captured fixture line\n[00:00.520]Captured fixture line\n[00:05.710]\n[00:31.050]Captured fixture line\n[00:43.400]Captured fixture line\n[00:55.370]Captured fixture line\n[01:06.980]Captured fixture line\n[01:20.330]Captured fixture line\n[01:32.130]Captured fixture line\n[01:44.530]Captured fixture line\n[01:57.440]Captured fixture line\n[02:21.520]\n[02:35.700]Captured fixture line\n[02:48.060]Captured fixture line\n[03:00.050]Captured fixture line\n[03:11.740]Captured fixture line\n[03:25.190]Captured fixture line\n[03:36.760]Captured fixture line\n[03:49.180]Captured fixture line\n[04:02.000]Captured fixture line\n[04:22.240]",
+            "id": "bf45912edca824532b9a9946b6ad4b9d",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "王妃",
+            "title": "会痛的石头",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:29.940]Captured fixture line\n[00:35.020]Captured fixture line\n[00:42.970]Captured fixture line\n[00:47.670]Captured fixture line\n[00:54.070]\n[00:54.870]Captured fixture line\n[01:00.280]Captured fixture line\n[01:06.600]Captured fixture line\n[01:12.540]Captured fixture line\n[01:19.540]\n[01:20.080]Captured fixture line\n[01:26.260]Captured fixture line\n[01:31.950]Captured fixture line\n[01:38.440]Captured fixture line\n[01:44.110]Captured fixture line\n[01:50.870]Captured fixture line\n[01:57.080]Captured fixture line\n[02:03.270]Captured fixture line\n[02:14.290]\n[02:14.290]\n[02:28.400]\n[02:34.700]Captured fixture line\n[02:39.810]Captured fixture line\n[02:47.040]Captured fixture line\n[02:52.260]Captured fixture line\n[03:00.120]Captured fixture line\n[03:05.650]Captured fixture line\n[03:11.930]Captured fixture line\n[03:17.990]Captured fixture line\n[03:24.990]\n[03:25.440]Captured fixture line\n[03:31.640]Captured fixture line\n[03:37.170]Captured fixture line\n[03:43.740]Captured fixture line\n[03:49.390]Captured fixture line\n[03:56.250]Captured fixture line\n[04:02.320]Captured fixture line\n[04:08.580]Captured fixture line\n[04:20.700]\n[04:21.300]",
+            "id": "a77e42d29767f932d603e4aa1ecf39e3",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "王妃(Live影音限定版)",
+            "title": "会痛的石头 (Live)",
+            "lrc": "[00:33.900]Captured fixture line\n[00:38.600]Captured fixture line\n[00:43.300]Captured fixture line\n[00:46.700]Captured fixture line\n[00:51.300]Captured fixture line\n[00:52.700]Captured fixture line\n[00:56.200]Captured fixture line\n[00:58.300]Captured fixture line\n[01:00.900]Captured fixture line\n[01:03.900]Captured fixture line\n[01:06.900]Captured fixture line\n[01:10.200]Captured fixture line\n[01:13.200]Captured fixture line\n[01:17.200]Captured fixture line\n[01:20.400]Captured fixture line\n[01:23.500]Captured fixture line\n[01:29.900]Captured fixture line\n[01:35.100]Captured fixture line\n[01:39.200]Captured fixture line\n[01:42.200]Captured fixture line\n[01:47.700]Captured fixture line\n[01:51.300]Captured fixture line\n[01:54.700]Captured fixture line\n[02:01.200]Captured fixture line\n[02:04.500]Captured fixture line\n[02:06.900]Captured fixture line\n[02:12.500]Captured fixture line\n[02:39.200]Captured fixture line\n[02:44.300]Captured fixture line\n[02:49.200]Captured fixture line\n[02:52.300]Captured fixture line\n[02:56.400]Captured fixture line\n[03:01.300]Captured fixture line\n[03:04.200]Captured fixture line\n[03:06.300]Captured fixture line\n[03:09.400]Captured fixture line\n[03:12.400]Captured fixture line\n[03:15.800]Captured fixture line\n[03:18.300]Captured fixture line\n[03:21.450]Captured fixture line\n[03:25.900]Captured fixture line\n[03:29.200]Captured fixture line\n[03:32.100]Captured fixture line\n[03:35.300]Captured fixture line\n[03:41.200]Captured fixture line\n[03:44.900]Captured fixture line\n[03:47.700]Captured fixture line\n[03:53.300]Captured fixture line\n[03:57.200]Captured fixture line\n[04:00.300]Captured fixture line\n[04:03.300]Captured fixture line\n[04:06.100]Captured fixture line\n[04:09.900]Captured fixture line\n[04:12.400]Captured fixture line\n[04:17.700]Captured fixture line",
+            "id": "L2t0S5QBE3m_U3pemCW0",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "洛克先生Mr.Rock演唱会Live纪实",
+            "title": "会痛的石头 (Live)",
+            "lrc": "[id:$00000000]\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[00:00.000]Captured fixture line\n[00:10.430]Captured fixture line\n[00:20.870]Captured fixture line\n[00:31.310]Captured fixture line\n[00:35.990]Captured fixture line\n[00:43.940]Captured fixture line\n[00:48.350]Captured fixture line\n[00:55.880]Captured fixture line\n[01:01.210]Captured fixture line\n[01:07.420]Captured fixture line\n[01:13.250]Captured fixture line\n[01:20.660]Captured fixture line\n[01:26.840]Captured fixture line\n[01:32.290]Captured fixture line\n[01:39.060]Captured fixture line\n[01:44.870]Captured fixture line\n[01:51.720]Captured fixture line\n[01:57.680]Captured fixture line\n[02:03.960]Captured fixture line\n[02:36.000]Captured fixture line\n[02:40.740]Captured fixture line\n[02:48.340]Captured fixture line\n[02:52.900]Captured fixture line\n[03:00.390]Captured fixture line\n[03:05.800]Captured fixture line\n[03:12.120]Captured fixture line\n[03:17.930]Captured fixture line\n[03:25.300]Captured fixture line\n[03:31.340]Captured fixture line\n[03:36.990]Captured fixture line\n[03:43.630]Captured fixture line\n[03:49.430]Captured fixture line\n[03:56.440]Captured fixture line\n[04:02.340]Captured fixture line\n[04:08.620]Captured fixture line",
+            "id": "mHB1S5QBE3m_U3peLXTv",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "王妃(Live影音限定版)",
+            "title": "会痛的石头 (Live)",
+            "lrc": "[00:33.900]Captured fixture line\n[00:38.600]Captured fixture line\n[00:43.300]Captured fixture line\n[00:46.700]Captured fixture line\n[00:51.300]Captured fixture line\n[00:52.700]Captured fixture line\n[00:56.200]Captured fixture line\n[00:58.300]Captured fixture line\n[01:00.900]Captured fixture line\n[01:03.900]Captured fixture line\n[01:06.900]Captured fixture line\n[01:10.200]Captured fixture line\n[01:13.200]Captured fixture line\n[01:17.200]Captured fixture line\n[01:20.400]Captured fixture line\n[01:23.500]Captured fixture line\n[01:29.900]Captured fixture line\n[01:35.100]Captured fixture line\n[01:39.200]Captured fixture line\n[01:42.200]Captured fixture line\n[01:47.700]Captured fixture line\n[01:51.300]Captured fixture line\n[01:54.700]Captured fixture line\n[02:01.200]Captured fixture line\n[02:04.500]Captured fixture line\n[02:06.900]Captured fixture line\n[02:12.500]Captured fixture line\n[02:39.200]Captured fixture line\n[02:44.300]Captured fixture line\n[02:49.200]Captured fixture line\n[02:52.300]Captured fixture line\n[02:56.400]Captured fixture line\n[03:01.300]Captured fixture line\n[03:04.200]Captured fixture line\n[03:06.300]Captured fixture line\n[03:09.400]Captured fixture line\n[03:12.400]Captured fixture line\n[03:15.800]Captured fixture line\n[03:18.300]Captured fixture line\n[03:21.450]Captured fixture line\n[03:25.900]Captured fixture line\n[03:29.200]Captured fixture line\n[03:32.100]Captured fixture line\n[03:35.300]Captured fixture line\n[03:41.200]Captured fixture line\n[03:44.900]Captured fixture line\n[03:47.700]Captured fixture line\n[03:53.300]Captured fixture line\n[03:57.200]Captured fixture line\n[04:00.300]Captured fixture line\n[04:03.300]Captured fixture line\n[04:06.100]Captured fixture line\n[04:09.900]Captured fixture line\n[04:12.400]Captured fixture line\n[04:17.700]Captured fixture line",
+            "id": "45337c0b22ece7e4825b1618a8f0926c",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "谁是大歌神 第4期",
+            "title": "会痛的石头",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:06.910]\n[00:26.090]Captured fixture line\n[00:29.600]\n[00:31.040]Captured fixture line\n[00:37.260]\n[00:38.750]Captured fixture line\n[00:42.380]\n[00:43.570]Captured fixture line\n[00:51.000]Captured fixture line\n[00:55.620]\n[00:56.370]Captured fixture line\n[01:02.540]Captured fixture line\n[01:08.510]Captured fixture line\n[01:12.640]Captured fixture line\n[01:16.070]Captured fixture line\n[01:22.090]Captured fixture line\n[01:26.770]\n[01:27.680]Captured fixture line\n[01:34.220]Captured fixture line\n[01:40.000]Captured fixture line\n[01:46.990]Captured fixture line\n[01:52.910]Captured fixture line\n[01:59.190]Captured fixture line\n[02:07.960]\n[02:30.240]Captured fixture line\n[02:36.860]Captured fixture line\n[02:41.500]\n[02:42.480]Captured fixture line\n[02:49.110]Captured fixture line\n[02:54.130]\n[02:54.830]Captured fixture line\n[03:01.830]Captured fixture line\n[03:07.770]Captured fixture line\n[03:14.000]Captured fixture line\n[03:18.230]\n[03:19.710]Captured fixture line\n[03:26.740]Captured fixture line\n[03:32.090]Captured fixture line\n[03:38.880]Captured fixture line\n[03:44.710]Captured fixture line\n[03:51.720]Captured fixture line\n[03:57.630]Captured fixture line\n[04:04.030]Captured fixture line",
+            "id": "cfc16f74c5985fa386591a68bb1a4bd1",
+            "artist": "萧敬腾&刑凯翔&轩辕阿（杨子杰）"
+          },
+          {
+            "album": "Reminiscence",
+            "title": "一次幸福的机会",
+            "duration": 300.218,
+            "lrc": "[Verse]\n[00:32.454]Captured fixture line\n[00:38.369]Captured fixture line\n[00:47.861]Captured fixture line\n[00:53.798]Captured fixture line\n[Verse]\n[01:03.366]Captured fixture line\n[01:09.417]Captured fixture line\n[01:18.803]Captured fixture line\n[01:24.933]Captured fixture line\n[Verse]\n[01:33.064]Captured fixture line\n[01:41.051]Captured fixture line\n[01:48.829]Captured fixture line\n[01:56.252]Captured fixture line\n[Verse]\n[02:03.860]Captured fixture line\n[02:11.972]Captured fixture line\n[02:19.758]Captured fixture line\n[02:27.285]Captured fixture line\n[Verse]\n[02:51.547]Captured fixture line\n[02:57.507]Captured fixture line\n[03:06.856]Captured fixture line\n[03:12.828]Captured fixture line\n[Verse]\n[03:20.863]Captured fixture line\n[03:28.644]Captured fixture line\n[03:36.285]Captured fixture line\n[03:43.674]Captured fixture line\n[Verse]\n[03:51.336]Captured fixture line\n[03:59.201]Captured fixture line\n[04:06.796]Captured fixture line\n[04:14.215]Captured fixture line",
+            "id": "1065412466",
+            "artist": "萧敬腾"
+          },
+          {
+            "album": "萧敬腾同名世界巡迴演唱会2012台北站",
+            "title": "王子的新衣 (2012台北演唱会版) [Live]",
+            "duration": 370.053,
+            "lrc": null,
+            "id": "630006902",
+            "artist": "萧敬腾"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "41779aa2e41222d74c37187811c914612aaf94a603df44ccb40af8c1ffc22f42"
+      }
+    },
+    {
+      "songID": "VVVVRl_lG1o",
+      "title": "張靚穎 - 一生一次心一動【《斛珠夫人》電視劇情感主題曲】【動態歌詞】 = 那幾年沉浮 分離如必經之路 =Chinese music ~",
+      "artist": "",
+      "duration": 305,
+      "capturePair": {
+        "track_name": "一生一次心一動",
+        "artist_name": "張靚穎"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "title": "一生一次心一动",
+            "album": "一生一次心一动 (电视剧《斛珠夫人》情感主题曲) - Single",
+            "duration": 304.525,
+            "lrc": null,
+            "id": "1723835322",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "斛珠夫人 电视剧原声专辑",
+            "title": "一生一次心一动",
+            "lrc": "[id:$00000000]\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[hash:b8b8ed33a36137193c43548c868a1955]\n[al:fixture]\n[sign:]\n[qq:]\n[total:0]\n[offset:0]\n[00:00.000]Captured fixture line\n[00:05.820]Captured fixture line\n[00:06.750]Captured fixture line\n[00:07.540]Captured fixture line\n[00:08.560]Captured fixture line\n[00:09.690]Captured fixture line\n[00:10.620]Captured fixture line\n[00:11.930]Captured fixture line\n[00:13.950]Captured fixture line\n[00:15.320]Captured fixture line\n[00:17.720]Captured fixture line\n[00:19.870]Captured fixture line\n[00:37.910]Captured fixture line\n[00:45.740]Captured fixture line\n[00:53.380]Captured fixture line\n[01:00.940]Captured fixture line\n[01:08.430]Captured fixture line\n[01:12.200]Captured fixture line\n[01:16.200]Captured fixture line\n[01:17.880]Captured fixture line\n[01:26.710]Captured fixture line\n[01:29.710]Captured fixture line\n[01:34.860]Captured fixture line\n[01:39.190]Captured fixture line\n[01:42.440]Captured fixture line\n[01:46.830]Captured fixture line\n[01:50.050]Captured fixture line\n[01:57.160]Captured fixture line\n[02:08.860]Captured fixture line\n[02:28.500]Captured fixture line\n[02:36.190]Captured fixture line\n[02:43.550]Captured fixture line\n[02:47.370]Captured fixture line\n[02:51.200]Captured fixture line\n[02:53.090]Captured fixture line\n[02:58.150]Captured fixture line\n[03:02.930]Captured fixture line\n[03:06.140]Captured fixture line\n[03:10.560]Captured fixture line\n[03:13.750]Captured fixture line\n[03:18.080]Captured fixture line\n[03:21.400]Captured fixture line\n[03:28.550]Captured fixture line\n[03:44.520]Captured fixture line\n[03:50.540]Captured fixture line\n[03:53.850]Captured fixture line\n[03:58.210]Captured fixture line\n[04:01.450]Captured fixture line\n[04:05.930]Captured fixture line\n[04:09.080]Captured fixture line\n[04:16.110]Captured fixture line\n[04:35.470]Captured fixture line",
+            "id": "kXd1S5QBE3m_U3pe6JEI",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "江苏卫视2022年跨年演唱会",
+            "title": "一生一次心一动 (Live)",
+            "lrc": "[id:$00000000]\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[00:00.000]Captured fixture line\n[00:23.270]Captured fixture line\n[00:31.740]Captured fixture line\n[00:38.090]Captured fixture line\n[00:45.950]Captured fixture line\n[00:53.520]Captured fixture line\n[01:01.100]Captured fixture line\n[01:08.440]Captured fixture line\n[01:12.160]Captured fixture line\n[01:16.250]Captured fixture line\n[01:18.030]Captured fixture line\n[01:26.960]Captured fixture line\n[01:31.630]Captured fixture line\n[01:34.770]Captured fixture line\n[01:39.190]Captured fixture line\n[01:42.580]Captured fixture line\n[01:46.820]Captured fixture line\n[01:50.090]Captured fixture line\n[01:57.300]Captured fixture line\n[02:08.770]Captured fixture line\n[02:28.550]Captured fixture line\n[02:35.960]Captured fixture line\n[02:43.600]Captured fixture line\n[02:47.390]Captured fixture line\n[02:51.380]Captured fixture line\n[02:53.080]Captured fixture line\n[02:58.230]Captured fixture line\n[03:03.030]Captured fixture line\n[03:06.130]Captured fixture line\n[03:10.650]Captured fixture line\n[03:13.890]Captured fixture line\n[03:18.190]Captured fixture line\n[03:21.440]Captured fixture line\n[03:28.760]Captured fixture line\n[03:44.880]Captured fixture line\n[03:50.690]Captured fixture line\n[03:53.770]Captured fixture line\n[03:58.280]Captured fixture line\n[04:01.390]Captured fixture line\n[04:05.860]Captured fixture line\n[04:08.960]Captured fixture line\n[04:16.240]Captured fixture line\n[04:35.710]Captured fixture line",
+            "id": "MGl0S5QBE3m_U3peW2b3",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "中国潮音 第10期",
+            "title": "一生一次心一动 (Live)",
+            "lrc": "[id:$00000000]\n[ti:fixture]\n[ar:fixture]\n[al:fixture]\n[by:fixture]\n[00:00.000]Captured fixture line\n[00:03.570]Captured fixture line\n[00:04.440]Captured fixture line\n[00:05.140]Captured fixture line\n[00:05.730]Captured fixture line\n[00:06.480]Captured fixture line\n[00:08.110]Captured fixture line\n[00:09.240]Captured fixture line\n[00:10.200]Captured fixture line\n[00:10.710]Captured fixture line\n[00:11.940]Captured fixture line\n[00:12.730]Captured fixture line\n[00:13.670]Captured fixture line\n[00:14.580]Captured fixture line\n[00:15.070]Captured fixture line\n[00:15.960]Captured fixture line\n[00:16.730]Captured fixture line\n[00:17.550]Captured fixture line\n[00:18.230]Captured fixture line\n[00:18.990]Captured fixture line\n[00:19.900]Captured fixture line\n[00:20.800]Captured fixture line\n[00:21.670]Captured fixture line\n[00:22.390]Captured fixture line\n[00:23.070]Captured fixture line\n[00:24.620]Captured fixture line\n[00:26.290]Captured fixture line\n[00:27.440]Captured fixture line\n[00:29.060]Captured fixture line\n[00:30.730]Captured fixture line\n[00:38.330]Captured fixture line\n[00:45.840]Captured fixture line\n[00:53.380]Captured fixture line\n[01:01.050]Captured fixture line\n[01:08.320]Captured fixture line\n[01:12.320]Captured fixture line\n[01:16.260]Captured fixture line\n[01:17.970]Captured fixture line\n[01:26.830]Captured fixture line\n[01:29.650]Captured fixture line\n[01:34.990]Captured fixture line\n[01:39.250]Captured fixture line\n[01:42.470]Captured fixture line\n[01:46.730]Captured fixture line\n[01:50.070]Captured fixture line\n[01:57.220]Captured fixture line\n[02:08.820]Captured fixture line\n[02:28.670]Captured fixture line\n[02:36.220]Captured fixture line\n[02:43.720]Captured fixture line\n[02:47.320]Captured fixture line\n[02:51.360]Captured fixture line\n[02:53.070]Captured fixture line\n[02:58.200]Captured fixture line\n[03:02.960]Captured fixture line\n[03:06.210]Captured fixture line\n[03:10.580]Captured fixture line\n[03:13.930]Captured fixture line\n[03:18.260]Captured fixture line\n[03:21.560]Captured fixture line\n[03:28.790]Captured fixture line\n[03:44.810]Captured fixture line\n[03:50.450]Captured fixture line\n[03:53.900]Captured fixture line\n[03:58.210]Captured fixture line\n[04:01.460]Captured fixture line\n[04:05.780]Captured fixture line\n[04:09.050]Captured fixture line\n[04:16.330]Captured fixture line\n[04:35.680]Captured fixture line",
+            "id": "YG91S5QBE3m_U3peEFXj",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "中国潮音 第10期",
+            "title": "一生一次心一动 (Live伴奏)",
+            "lrc": "[id:$00000000]Captured fixture line\n[ar:fixture]\n[ti:fixture]\n[by:fixture]\n[hash:cf6517792773409f93d711b8b389f576]\n[al:fixture]\n[sign:]\n[qq:]\n[total:303151]\n[offset:0]\n[00:00.290]Captured fixture line\n[00:01.140]Captured fixture line\n[00:01.300]Captured fixture line\n[00:01.450]Captured fixture line\n[00:01.800]Captured fixture line\n[00:02.410]Captured fixture line\n[00:03.370]Captured fixture line\n[00:03.520]Captured fixture line\n[00:04.380]Captured fixture line\n[00:04.730]Captured fixture line\n[00:05.390]Captured fixture line\n[00:05.900]Captured fixture line\n[00:06.560]Captured fixture line\n[00:06.710]Captured fixture line\n[00:06.810]Captured fixture line\n[00:07.870]Captured fixture line\n[00:08.440]Captured fixture line\n[00:08.600]Captured fixture line\n[00:09.300]Captured fixture line\n[00:09.910]Captured fixture line\n[00:10.060]Captured fixture line\n[00:10.210]Captured fixture line\n[00:10.360]Captured fixture line\n[00:10.520]Captured fixture line\n[00:10.970]Captured fixture line\n[00:11.680]Captured fixture line\n[00:12.040]Captured fixture line\n[00:12.240]Captured fixture line\n[00:12.590]Captured fixture line\n[00:13.100]Captured fixture line\n[00:38.570]Captured fixture line\n[00:41.350]Captured fixture line\n[00:45.910]Captured fixture line\n[00:53.630]Captured fixture line\n[01:01.130]Captured fixture line\n[01:08.720]Captured fixture line\n[01:12.510]Captured fixture line\n[01:16.360]Captured fixture line\n[01:18.140]Captured fixture line\n[01:27.050]Captured fixture line\n[01:29.840]Captured fixture line\n[01:35.050]Captured fixture line\n[01:39.350]Captured fixture line\n[01:42.490]Captured fixture line\n[01:46.990]Captured fixture line\n[01:50.130]Captured fixture line\n[01:57.230]Captured fixture line\n[02:08.960]Captured fixture line\n[02:28.790]Captured fixture line\n[02:31.670]Captured fixture line\n[02:35.980]Captured fixture line\n[02:43.910]Captured fixture line\n[02:47.560]Captured fixture line\n[02:51.450]Captured fixture line\n[02:53.280]Captured fixture line\n[02:58.380]Captured fixture line\n[03:03.140]Captured fixture line\n[03:06.330]Captured fixture line\n[03:10.740]Captured fixture line\n[03:14.000]Captured fixture line\n[03:18.360]Captured fixture line\n[03:21.540]Captured fixture line\n[03:28.910]Captured fixture line\n[03:45.160]Captured fixture line\n[03:50.740]Captured fixture line\n[03:53.930]Captured fixture line\n[03:58.340]Captured fixture line\n[04:01.470]Captured fixture line\n[04:05.980]Captured fixture line\n[04:09.280]Captured fixture line\n[04:16.430]Captured fixture line\n[04:35.940]Captured fixture line",
+            "id": "3291S5QBE3m_U3peEFbj",
+            "artist": "张靓颖"
+          },
+          {
+            "title": "画心 (Live)",
+            "album": "BANG THE WORLD (Live)",
+            "duration": 365.332,
+            "lrc": "[Verse]\n[01:09.466]Captured fixture line\n[01:16.289]Captured fixture line\n[01:23.087]Captured fixture line\n[01:30.022]Captured fixture line\n[01:36.498]Captured fixture line\n[01:43.642]Captured fixture line\n[01:50.563]Captured fixture line\n[01:57.360]Captured fixture line\n[Verse]\n[02:04.293]Captured fixture line\n[02:11.082]Captured fixture line\n[02:18.119]Captured fixture line\n[02:21.367]Captured fixture line\n[02:25.027]Captured fixture line\n[Verse]\n[03:12.982]Captured fixture line\n[03:19.377]Captured fixture line\n[03:26.675]Captured fixture line\n[03:33.397]Captured fixture line\n[Verse]\n[03:40.630]Captured fixture line\n[03:47.162]Captured fixture line\n[03:53.630]Captured fixture line\n[03:57.252]Captured fixture line\n[04:00.874]Captured fixture line\n[04:07.733]Captured fixture line\n[04:14.543]Captured fixture line\n[04:21.115]Captured fixture line\n[04:24.871]Captured fixture line\n[04:31.738]Captured fixture line\n[04:38.626]Captured fixture line",
+            "id": "1788219106",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "电视剧《承欢记》影视原声带",
+            "title": "心动一个",
+            "duration": 43.5,
+            "lrc": null,
+            "id": "1741666495",
+            "artist": "张镒麟"
+          },
+          {
+            "album": "第七感",
+            "title": "一起",
+            "duration": 283.403,
+            "lrc": null,
+            "id": "1787721449",
+            "artist": "张靓颖"
+          },
+          {
+            "album": "第七感",
+            "title": "一起",
+            "duration": 283.403,
+            "lrc": null,
+            "id": "1788218988",
+            "artist": "张靓颖"
+          },
+          {
+            "title": "心电感应808",
+            "album": "心电感应808 - Single",
+            "duration": 179.077,
+            "lrc": null,
+            "id": "1787721285",
+            "artist": "张靓颖"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "b48c061454dd104bb9e1d78aeb79823c6e487cb7af0a728b025ef602791005be"
+      }
+    },
+    {
+      "songID": "3hw92j4SqrI",
+      "title": "ycccc - 不期而遇的美好「你是我不期而遇的美好 是素未謀面時的魂牽夢繞」【動態歌詞/PinyinLyrics】♪",
+      "artist": "",
+      "duration": 203,
+      "capturePair": {
+        "track_name": "不期而遇的美好",
+        "artist_name": "ycccc"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "album": "旧街角",
+            "title": "美好的",
+            "duration": 155.904,
+            "lrc": null,
+            "id": "1781793206",
+            "artist": "吴浩浚"
+          },
+          {
+            "album": "美好的",
+            "title": "美好的",
+            "duration": 251.667,
+            "lrc": null,
+            "id": "1401930893",
+            "artist": "许哲珮"
+          },
+          {
+            "album": "旧街角",
+            "title": "美好的",
+            "duration": 155.869,
+            "lrc": null,
+            "id": "1634083289",
+            "artist": "吴浩浚"
+          },
+          {
+            "album": "Serendipity",
+            "title": "Serendipity（不期而遇的美好）",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:05.000]Captured fixture line",
+            "id": "c58d012d5f52359caea221e0bd816cb3",
+            "artist": "小冉"
+          },
+          {
+            "album": "寶貝純音樂 – 安靜的輕音樂為了寶貝和媽媽",
+            "title": "美好的夜晚",
+            "duration": 317.0,
+            "lrc": null,
+            "id": "1444587686",
+            "artist": "深度睡眠"
+          },
+          {
+            "album": "心灵净化 - 超好听的大自然声音为了寻找真正的自己",
+            "title": "美好的夜晚",
+            "duration": 261.0,
+            "lrc": null,
+            "id": "1401321382",
+            "artist": "小天才"
+          },
+          {
+            "album": "美好的祝福 - Single",
+            "title": "美好的祝福",
+            "duration": 220.959,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1792844088",
+            "artist": "陈苏威"
+          },
+          {
+            "album": "一起听轻音乐 - 安静歌曲为了晚上回家休息,安眠,和快速睡觉",
+            "title": "美好的夜晚",
+            "duration": 336.002,
+            "lrc": null,
+            "id": "1445396613",
+            "artist": "学习音乐"
+          },
+          {
+            "album": "治愈学习时光 专注刷题 看书阅读注意力 舒缓情绪的轻音乐 - EP",
+            "title": "美好的邂逅",
+            "duration": 112.22,
+            "lrc": null,
+            "id": "1715008636",
+            "artist": "DJ阿基"
+          },
+          {
+            "album": "美好的意外 - Single",
+            "title": "美好的意外",
+            "duration": 177.402,
+            "lrc": "[00:10.206]Captured fixture line\n[00:14.994]Captured fixture line\n[00:20.008]Captured fixture line\n[00:24.982]Captured fixture line\n[00:29.583]Captured fixture line\n[00:34.560]Captured fixture line\n[00:39.387]Captured fixture line\n[00:44.472]Captured fixture line\n[00:49.272]Captured fixture line\n[00:54.387]Captured fixture line\n[00:58.454]Captured fixture line\n[01:03.287]Captured fixture line\n[01:09.134]Captured fixture line\n[01:14.205]Captured fixture line\n[01:18.753]Captured fixture line\n[01:24.300]Captured fixture line\n[01:26.772]Captured fixture line\n[01:28.952]Captured fixture line\n[01:34.003]Captured fixture line\n[01:38.830]Captured fixture line\n[01:43.867]Captured fixture line\n[01:47.828]Captured fixture line\n[01:52.857]Captured fixture line\n[01:58.604]Captured fixture line\n[02:03.738]Captured fixture line\n[02:10.900]Captured fixture line\n[02:16.008]Captured fixture line\n[02:20.800]Captured fixture line\n[02:25.831]Captured fixture line\n[02:29.946]Captured fixture line\n[02:34.882]Captured fixture line\n[02:39.784]Captured fixture line\n[02:44.708]Captured fixture line",
+            "id": "1241845811",
+            "artist": "SUHO & CHEN"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "a05e115131bf58368e3ab4ddbde1d04dcc5bb917194a6923124a3afd42fe780a"
+      }
+    },
+    {
+      "songID": "gGLp7ht_2bk",
+      "title": "王傑 Dave Wong《我是真的愛上你》[Lyrics MV]",
+      "artist": "",
+      "duration": 315,
+      "capturePair": {
+        "track_name": "我是真的愛上你",
+        "artist_name": "王傑"
+      },
+      "responses": {
+        "LRCLib": [
+          {
+            "id": 36708946,
+            "trackName": "我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "不孤單 (國語)",
+            "duration": 301.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:22.75]Captured fixture line\n[00:29.78]Captured fixture line\n[00:36.95]Captured fixture line\n[00:42.31]Captured fixture line\n[00:51.48]Captured fixture line\n[00:58.82]Captured fixture line\n[01:05.82]Captured fixture line\n[01:11.34]Captured fixture line\n[01:18.37]Captured fixture line\n[01:25.78]Captured fixture line\n[01:29.79]Captured fixture line\n[01:33.48]Captured fixture line\n[01:40.92]Captured fixture line\n[01:49.63]Captured fixture line\n[01:55.48]Captured fixture line\n[02:03.79]Captured fixture line\n[02:13.72]\n[02:43.00]Captured fixture line\n[02:50.20]Captured fixture line\n[02:57.37]Captured fixture line\n[03:03.04]Captured fixture line\n[03:09.96]Captured fixture line\n[03:17.33]Captured fixture line\n[03:21.35]Captured fixture line\n[03:25.06]Captured fixture line\n[03:32.69]Captured fixture line\n[03:41.17]Captured fixture line\n[03:47.16]Captured fixture line\n[03:55.48]Captured fixture line\n[04:04.97]Captured fixture line\n[04:13.42]Captured fixture line\n[04:19.41]Captured fixture line\n[04:27.86]Captured fixture line\n[04:39.14]"
+          },
+          {
+            "id": 15711786,
+            "trackName": "我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "不孤單",
+            "duration": 301.244082,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": null
+          },
+          {
+            "id": 16112683,
+            "trackName": "我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "愛與夢",
+            "duration": 303.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:22.75]Captured fixture line\n[00:29.78]Captured fixture line\n[00:36.95]Captured fixture line\n[00:42.31]Captured fixture line\n[00:51.48]Captured fixture line\n[00:58.82]Captured fixture line\n[01:05.82]Captured fixture line\n[01:11.34]Captured fixture line\n[01:18.37]Captured fixture line\n[01:25.78]Captured fixture line\n[01:29.79]Captured fixture line\n[01:33.48]Captured fixture line\n[01:40.92]Captured fixture line\n[01:49.63]Captured fixture line\n[01:55.48]Captured fixture line\n[02:03.79]Captured fixture line\n[02:13.72]\n[02:43.00]Captured fixture line\n[02:50.20]Captured fixture line\n[02:57.37]Captured fixture line\n[03:03.04]Captured fixture line\n[03:09.96]Captured fixture line\n[03:17.33]Captured fixture line\n[03:21.35]Captured fixture line\n[03:25.06]Captured fixture line\n[03:32.69]Captured fixture line\n[03:41.17]Captured fixture line\n[03:47.16]Captured fixture line\n[03:55.48]Captured fixture line\n[04:04.97]Captured fixture line\n[04:13.42]Captured fixture line\n[04:19.41]Captured fixture line\n[04:27.86]Captured fixture line\n[04:39.14]"
+          },
+          {
+            "id": 37562129,
+            "trackName": "我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "爱与梦",
+            "duration": 315.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": null
+          },
+          {
+            "id": 37825464,
+            "trackName": "我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "不孤单 (国语)",
+            "duration": 301.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": null
+          },
+          {
+            "id": 35059014,
+            "trackName": "王傑-我是真的愛上你",
+            "artistName": "王傑",
+            "albumName": "王傑:<愛與夢>",
+            "duration": 302.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:22.75]Captured fixture line\n[00:29.78]Captured fixture line\n[00:36.95]Captured fixture line\n[00:42.31]Captured fixture line\n[00:51.48]Captured fixture line\n[00:58.82]Captured fixture line\n[01:05.82]Captured fixture line\n[01:11.34]Captured fixture line\n[01:18.37]Captured fixture line\n[01:25.78]Captured fixture line\n[01:29.79]Captured fixture line\n[01:33.48]Captured fixture line\n[01:40.92]Captured fixture line\n[01:49.63]Captured fixture line\n[01:55.48]Captured fixture line\n[02:03.79]Captured fixture line\n[02:13.72]\n[02:43.00]Captured fixture line\n[02:50.20]Captured fixture line\n[02:57.37]Captured fixture line\n[03:03.04]Captured fixture line\n[03:09.96]Captured fixture line\n[03:17.33]Captured fixture line\n[03:21.35]Captured fixture line\n[03:25.06]Captured fixture line\n[03:32.69]Captured fixture line\n[03:41.17]Captured fixture line\n[03:47.16]Captured fixture line\n[03:55.48]Captured fixture line\n[04:04.97]Captured fixture line\n[04:13.42]Captured fixture line\n[04:19.41]Captured fixture line\n[04:27.86]Captured fixture line\n[04:39.14]"
+          },
+          {
+            "id": 23609498,
+            "trackName": "我是真的愛上你 (國)",
+            "artistName": "王傑",
+            "albumName": "5:03",
+            "duration": 302.65,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:19.17]Captured fixture line\n[00:21.87]Captured fixture line\n[00:35.25]Captured fixture line\n[00:51.57]Captured fixture line\n[01:04.92]Captured fixture line\n[01:18.30]Captured fixture line\n[01:25.74]Captured fixture line\n[01:39.25]Captured fixture line\n[01:49.04]Captured fixture line\n[01:54.38]Captured fixture line\n[02:03.73]Captured fixture line\n[02:09.03]"
+          },
+          {
+            "id": 6596682,
+            "trackName": "我是真的愛上你 - 國",
+            "artistName": "王傑",
+            "albumName": "愛與夢",
+            "duration": 303.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:19.17]Captured fixture line\n[00:21.87]Captured fixture line\n[00:35.25]Captured fixture line\n[00:51.57]Captured fixture line\n[01:04.92]Captured fixture line\n[01:18.30]Captured fixture line\n[01:25.74]Captured fixture line\n[01:39.25]Captured fixture line\n[01:49.04]Captured fixture line\n[01:54.38]Captured fixture line\n[02:03.73]Captured fixture line\n[02:09.03]"
+          },
+          {
+            "id": 37648455,
+            "trackName": "我是真的愛上你 - 國",
+            "artistName": "王傑",
+            "albumName": "",
+            "duration": 286.0,
+            "instrumental": false,
+            "plainLyrics": "Captured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\n\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "syncedLyrics": "[00:19.17]Captured fixture line\n[00:21.87]Captured fixture line\n[00:35.25]Captured fixture line\n[00:51.57]Captured fixture line\n[01:04.92]Captured fixture line\n[01:18.30]Captured fixture line\n[01:25.74]Captured fixture line\n[01:39.25]Captured fixture line\n[01:49.04]Captured fixture line\n[01:54.38]Captured fixture line\n[02:03.73]Captured fixture line\n[02:09.03]"
+          }
+        ],
+        "LrcApi": [
+          {
+            "album": "不孤单 (国语)",
+            "title": "我是真的爱上你",
+            "duration": 301.232,
+            "lrc": "[Verse]\n[00:22.607]Captured fixture line\n[00:30.000]Captured fixture line\n[00:37.055]Captured fixture line\n[00:42.593]Captured fixture line\n[Verse]\n[00:51.461]Captured fixture line\n[00:58.693]Captured fixture line\n[01:05.855]Captured fixture line\n[01:11.400]Captured fixture line\n[PreChorus]\n[01:18.445]Captured fixture line\n[01:25.679]Captured fixture line\n[01:29.786]Captured fixture line\n[Chorus]\n[01:37.357]Captured fixture line\n[01:49.403]Captured fixture line\n[01:54.599]Captured fixture line\n[02:03.850]Captured fixture line\n[Verse]\n[02:43.130]Captured fixture line\n[02:50.280]Captured fixture line\n[02:57.483]Captured fixture line\n[03:02.871]Captured fixture line\n[PreChorus]\n[03:10.064]Captured fixture line\n[03:17.399]Captured fixture line\n[03:21.487]Captured fixture line\n[Chorus]\n[03:29.018]Captured fixture line\n[03:41.045]Captured fixture line\n[03:46.226]Captured fixture line\n[03:55.423]Captured fixture line\n[Chorus]\n[04:05.085]Captured fixture line\n[04:13.422]Captured fixture line\n[04:18.633]Captured fixture line\n[04:27.853]Captured fixture line",
+            "id": "543849961",
+            "artist": "王杰"
+          },
+          {
+            "album": "爱情故事",
+            "title": "我是真的爱你",
+            "duration": 381.387,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1792396845",
+            "artist": "邓杰"
+          },
+          {
+            "album": "命运的思量",
+            "title": "我是真的爱上你",
+            "duration": 136.021,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1800155986",
+            "artist": "岁月无痕"
+          },
+          {
+            "album": "我是真的爱上你 - EP",
+            "title": "我是真的爱上你",
+            "duration": 281.278,
+            "lrc": "[00:01.280]Captured fixture line\n[00:04.120]Captured fixture line\n[00:06.960]Captured fixture line\n[00:09.800]Captured fixture line\n[00:12.640]Captured fixture line\n[00:15.480]Captured fixture line\n[00:18.320]Captured fixture line\n[00:25.550]Captured fixture line\n[00:32.780]Captured fixture line\n[00:38.180]Captured fixture line\n[00:47.180]Captured fixture line\n[00:54.410]Captured fixture line\n[01:01.580]Captured fixture line\n[01:07.070]Captured fixture line\n[01:14.120]Captured fixture line\n[01:21.440]Captured fixture line\n[01:25.550]Captured fixture line\n[01:27.290]Captured fixture line\n[01:33.200]Captured fixture line\n[01:41.750]Captured fixture line\n[01:45.260]Captured fixture line\n[01:50.420]Captured fixture line\n[01:56.210]Captured fixture line\n[01:59.660]Captured fixture line\n[02:01.880]Captured fixture line\n[02:24.560]Captured fixture line\n[02:31.790]Captured fixture line\n[02:39.020]Captured fixture line\n[02:44.510]Captured fixture line\n[02:51.560]Captured fixture line\n[02:58.910]Captured fixture line\n[03:02.960]Captured fixture line\n[03:04.730]Captured fixture line\n[03:10.640]Captured fixture line\n[03:19.190]Captured fixture line\n[03:22.700]Captured fixture line\n[03:27.860]Captured fixture line\n[03:33.650]Captured fixture line\n[03:37.100]Captured fixture line\n[03:39.320]Captured fixture line\n[03:46.700]Captured fixture line\n[03:51.650]Captured fixture line\n[03:55.160]Captured fixture line\n[04:00.350]Captured fixture line\n[04:06.170]Captured fixture line\n[04:09.590]Captured fixture line\n[04:11.810]Captured fixture line",
+            "id": "1799792727",
+            "artist": "清唯"
+          },
+          {
+            "album": "敢爱敢当",
+            "title": "我是真的爱上你",
+            "duration": 263.236,
+            "lrc": null,
+            "id": "1760275450",
+            "artist": "安祈尔"
+          },
+          {
+            "album": "诺言背叛诺言",
+            "title": "我是真的爱上你",
+            "duration": 240.0,
+            "lrc": null,
+            "id": "1768280322",
+            "artist": "南秋风"
+          },
+          {
+            "album": "我是真的爱上你 - Single",
+            "title": "我是真的爱上你",
+            "duration": 283.235,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1782069570",
+            "artist": "苟瀚中"
+          },
+          {
+            "album": "你是我甜甜的幸福",
+            "title": "我是真的爱上你",
+            "duration": 246.48,
+            "lrc": null,
+            "id": "1791720685",
+            "artist": "陈俐绢"
+          },
+          {
+            "album": "我是真的爱上你 (女版) - Single",
+            "title": "我是真的爱上你 (女版)",
+            "duration": 254.482,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1749483932",
+            "artist": "王大川"
+          },
+          {
+            "album": "我是真的爱上你 - EP",
+            "title": "我是真的爱上你 (伴奏)",
+            "duration": 281.278,
+            "lrc": null,
+            "id": "1799792737",
+            "artist": "清唯"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "6f7977645aaf5b974cb9c74131f71106fe1e72e9f1c8e7c0f3b2b0cef0b228ca",
+        "LrcApi": "9fbd2d40ecc14fd8713aecb4e588659907d83b7c8cccaf09de2c34c7ebe46865"
+      }
+    },
+    {
+      "songID": "oJFEOqekQ7Y",
+      "title": "薛之謙 Joker Xue《野心（電影《緝魂》推廣曲）》Official Music Video",
+      "artist": "",
+      "duration": 217,
+      "capturePair": {
+        "track_name": "野心",
+        "artist_name": "薛之謙"
+      },
+      "responses": {
+        "LRCLib": [],
+        "LrcApi": [
+          {
+            "album": "天外来物",
+            "title": "野心",
+            "duration": 220.014,
+            "lrc": "[Verse]\n[00:15.932]Captured fixture line\n[00:23.131]Captured fixture line\n[00:30.087]Captured fixture line\n[00:35.627]Captured fixture line\n[Verse]\n[00:44.433]Captured fixture line\n[00:51.542]Captured fixture line\n[00:58.849]Captured fixture line\n[01:06.310]Captured fixture line\n[Chorus]\n[01:11.271]Captured fixture line\n[01:18.461]Captured fixture line\n[01:25.584]Captured fixture line\n[01:32.698]Captured fixture line\n[Verse]\n[01:45.526]Captured fixture line\n[01:52.472]Captured fixture line\n[01:59.662]Captured fixture line\n[02:05.186]Captured fixture line\n[Chorus]\n[02:12.200]Captured fixture line\n[02:19.350]Captured fixture line\n[02:26.479]Captured fixture line\n[02:33.635]Captured fixture line\n[Chorus]\n[02:48.025]Captured fixture line\n[02:55.132]Captured fixture line\n[03:02.276]Captured fixture line\n[03:09.498]Captured fixture line",
+            "id": "1787447721",
+            "artist": "薛之谦"
+          },
+          {
+            "album": "天外来物",
+            "title": "野心",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:16.087]Captured fixture line\n[00:23.219]Captured fixture line\n[00:30.351]Captured fixture line\n[00:36.155]Captured fixture line\n[00:44.722]Captured fixture line\n[00:51.809]Captured fixture line\n[00:59.138]Captured fixture line\n[01:06.505]Captured fixture line\n[01:11.893]Captured fixture line\n[01:18.960]Captured fixture line\n[01:25.933]Captured fixture line\n[01:33.045]Captured fixture line\n[01:45.812]Captured fixture line\n[01:52.729]Captured fixture line\n[01:59.947]Captured fixture line\n[02:05.618]Captured fixture line\n[02:12.543]Captured fixture line\n[02:19.686]Captured fixture line\n[02:26.819]Captured fixture line\n[02:33.961]Captured fixture line\n[02:48.396]Captured fixture line\n[02:55.566]Captured fixture line\n[03:02.527]Captured fixture line\n[03:09.766]Captured fixture line\n[03:35.014]Captured fixture line\n[03:35.468]Captured fixture line\n[03:35.922]Captured fixture line\n[03:36.376]Captured fixture line\n[03:36.830]Captured fixture line\n[03:37.284]Captured fixture line\n[03:37.738]Captured fixture line\n[03:38.192]Captured fixture line\n[03:38.646]Captured fixture line\n[03:39.100]Captured fixture line\n[03:39.554]Captured fixture line",
+            "id": "jXR1S5QBE3m_U3perpCP",
+            "artist": "薛之谦"
+          },
+          {
+            "album": "天外来物",
+            "title": "野心",
+            "lrc": "[00:00.000]Captured fixture line\n[00:01.000]Captured fixture line\n[00:02.000]Captured fixture line\n[00:16.087]Captured fixture line\n[00:23.219]Captured fixture line\n[00:30.351]Captured fixture line\n[00:36.155]Captured fixture line\n[00:44.722]Captured fixture line\n[00:51.809]Captured fixture line\n[00:59.138]Captured fixture line\n[01:06.505]Captured fixture line\n[01:11.893]Captured fixture line\n[01:18.960]Captured fixture line\n[01:25.933]Captured fixture line\n[01:33.045]Captured fixture line\n[01:45.812]Captured fixture line\n[01:52.729]Captured fixture line\n[01:59.947]Captured fixture line\n[02:05.618]Captured fixture line\n[02:12.543]Captured fixture line\n[02:19.686]Captured fixture line\n[02:26.819]Captured fixture line\n[02:33.961]Captured fixture line\n[02:48.396]Captured fixture line\n[02:55.566]Captured fixture line\n[03:02.527]Captured fixture line\n[03:09.766]Captured fixture line\n[03:35.014]Captured fixture line\n[03:35.468]Captured fixture line\n[03:35.922]Captured fixture line\n[03:36.376]Captured fixture line\n[03:36.830]Captured fixture line\n[03:37.284]Captured fixture line\n[03:37.738]Captured fixture line\n[03:38.192]Captured fixture line\n[03:38.646]Captured fixture line\n[03:39.100]Captured fixture line\n[03:39.554]Captured fixture line",
+            "id": "e1c301bbdb5282c738f2d8c04b82f567",
+            "artist": "薛之谦"
+          },
+          {
+            "album": null,
+            "title": "野心 (片段)",
+            "lrc": null,
+            "id": "Tnd1S5QBE3m_U3pe6F0F",
+            "artist": "薛之谦"
+          },
+          {
+            "album": null,
+            "title": "野心 (Live)",
+            "lrc": null,
+            "id": "UHd1S5QBE3m_U3pe6F0F",
+            "artist": "薛之谦"
+          },
+          {
+            "album": "冬天的秘密",
+            "title": "野心",
+            "duration": 64.7,
+            "lrc": null,
+            "id": "1639059547",
+            "artist": "常初沛"
+          },
+          {
+            "album": "遇见爱情 - EP",
+            "title": "野心",
+            "duration": 76.083,
+            "lrc": null,
+            "id": "1620041299",
+            "artist": "马虎"
+          },
+          {
+            "album": "Golden 24 MIXTAPE",
+            "title": "野心",
+            "duration": 172.9,
+            "lrc": "[!text]Captured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line\nCaptured fixture line",
+            "id": "1751782376",
+            "artist": "王晨宇IceCraz"
+          },
+          {
+            "album": "一个人流浪",
+            "title": "野心",
+            "duration": 256.467,
+            "lrc": null,
+            "id": "1442706974",
+            "artist": "熊天平 & 黃慧文"
+          },
+          {
+            "album": "エヴェレスト 神々の山嶺 オリジナル・サウンドトラック",
+            "title": "野心 III",
+            "duration": 134.707,
+            "lrc": null,
+            "id": "1087253824",
+            "artist": "加古 隆"
+          }
+        ]
+      },
+      "originalBodySHA256": {
+        "LRCLib": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "LrcApi": "64874deedcfb389e56b0b9686c2460907d4dccc7302f74c8f6e49241081e39f1"
+      }
+    }
+  ]
+}

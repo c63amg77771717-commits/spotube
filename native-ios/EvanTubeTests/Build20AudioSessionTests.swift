@@ -29,25 +29,25 @@ final class Build20AudioSessionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testPlaybackCategoryMixesWithoutDuckingOtherApplications() {
+    func testPlaybackCategoryIsEligibleForSystemNowPlaying() {
         AudioSessionManager.setCategory()
         let session = AVAudioSession.sharedInstance()
         XCTAssertEqual(session.category, .playback)
         XCTAssertEqual(session.mode, .default)
-        XCTAssertTrue(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
         XCTAssertFalse(session.categoryOptions.contains(.duckOthers))
         XCTAssertFalse(session.categoryOptions.contains(.interruptSpokenAudioAndMixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionConfigured }
-        XCTAssertEqual(event?.audioMixingEnabled, true)
+        XCTAssertEqual(event?.audioMixingEnabled, false)
     }
 
-    func testLazyActivationReportsActualSuccessAndPreservesMixingPolicy() {
+    func testLazyActivationReportsActualSuccessAndPreservesNowPlayingPolicy() {
         AudioSessionManager.setCategory()
         XCTAssertTrue(AudioSessionManager.activate())
-        XCTAssertTrue(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
+        XCTAssertFalse(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionActivated }
         XCTAssertEqual(event?.audioActivationSucceeded, true)
-        XCTAssertEqual(event?.audioMixingEnabled, true)
+        XCTAssertEqual(event?.audioMixingEnabled, false)
     }
 
     func testFiveIndependentGenuineInterruptionsRetainQueueSpeedAndProcessingSettings() async throws {
@@ -135,6 +135,32 @@ final class Build20AudioSessionTests: XCTestCase {
         let decoded = try decoder.decode(PlaybackDiagnostics.Event.self, from: old)
         XCTAssertNil(decoded.audioMixingEnabled)
         XCTAssertEqual(decoded.phase, .interruptionBegan)
+    }
+
+    func testFailedResumeActivationKeepsPlayerPausedAndExplicitRetryCanRecover() async throws {
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        let fixture = try XCTUnwrap(Bundle.main.url(forResource: "demo_song_morning_light", withExtension: "m4a"))
+        var song = Song(id: "audio000004", title: "Activation fixture", artistName: "Fixture", artistId: nil,
+                        albumName: nil, albumId: nil, duration: 200, thumbnailURL: nil)
+        song.streamURL = fixture.absoluteString
+        engine.play(song: song)
+        try await Task.sleep(nanoseconds: 10_000_000)
+        for _ in 0..<200 where !engine.isPlaying || engine.isBuffering { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(engine.isPlaying)
+        XCTAssertFalse(engine.isBuffering)
+        engine.handleRemotePause()
+        var attempts = 0
+        engine.audioSessionActivator = { attempts += 1; return false }
+        engine.handleRemotePlay()
+        XCTAssertEqual(attempts, 1)
+        XCTAssertFalse(engine.isPlaying)
+        XCTAssertNotNil(engine.lastError)
+        XCTAssertEqual(engine.currentTrack?.id, song.id)
+        XCTAssertEqual(engine.queue.map(\.id), [song.id])
+        engine.audioSessionActivator = { AudioSessionManager.activate() }
+        engine.handleRemotePlay()
+        XCTAssertTrue(engine.isPlaying)
     }
 
     private func interrupt(_ type: AVAudioSession.InterruptionType, shouldResume: Bool = false) {

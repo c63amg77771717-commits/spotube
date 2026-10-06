@@ -11,24 +11,32 @@ enum AudioSessionManager {
     /// leaves the session "active but silent", which can prevent iOS from binding
     /// the app as the current Now Playing app on first play (see F1 in
     /// `nowplaying-investigation.md`).
-    static func setCategory() {
+    @discardableResult
+    static func setCategory() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setCategory(.playback, mode: .default, options: [])
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionConfigured,
                 audioMixingEnabled: session.categoryOptions.contains(.mixWithOthers)))
+            return true
         } catch {
             Log.audioSession.error("setCategory failed, code=\((error as NSError).code)")
+            return false
         }
     }
 
     /// Activate the audio session immediately before `AVPlayer.rate = 1.0`.
     ///
-    /// Idempotent: calling on an already-active session is a no-op. Activation
-    /// errors are logged but do not throw — `AVPlayer` will surface its own
-    /// playback failure if the session genuinely cannot become active.
+    /// Category configuration does not activate the session. Return false on
+    /// either configuration or activation failure so the engine keeps playback paused.
     @discardableResult
     static func activate() -> Bool {
+        // A mixable session cannot own system Now Playing / accessory commands.
+        // Reapply the non-mixable playback policy after resets; activate only on play.
+        guard setCategory() else {
+            PlaybackDiagnostics.shared.record(.init(phase: .audioSessionActivated, audioActivationSucceeded: false))
+            return false
+        }
         do {
             try AVAudioSession.sharedInstance().setActive(true)
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionActivated,

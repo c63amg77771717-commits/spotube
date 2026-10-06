@@ -122,6 +122,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let storageError: Bool
         let playerSourceConfigured: Bool
         let events: [Event]
+        let lyricsLookupEvents: [LyricsLookupDiagnostics.Event]?
     }
 
     static let capacity = 100
@@ -163,6 +164,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         }
     }
     func clear() throws {
+        LyricsLookupDiagnostics.shared.clear()
         try lock.withLock {
             for url in [fileURL, exportURL] where FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
@@ -204,7 +206,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             bundleID: Bundle.main.bundleIdentifier ?? "unknown",
             systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             storageError: snapshot.1, playerSourceConfigured: SecretsProvider.hasPlayerSourceConfiguration,
-            events: snapshot.0)
+            events: snapshot.0, lyricsLookupEvents: LyricsLookupDiagnostics.shared.events)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

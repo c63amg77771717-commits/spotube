@@ -272,6 +272,391 @@ final class Build20LyricsTests: XCTestCase {
         XCTAssertTrue(f.requests.allSatisfy { $0.url?.lastPathComponent == "get" })
     }
 
+    // Full imported title/duration/YouTube context, through the production entry point.
+    // Fixture content validates dispatch/identity only; it does not prove public lyrics availability.
+    func testEightImportedSongsUseCanonicalQueriesThroughFormalPrimaryContext() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { request in
+                let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                let title = items.first { $0.name == "track_name" }?.value
+                let artist = items.first { $0.name == "artist_name" }?.value
+                if request.url!.lastPathComponent != "search" { return .status(404) }
+                guard title == self.expectedTitle(c), artist == self.expectedArtist(c) else { return .json([]) }
+                return .json([self.importedPrimary(c)])
+            }
+            defer { f.close() }
+            let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+            if LyricsCanonicalMetadata(c)?.requiresManualIdentityConfirmation == true {
+                XCTAssertTrue(result?.lines.isEmpty ?? false)
+                XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
+            } else { XCTAssertEqual(result?.lines.first?.text, "Context fixture") }
+            XCTAssertEqual(result?.selectionKey, "song:" + c.songID!)
+            XCTAssertEqual(result?.candidates.first?.lyrics.isTimeSynced, true)
+            XCTAssertLessThanOrEqual(f.requests.count, 6)
+            XCTAssertEqual(c.title, importedContexts().first { $0.songID == c.songID }?.title)
+            XCTAssertEqual(c.artist, "")
+        }
+    }
+
+    func testEightImportedSongsUseFormalSecondaryContextAndExplicitBilingualCredits() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { request in
+                let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+                guard items.first(where: { $0.name == "title" })?.value == self.expectedTitle(c),
+                      items.first(where: { $0.name == "artist" })?.value == self.expectedArtist(c) else { return .json([]) }
+                return .json([["id": "7", "title": self.expectedTitle(c), "artist": self.expectedArtist(c),
+                    "duration": c.duration!, "lrc": "[00:01.00]Context fixture"]])
+            }
+            defer { f.close() }
+            let result = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+            if LyricsCanonicalMetadata(c)?.requiresManualIdentityConfirmation == true {
+                XCTAssertTrue(result?.lines.isEmpty ?? false)
+                XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
+            } else { XCTAssertEqual(result?.lines.first?.text, "Context fixture") }
+            XCTAssertTrue(result?.candidates.allSatisfy { $0.providerID == .lrcapi } ?? false)
+            XCTAssertEqual(result?.selectionKey, c.selectionKey)
+            XCTAssertLessThanOrEqual(f.requests.count, 6)
+        }
+    }
+
+    func testImportedDuetRejectsWrongPrimaryGuestExtraGuestAndOtherVersions() async throws {
+        let c = importedContexts()[0]
+        let f = Build20Transport { request in
+            guard request.url!.lastPathComponent == "search" else { return .status(404) }
+            var records: [[String: Any]] = []
+            for (index, artist) in ["不同主唱 & 陳忻玥", "李杰明 & 不同歌手", "陳忻玥 & 李杰明", "李杰明 & 陳忻玥 & 其他歌手"].enumerated() {
+                var record = self.importedPrimary(c, id: index + 10); record["artistName"] = artist; records.append(record)
+            }
+            for (index, version) in ["Live", "Cover"].enumerated() {
+                var record = self.importedPrimary(c, id: index + 20); record["trackName"] = "I'm Alive (\(version))"; records.append(record)
+            }
+            records.append(self.importedPrimary(c))
+            return .json(records)
+        }
+        defer { f.close() }
+        let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+        XCTAssertEqual(result?.candidates.map(\.recordID), ["7"])
+        XCTAssertEqual(result?.lines.first?.text, "Context fixture")
+    }
+
+    func testImportedDuetIncompleteCreditsRemainManualAndAsciiXDoesNotSplitNames() async throws {
+        let c = importedContexts()[0]
+        let f = Build20Transport { request in
+            var record = self.importedPrimary(c); record["artistName"] = "李杰明"
+            return request.url!.lastPathComponent == "search" ? .json([record]) : .status(404)
+        }
+        defer { f.close() }
+        let response = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+        let result = try XCTUnwrap(response)
+        XCTAssertTrue(result.lines.isEmpty)
+        XCTAssertEqual(result.candidates.count, 1)
+        for artist in ["Alex", "X Japan", "Lil Nas X", "Space X Agency"] { XCTAssertEqual(LyricsCanonicalMetadata.tokens(artist).count, 1) }
+        XCTAssertEqual(LyricsCanonicalMetadata.tokens("Artist A x Artist B").count, 2)
+        let verified = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertNotNil(LyricsCandidateScorer.score(candidate(title: "I'm Alive", artist: "W.M.L & Vicky Chen", duration: 185), metadata: verified))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "I'm Alive", artist: "W.M.L & Other Guest", duration: 185), metadata: verified))
+        let ordinary = LyricsLookupContext(title: "I'm Alive", artist: "李杰明 W.M.L x 陳忻玥 Vicky Chen", duration: 185)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(ordinary))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: 185), metadata: metadata))
+    }
+
+    func testEightImportedDurationMismatchesBecomePlainAndCuojiScriptMatches() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { request in
+                var record = self.importedPrimary(c)
+                if c.songID == "zZmtt5g4tHs" { record["trackName"] = "错季" }
+                record["duration"] = c.duration! + 56
+                return request.url!.lastPathComponent == "search" ? .json([record]) : .status(404)
+            }
+            defer { f.close() }
+            let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+            XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
+            XCTAssertEqual(result?.isTimeSynced, false)
+            XCTAssertTrue(result?.candidates.allSatisfy { $0.lyrics.lines.allSatisfy { $0.time == 0 } } ?? false)
+        }
+        for title in ["秋原依 - 錯季【Live 動態歌詞】「片段」♪", "秋原依 - 錯季 (Cover)【動態歌詞】「片段」♪",
+                      "秋原依 - 錯季「片段」♪"] {
+            let version = LyricsLookupContext(title: title, artist: "", duration: 274, hasYouTubeOrigin: true)
+            if let metadata = LyricsCanonicalMetadata(version) {
+                XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "錯季", artist: "秋原依", duration: 274), metadata: metadata))
+            }
+        }
+    }
+
+    func testEightImportedContextsPropagateCancellationWithoutFurtherQueries() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { _ in .failure(.cancelled) }
+            defer { f.close() }
+            do {
+                _ = try await CompositeLyricsRepository(primary: LrcLibService(session: f.session, defaults: f.defaults),
+                    secondary: LrcApiService(session: f.session, defaults: f.defaults), defaults: f.defaults).getLyrics(context: c)
+                XCTFail("Cancellation must propagate")
+            } catch { XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled) }
+            XCTAssertEqual(f.requests.count, 1)
+        }
+    }
+
+    func testImportedManualMappingIsRevalidatedBySongIDAndProviderAfterDurationChange() async throws {
+        for c in importedContexts() {
+            for provider in [LyricsProviderID.lrclib, .lrcapi] {
+                let f = Build20Transport { request in
+                    if provider == .lrclib {
+                        if request.url!.lastPathComponent == "8" { return .json(self.importedPrimary(c, id: 8)) }
+                        return request.url!.lastPathComponent == "search" ? .json([self.importedPrimary(c), self.importedPrimary(c, id: 8)]) : .status(404)
+                    }
+                    return .json([7, 8].map { ["id": String($0), "title": self.expectedTitle(c), "artist": self.expectedArtist(c),
+                        "duration": c.duration!, "lrc": "[00:01.00]Context fixture"] as [String: Any] })
+                }
+                defer { f.close() }
+                let repository: LyricsRepositoryProtocol = provider == .lrclib
+                    ? LrcLibService(session: f.session, defaults: f.defaults)
+                    : LrcApiService(session: f.session, defaults: f.defaults)
+                let response = try await repository.getLyrics(context: c)
+                let initial = try XCTUnwrap(response)
+                XCTAssertTrue(initial.lines.isEmpty)
+                XCTAssertEqual(initial.candidates.count, 2)
+                LyricsSelectionStore.select(.init(providerID: provider, recordID: "8"), for: c.selectionKey, defaults: f.defaults)
+                let changed = LyricsLookupContext(songID: c.songID, title: c.title, artist: c.artist,
+                    duration: c.duration! - 1, hasYouTubeOrigin: true, musicVideoType: c.musicVideoType)
+                let result = try await repository.getLyrics(context: changed)
+                XCTAssertEqual(result?.lines.first?.text, "Context fixture")
+                XCTAssertEqual(result?.providerID, provider)
+                XCTAssertEqual(result?.selectionKey, c.selectionKey)
+                XCTAssertEqual(LyricsSelectionStore.selectedRecord(for: c.selectionKey, defaults: f.defaults)?.recordID, "8")
+                XCTAssertNil(LyricsSelectionStore.selectedRecord(for: "song:another-video", defaults: f.defaults))
+            }
+        }
+    }
+
+    func testImportedSongTitleAndArtistRemainUnchangedThroughUseCase() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { request in
+                request.url!.lastPathComponent == "search" ? .json([self.importedPrimary(c)]) : .status(404)
+            }
+            defer { f.close() }
+            let song = Song(id: c.songID!, title: c.title, artistName: "原始匯入藝人", artistId: "original-artist-id",
+                albumName: "原始專輯", albumId: "original-album-id", duration: c.duration!, thumbnailURL: nil)
+            let repository = LrcLibService(session: f.session, defaults: f.defaults)
+            let result = try await GetLyricsUseCase(repository: repository).execute(song: song)
+            XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
+            XCTAssertEqual(song.title, c.title)
+            XCTAssertEqual(song.artistName, "原始匯入藝人")
+            XCTAssertEqual(song.artistId, "original-artist-id")
+            XCTAssertEqual(song.albumName, "原始專輯")
+            XCTAssertEqual(song.albumId, "original-album-id")
+            XCTAssertEqual(song.duration, c.duration)
+        }
+    }
+
+    func testFormalQuotedSongTitleSurvivesRecognizedPresentationLabel() throws {
+        let c = LyricsLookupContext(songID: "quoted00001", title: "秋原依 - 「正式歌名」【動態歌詞】", artist: "原始艺人",
+                                    duration: 274, hasYouTubeOrigin: true)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertEqual(metadata.pair.title, "「正式歌名」")
+        XCTAssertEqual(c.title, "秋原依 - 「正式歌名」【動態歌詞】")
+        XCTAssertEqual(c.artist, "原始艺人")
+    }
+
+    func testThirdImportedTitleFirstOrderUsesSuppliedPerformerAndRejectsSwappedIdentity() throws {
+        let original = importedContexts()[2]
+        let c = LyricsLookupContext(songID: original.songID, title: original.title, artist: "程響",
+                                    duration: 242, hasYouTubeOrigin: true)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertEqual(metadata.pair.title, "故事終章")
+        XCTAssertEqual(metadata.pair.artist, "程響")
+        XCTAssertNil(metadata.alternateVideoPair)
+        XCTAssertNotNil(LyricsCandidateScorer.score(candidate(title: "故事终章", artist: "程响", duration: 243), metadata: metadata))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "程響", artist: "故事終章", duration: 243), metadata: metadata))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "故事終章", artist: "其他主唱", duration: 243), metadata: metadata))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "故事終章 (Live)", artist: "程響", duration: 243), metadata: metadata))
+        XCTAssertEqual(c.title, original.title)
+        XCTAssertEqual(c.artist, "程響")
+    }
+
+    func testThirdImportedAmbiguousOrdersRequireManualChoiceWhenBothAreSupported() async throws {
+        let c = importedContexts()[2]
+        let f = Build20Transport { request in
+            guard request.url!.lastPathComponent == "search" else { return .status(404) }
+            var swapped = self.importedPrimary(c, id: 8)
+            swapped["trackName"] = "程響"; swapped["artistName"] = "故事終章"
+            return .json([self.importedPrimary(c), swapped])
+        }
+        defer { f.close() }
+        let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+        XCTAssertTrue(result?.lines.isEmpty ?? false)
+        XCTAssertEqual(result?.candidates.count, 2)
+        XCTAssertEqual(result?.selectionKey, c.selectionKey)
+    }
+
+    func testThirdImportedWrongSingerSavedRecordCannotOverrideContextIdentity() async throws {
+        let original = importedContexts()[2]
+        let c = LyricsLookupContext(songID: original.songID, title: original.title, artist: "程響",
+                                    duration: 243, hasYouTubeOrigin: true)
+        let f = Build20Transport { request in
+            if request.url!.lastPathComponent == "8" {
+                var wrong = self.importedPrimary(c, id: 8); wrong["artistName"] = "其他主唱"; return .json(wrong)
+            }
+            return request.url!.lastPathComponent == "search" ? .json([self.importedPrimary(c)]) : .status(404)
+        }
+        defer { f.close() }
+        LyricsSelectionStore.select(.init(providerID: .lrclib, recordID: "8"), for: c.selectionKey, defaults: f.defaults)
+        let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+        XCTAssertEqual(result?.candidates.map(\.recordID), ["7"])
+        XCTAssertEqual(result?.lines.first?.text, "Context fixture")
+        XCTAssertEqual(c.title, original.title)
+        XCTAssertEqual(c.artist, "程響")
+    }
+
+    func testEightImportedMatrixReportsQueriesAcceptedRejectedAndSelection() async throws {
+        for c in importedContexts() {
+            let f = Build20Transport { request in
+                guard request.url!.lastPathComponent == "search" else { return .status(404) }
+                var wrong = self.importedPrimary(c, id: 9); wrong["artistName"] = "Unrelated performer"
+                return .json([wrong, self.importedPrimary(c)])
+            }
+            defer { f.close() }
+            let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+            XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
+            let events = LyricsLookupDiagnostics.shared.events.filter { $0.lookupID == c.diagnosticLookupID }
+            XCTAssertTrue(events.contains { $0.phase == .query && $0.endpoint == "search" })
+            XCTAssertTrue(events.contains { $0.phase == .candidateDropped && $0.reason == .primaryPerformerMismatch })
+            XCTAssertTrue(events.contains { $0.phase == .candidateAccepted && $0.recordID == "7" })
+            let expected: LyricsLookupDiagnostics.Reason = LyricsCanonicalMetadata(c)?.requiresManualIdentityConfirmation != true ? .autoSelected : .manualRequired
+            XCTAssertTrue(events.contains { $0.phase == .selection && $0.reason == expected })
+            XCTAssertEqual(events.filter { $0.phase == .transportAttempt }.count, f.requests.count)
+            XCTAssertEqual(c.title, importedContexts().first { $0.songID == c.songID }?.title)
+            XCTAssertEqual(c.artist, "")
+        }
+    }
+
+    func testFormalTraceSeparatesNetworkSchemaCancellationAndRateLimit() async throws {
+        for (reply, reason) in [(Build20Reply.failure(.cannotConnectToHost), LyricsLookupDiagnostics.Reason.network),
+                               (.json(["unexpected": "shape"]), .schema), (.failure(.cancelled), .cancelled),
+                               (.status(429), .rateLimited)] {
+            let c = importedContexts()[0]
+            let f = Build20Transport { _ in reply }
+            defer { f.close() }
+            do { _ = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c) }
+            catch { }
+            let events = LyricsLookupDiagnostics.shared.events.filter { $0.lookupID == c.diagnosticLookupID }
+            XCTAssertTrue(events.contains { $0.phase == .failure && $0.reason == reason }, String(describing: reason))
+            XCTAssertEqual(events.filter { $0.phase == .transportAttempt }.count, f.requests.count)
+            XCTAssertFalse(events.contains { $0.reason == .providerEmpty })
+        }
+    }
+
+    func testFormalTraceSeparatesDecodedEmptyFromHTTP404WithoutClaimingLyricsAbsent() async throws {
+        for missingHTTP in [false, true] {
+            let c = importedContexts()[0]
+            let f = Build20Transport { _ in missingHTTP ? .status(404) : .json([]) }
+            defer { f.close() }
+            _ = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c)
+            let events = LyricsLookupDiagnostics.shared.events.filter { $0.lookupID == c.diagnosticLookupID }
+            if missingHTTP {
+                XCTAssertTrue(events.contains { $0.phase == .response && $0.httpStatus == 404 && $0.reason == .http })
+                XCTAssertFalse(events.contains { $0.reason == .providerEmpty })
+            } else { XCTAssertTrue(events.contains { $0.phase == .providerEmpty }) }
+        }
+    }
+
+    func testTraceIsBoundedSanitizedAndExportsNoLyricsBody() throws {
+        let ledger = LyricsLookupDiagnostics(capacity: 8)
+        let c = importedContexts()[0]
+        for _ in 0..<12 {
+            ledger.record(.init(context: c, provider: .lrclib, phase: .query, title: String(repeating: "a", count: 500),
+                artist: "https://private.example/credential", duration: .nan, recordID: "https://private.example/token"))
+        }
+        XCTAssertEqual(ledger.events.count, 8)
+        XCTAssertEqual(ledger.events.first?.title?.count, 256)
+        XCTAssertNil(ledger.events.first?.artist)
+        XCTAssertNil(ledger.events.first?.duration)
+        XCTAssertNil(ledger.events.first?.recordID)
+        XCTAssertTrue(ledger.events.allSatisfy { $0.cacheSource.contains("not-observed") })
+        let exported = try JSONEncoder().encode(ledger.events)
+        XCTAssertFalse(String(decoding: exported, as: UTF8.self).contains("credential"))
+        XCTAssertFalse(String(decoding: exported, as: UTF8.self).contains("Context fixture"))
+    }
+
+    func testQuotedSubtitleHypothesisIsRetainedAndShortenedVariantCannotAutoSelect() throws {
+        let c = LyricsLookupContext(title: "藝人 - 歌名「正式副標」【動態歌詞】", artist: "藝人", duration: 200, hasYouTubeOrigin: true)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertEqual(metadata.pair.title, "歌名")
+        XCTAssertEqual(metadata.quotedVideoPair?.title, "歌名「正式副標」")
+        let shortened = try XCTUnwrap(LyricsCandidateScorer.score(candidate(title: "歌名", artist: "藝人"), metadata: metadata))
+        XCTAssertLessThan(shortened, 85)
+        XCTAssertNotNil(LyricsCandidateScorer.score(candidate(title: "歌名「正式副標」", artist: "藝人"), metadata: metadata))
+        XCTAssertEqual(c.title, "藝人 - 歌名「正式副標」【動態歌詞】")
+    }
+
+    func testStrongIdentityWithoutAlbumOrDurationIsPlainInsteadOfRejected() throws {
+        let source = importedContexts()[0]
+        let c = LyricsLookupContext(songID: source.songID, title: source.title, artist: source.artist,
+                                    album: nil, duration: nil, hasYouTubeOrigin: true)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        let record = LyricsCandidate(id: .init(providerID: .lrclib, recordID: "known"),
+            title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: nil,
+            lyrics: SyncedLyrics(lines: [.init(time: 0, text: "Plain fixture")], source: "LRCLib (plain)",
+                                  isTimeSynced: false, providerID: .lrclib))
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(LyricsCandidateScorer.score(record, metadata: metadata)), 85)
+        let result = try XCTUnwrap(LyricsCandidateScorer.choose([record], metadata: metadata, defaults: isolatedDefaults()))
+        XCTAssertEqual(result.lines.first?.text, "Plain fixture")
+        XCTAssertFalse(result.isTimeSynced)
+    }
+
+    func testMVLengthCannotChooseBetweenOtherwiseEqualRecordingIdentities() throws {
+        let c = importedContexts()[0]
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        let a = candidate(id: "1", title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: 185)
+        let b = candidate(id: "2", title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: 240)
+        XCTAssertEqual(LyricsCandidateScorer.score(a, metadata: metadata), LyricsCandidateScorer.score(b, metadata: metadata))
+        let result = try XCTUnwrap(LyricsCandidateScorer.choose([a, b], metadata: metadata, defaults: isolatedDefaults()))
+        XCTAssertTrue(result.lines.isEmpty)
+        XCTAssertEqual(result.candidates.count, 2)
+    }
+
+    private func importedContexts() -> [LyricsLookupContext] {
+        [
+         .init(songID: "dtVR0oi_N4U", title: "李杰明 W.M.L x 陳忻玥 Vicky Chen【I'm Alive】Official MV", artist: "", album: nil, duration: 185, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "zZmtt5g4tHs", title: "秋原依 - 錯季【動態歌詞】「春的顏色不走進秋季 有些愛情就經不起季節輪替」♪", artist: "", album: nil, duration: 274, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "YghlJ-2nvZU", title: "故事終章 - 程響【動態歌詞】= 有些事我們終生難忘，有些愛深藏於心。只有故事終章，溫暖我們一生。 = Chinese music ~", artist: "", album: nil, duration: 243, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "4RVl7b0X88Y", title: "蕭敬騰 會痛的石頭-華納official HQ官方版MV", artist: "", album: nil, duration: 288, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "VVVVRl_lG1o", title: "張靚穎 - 一生一次心一動【《斛珠夫人》電視劇情感主題曲】【動態歌詞】 = 那幾年沉浮 分離如必經之路 =Chinese music ~", artist: "", album: nil, duration: 305, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "3hw92j4SqrI", title: "ycccc - 不期而遇的美好「你是我不期而遇的美好 是素未謀面時的魂牽夢繞」【動態歌詞/PinyinLyrics】♪", artist: "", album: nil, duration: 203, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "gGLp7ht_2bk", title: "王傑 Dave Wong《我是真的愛上你》[Lyrics MV]", artist: "", album: nil, duration: 315, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
+         .init(songID: "oJFEOqekQ7Y", title: "薛之謙 Joker Xue《野心（電影《緝魂》推廣曲）》Official Music Video", artist: "", album: nil, duration: 217, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil)
+        ]
+    }
+    private func expectedTitle(_ c: LyricsLookupContext) -> String {
+        switch c.songID {
+        case "dtVR0oi_N4U": return "I'm Alive"
+        case "zZmtt5g4tHs": return "錯季"
+        case "YghlJ-2nvZU": return "故事終章"
+        case "4RVl7b0X88Y": return "會痛的石頭"
+        case "VVVVRl_lG1o": return "一生一次心一動"
+        case "3hw92j4SqrI": return "不期而遇的美好"
+        case "gGLp7ht_2bk": return "我是真的愛上你"
+        case "oJFEOqekQ7Y": return "野心"
+        default: return ""
+        }
+    }
+    private func expectedArtist(_ c: LyricsLookupContext) -> String {
+        switch c.songID {
+        case "dtVR0oi_N4U": return "李杰明 & 陳忻玥"
+        case "zZmtt5g4tHs": return "秋原依"
+        case "YghlJ-2nvZU": return "程響"
+        case "4RVl7b0X88Y": return "蕭敬騰"
+        case "VVVVRl_lG1o": return "張靚穎"
+        case "3hw92j4SqrI": return "ycccc"
+        case "gGLp7ht_2bk": return "王傑"
+        case "oJFEOqekQ7Y": return "薛之謙"
+        default: return ""
+        }
+    }
+    private func importedPrimary(_ c: LyricsLookupContext, id: Int = 7) -> [String: Any] {
+        ["id": id, "trackName": expectedTitle(c), "artistName": expectedArtist(c), "duration": c.duration!,
+         "syncedLyrics": "[00:01.00]Context fixture"]
+    }
+
     private func context(id: String = "video000001", title: String = "Fixture song", artist: String = "Fixture performer",
                          album: String? = nil, duration: Int = 200, video: Bool = false) -> LyricsLookupContext {
         .init(songID: id, title: title, artist: artist, album: album, duration: duration, hasYouTubeOrigin: video)

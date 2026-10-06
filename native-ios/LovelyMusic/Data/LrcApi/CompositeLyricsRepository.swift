@@ -17,7 +17,12 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
 
     func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
         try Task.checkCancellation()
-        guard let metadata = LyricsCanonicalMetadata(context) else { return nil }
+        LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .lookup, reason: .originalMetadata,
+            title: context.title, artist: context.artist, duration: context.duration.map { Double($0) }))
+        guard let metadata = LyricsCanonicalMetadata(context) else {
+            LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .result, reason: .metadataRejected))
+            return nil
+        }
         let saved = LyricsCandidateScorer.remembered(context, defaults: defaults)
         var failures: [LyricsSourceFailure] = []
         var first: SyncedLyrics?
@@ -33,6 +38,7 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         if let first, !first.lines.isEmpty, first.isTimeSynced,
            !enabled || saved?.providerID != .lrcapi { return first }
         guard enabled else {
+            LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .result, reason: .secondaryDisabled))
             if let first { return first }
             if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
             return nil

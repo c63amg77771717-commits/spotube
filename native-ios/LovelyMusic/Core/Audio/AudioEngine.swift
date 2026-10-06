@@ -177,6 +177,9 @@ final class AudioEngine {
         }
     }
 
+    /// Injectable activation result keeps failure/recovery state testable without changing the session policy.
+    var audioSessionActivator: () -> Bool = { AudioSessionManager.activate() }
+
     var streamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
     var videoStreamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?)?)? {
         didSet { videoManager.videoStreamURLResolver = videoStreamURLResolver }
@@ -953,7 +956,7 @@ final class AudioEngine {
         // Only an explicit play can challenge that stale state; activation failure
         // keeps the interruption intact instead of pretending playback resumed.
         if shouldPlay, explicitUserAction, isInterrupted {
-            guard AudioSessionManager.activate() else {
+            guard audioSessionActivator() else {
                 requiresManualPlaybackRecovery = true
                 lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
                 return
@@ -1356,10 +1359,23 @@ final class AudioEngine {
         savePlaybackState()
     }
 
-    func resumePlayer() {
-        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
-        AudioSessionManager.activate()
+    @discardableResult
+    func resumePlayer() -> Bool {
+        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return false }
+        guard audioSessionActivator() else {
+            invalidateCrossfadePreparation(clearReservation: false)
+            player?.pause()
+            isPlaying = false
+            isBuffering = false
+            resumeAfterInterruption = false
+            requiresManualPlaybackRecovery = true
+            lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
+            savePlaybackState()
+            return false
+        }
         player?.rate = playbackSpeed
+        return true
     }
 
     /// Persist current playback state (called on significant state changes)
