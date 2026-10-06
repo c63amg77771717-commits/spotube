@@ -351,9 +351,7 @@ final class PlayerViewModel {
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await self.getLyricsUseCase.execute(
-                    title: song.title, artist: song.artistName, duration: song.duration,
-                    allowVideoCredits: song.hasYouTubeOrigin && !song.isEpisode && song.id.utf8.allSatisfy { $0 < 128 })
+                let result = try await self.getLyricsUseCase.execute(song: song)
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
                 if let result, !result.lines.isEmpty || !result.candidates.isEmpty {

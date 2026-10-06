@@ -168,7 +168,7 @@ jobs:
         if: always() && steps.settings_preview.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-ui-compact
+          name: EvanTube-build20-ui-compact
           path: |
             ${{ runner.temp }}/evantube-preview-evidence/**/*.png
             ${{ runner.temp }}/evantube-preview-evidence/**/*.txt
@@ -193,7 +193,7 @@ jobs:
         run: python3 scripts/ios-picker-diagnostic/split_ipa.py --ipa EvanTube-native-iOS.ipa --output "$RUNNER_TEMP/evantube-ipa-parts"
       - uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-ipa-part0
+          name: EvanTube-build20-ipa-part0
           path: |
             ${{ runner.temp }}/evantube-ipa-parts/*.part00
             ${{ runner.temp }}/evantube-ipa-parts/manifest.json
@@ -201,18 +201,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: steps.ipa_parts.outputs.has_part_1 == 'true'
         with:
-          name: EvanTube-build19-ipa-part1
+          name: EvanTube-build20-ipa-part1
           path: ${{ runner.temp }}/evantube-ipa-parts/*.part01
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: steps.ipa_parts.outputs.has_part_2 == 'true'
         with:
-          name: EvanTube-build19-ipa-part2
+          name: EvanTube-build20-ipa-part2
           path: ${{ runner.temp }}/evantube-ipa-parts/*.part02
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: steps.ipa_parts.outputs.has_part_3 == 'true'
         with:
-          name: EvanTube-build19-ipa-part3
+          name: EvanTube-build20-ipa-part3
           path: ${{ runner.temp }}/evantube-ipa-parts/*.part03
           if-no-files-found: error

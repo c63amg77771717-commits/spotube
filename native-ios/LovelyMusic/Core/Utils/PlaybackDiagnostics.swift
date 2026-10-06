@@ -7,6 +7,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case playbackSelection, playbackMode
         case webSessionUpdated
         case remotePlay, remotePause, interruptionBegan, interruptionEnded
+        case audioSessionConfigured, audioSessionActivated, audioRouteChanged, audioMediaServicesReset
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
@@ -48,6 +49,12 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let positionSeconds: TimeInterval?
         let isPlaying: Bool?
         let isBuffering: Bool?
+        let audioMixingEnabled: Bool?
+        let audioActivationSucceeded: Bool?
+        let playbackRate: Double?
+        let manualPause: Bool?
+        let routeOutputCount: Int?
+        let interruptionShouldResume: Bool?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
@@ -56,7 +63,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
              shuffleEnabled: Bool? = nil, repeatMode: String? = nil, queueSource: QueueSource? = nil,
              queueCount: Int? = nil, currentIndex: Int? = nil, autoplayCount: Int? = nil,
               positionSeconds: TimeInterval? = nil, isPlaying: Bool? = nil, isBuffering: Bool? = nil,
-             timestamp: Date = Date()) {
+              audioMixingEnabled: Bool? = nil, audioActivationSucceeded: Bool? = nil,
+              playbackRate: Double? = nil, manualPause: Bool? = nil, routeOutputCount: Int? = nil,
+              interruptionShouldResume: Bool? = nil, timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
             self.client = client
@@ -82,6 +91,12 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.positionSeconds = positionSeconds.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
             self.isPlaying = isPlaying
             self.isBuffering = isBuffering
+            self.audioMixingEnabled = audioMixingEnabled
+            self.audioActivationSucceeded = audioActivationSucceeded
+            self.playbackRate = playbackRate.flatMap { $0.isFinite && (0...4).contains($0) ? $0 : nil }
+            self.manualPause = manualPause
+            self.routeOutputCount = routeOutputCount.flatMap { (0...16).contains($0) ? $0 : nil }
+            self.interruptionShouldResume = interruptionShouldResume
         }
 
         var sanitized: Self {
@@ -93,7 +108,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 repeatMode: repeatMode, queueSource: queueSource, queueCount: queueCount,
                 currentIndex: currentIndex, autoplayCount: autoplayCount,
                 positionSeconds: positionSeconds, isPlaying: isPlaying, isBuffering: isBuffering,
-                timestamp: timestamp)
+                audioMixingEnabled: audioMixingEnabled, audioActivationSucceeded: audioActivationSucceeded,
+                playbackRate: playbackRate, manualPause: manualPause, routeOutputCount: routeOutputCount,
+                interruptionShouldResume: interruptionShouldResume, timestamp: timestamp)
         }
     }
     struct Report: Codable {

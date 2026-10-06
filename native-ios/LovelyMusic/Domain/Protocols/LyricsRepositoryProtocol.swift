@@ -1,11 +1,17 @@
 import Foundation
 
 protocol LyricsRepositoryProtocol {
+    func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics?
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics?
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics?
 }
 
 extension LyricsRepositoryProtocol {
+    func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try await getLyrics(title: context.title, artist: context.artist, duration: context.duration,
+                            allowVideoCredits: context.hasYouTubeOrigin)
+    }
+
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
         try await getLyrics(title: title, artist: artist, duration: duration)
     }
@@ -65,6 +71,20 @@ struct LyricsCandidate: Identifiable {
     let artist: String
     let duration: Double?
     let lyrics: SyncedLyrics
+    let album: String?
+
+    init(id: LyricsRecordID, title: String, artist: String, duration: Double?, lyrics: SyncedLyrics, album: String? = nil) {
+        self.id = id; self.title = title; self.artist = artist; self.duration = duration
+        self.lyrics = lyrics; self.album = album
+    }
+
+    var timingLabel: String {
+        LocalizationManager.text(lyrics.isTimeSynced ? "Synced lyrics" : "Lyrics timing unavailable")
+    }
+    var versionLabel: String {
+        let tags = LyricsCanonicalMetadata.versions(title)
+        return tags.isEmpty ? LocalizationManager.text("Studio version") : tags.sorted().joined(separator: ", ")
+    }
 
     var providerID: LyricsProviderID { id.providerID }
     var recordID: String { id.recordID }

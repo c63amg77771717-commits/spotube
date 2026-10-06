@@ -224,7 +224,7 @@ struct SyncedLyricsScrollView: View {
                             showTranslation = false
                             showingCandidates = false
                         } label: {
-                            Text("\(candidate.title) · \(candidate.artist) · \(candidate.durationLabel) · \(candidate.providerID.displayName)")
+                            Text("\(candidate.title) · \(candidate.artist) · \(candidate.versionLabel) · \(candidate.durationLabel) · \(candidate.providerID.displayName) · \(candidate.timingLabel)")
                                 .font(Theme.Typography.body)
                                 .foregroundStyle(Theme.Colors.textPrimary)
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)

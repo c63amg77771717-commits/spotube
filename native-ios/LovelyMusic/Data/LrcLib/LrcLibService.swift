@@ -15,6 +15,63 @@ final class LrcLibService: LyricsRepositoryProtocol {
         self.defaults = defaults
     }
 
+    func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
+        guard let metadata = LyricsCanonicalMetadata(context) else { return nil }
+        var candidates: [LyricsCandidate] = []
+        var failures: [LyricsSourceFailure] = []
+        // The official GET /api/get/:track_id endpoint revalidates identity and content.
+        if let saved = LyricsCandidateScorer.remembered(context, defaults: defaults), saved.providerID == .lrclib,
+           let id = Int(saved.recordID), id > 0 {
+            do {
+                let response = try await request(endpoint: "get/" + String(id), items: [])
+                if response.status == 200 {
+                    let record = try decoder.decode(LrcLibResponse.self, from: response.data)
+                    if let candidate = contextCandidate(record, context: context), candidate.id == saved,
+                       LyricsCandidateScorer.score(candidate, metadata: metadata) != nil {
+                        return LyricsCandidateScorer.choose([candidate], metadata: metadata, defaults: defaults)
+                    }
+                } else if response.status != 404 { throw PublicSourceError.http("LRCLib", response.status) }
+            } catch {
+                try LyricsMatchingPolicy.checkCancellation(error)
+                failures.append(.init(providerID: .lrclib, message: error.localizedDescription))
+                break // Availability errors are not corrected by spelling variants.
+            }
+        }
+        for query in LyricsQueryPlanner.queries(metadata) {
+            try Task.checkCancellation()
+            do {
+                let records: [LrcLibResponse]
+                if query.endpoint == "get" {
+                    let response = try await get(pair: query.pair, duration: query.duration)
+                    if response.status == 404 { continue }
+                    guard response.status == 200 else { throw PublicSourceError.http("LRCLib", response.status) }
+                    records = [try decoder.decode(LrcLibResponse.self, from: response.data)]
+                } else {
+                    records = try await search(pair: query.pair)
+                }
+                // Invalid identities are rejected by the common scorer, never before search fallback.
+                candidates += records.prefix(30).compactMap { contextCandidate($0, context: context) }
+                if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) {
+                    if query.endpoint == "search" || (!result.lines.isEmpty && result.isTimeSynced) { return result }
+                }
+            } catch {
+                try LyricsMatchingPolicy.checkCancellation(error)
+                failures.append(.init(providerID: .lrclib, message: error.localizedDescription))
+            }
+        }
+        try Task.checkCancellation()
+        if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) { return result }
+        if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
+        return nil
+    }
+
+    private func contextCandidate(_ record: LrcLibResponse, context: LyricsLookupContext) -> LyricsCandidate? {
+        guard let id = record.id, id > 0, let title = record.trackName, let artist = record.artistName,
+              let lyrics = lyrics(record, duration: context.duration) else { return nil }
+        return LyricsCandidate(id: .init(providerID: .lrclib, recordID: String(id)),
+                               title: title, artist: artist, duration: record.duration, lyrics: lyrics, album: record.albumName)
+    }
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
         try await getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: false)
     }
@@ -154,6 +211,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
 private struct LrcLibResponse: Codable {
     let id: Int?
     let trackName: String?
+    let albumName: String?
     let artistName: String?
     let duration: Double?
     let syncedLyrics: String?

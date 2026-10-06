@@ -186,12 +186,12 @@ const cases = [
     await launch(false); await fullPlayer(); await waitText('LRCLib UI recording');
     await waitID('lyrics_plain_notice'); await screenshot('primary-with-secondary-off');
     const disabled = await preferences(false); assert.equal(disabled['lyrics.secondary.lrcapi.enabled'], false);
-    const saved = disabled['lyrics.selection.arcadia|kevinmacleod|98']; assert(saved, 'The remembered recording must survive disabling its source');
+    const saved = disabled['lyrics.selection.song:demo_song_morning_light']; assert(saved, 'The remembered recording must survive disabling its source');
     await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LrcApi UI first recording');
     const enabled = await preferences(true); assert.equal(enabled['lyrics.secondary.lrcapi.enabled'], true);
-    assert.deepEqual(enabled['lyrics.selection.arcadia|kevinmacleod|98'], saved);
+    assert.deepEqual(enabled['lyrics.selection.song:demo_song_morning_light'], saved);
     await screenshot('remembered-lrcapi-after-reenable');
   }],
   ['next-previous-transient-recovery', { mode: 'transient' }, async () => {

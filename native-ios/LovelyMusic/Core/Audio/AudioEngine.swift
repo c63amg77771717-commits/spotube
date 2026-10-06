@@ -1550,13 +1550,17 @@ final class AudioEngine {
         queue[index].streamContentLength = contentLength
     }
 
-    private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase) {
+    private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase, interruptionShouldResume: Bool? = nil) {
         PlaybackDiagnostics.shared.record(.init(phase: phase, videoID: currentTrack?.id,
             shuffleEnabled: shuffleEnabled, repeatMode: repeatMode.rawValue,
             queueSource: isPlayingFromAutoplay ? .autoplay : .userQueue,
             queueCount: queue.count, currentIndex: isPlayingFromAutoplay ? nil : currentIndex,
             autoplayCount: autoplayQueue.count, positionSeconds: currentTime,
-            isPlaying: isPlaying, isBuffering: isBuffering))
+            isPlaying: isPlaying, isBuffering: isBuffering,
+            audioMixingEnabled: AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers),
+            playbackRate: Double(player?.rate ?? 0), manualPause: userInitiatedPause,
+            routeOutputCount: AVAudioSession.sharedInstance().currentRoute.outputs.count,
+            interruptionShouldResume: interruptionShouldResume))
     }
 
     private func loadAndPlay(song: Song, seekTo initialSeek: TimeInterval? = nil,
@@ -4383,6 +4387,7 @@ final class AudioEngine {
     /// selected song/queue/position, then let play rebuild the audio session.
     func handleMediaServicesReset() {
         let position = pendingSeekTime ?? currentTime
+        recordPlaybackDiagnostic(.audioMediaServicesReset)
         invalidateCrossfadePreparation(clearReservation: false)
         prefetchManager.cancelPrefetch()
         stop()
@@ -4462,7 +4467,7 @@ final class AudioEngine {
                 recoveryService.resetRetry()
                 setPlaybackIntent(true)
             }
-            recordPlaybackDiagnostic(.interruptionEnded)
+            recordPlaybackDiagnostic(.interruptionEnded, interruptionShouldResume: shouldResume)
         @unknown default:
             Log.audio.warning("Unexpected state encountered")
         }
@@ -4474,6 +4479,7 @@ final class AudioEngine {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
+        recordPlaybackDiagnostic(.audioRouteChanged)
         if reason == .oldDeviceUnavailable {
             invalidateCrossfadePreparation(clearReservation: false)
             if isPlaying {

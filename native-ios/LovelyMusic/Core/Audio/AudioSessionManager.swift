@@ -14,7 +14,9 @@ enum AudioSessionManager {
     static func setCategory() {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            PlaybackDiagnostics.shared.record(.init(phase: .audioSessionConfigured,
+                audioMixingEnabled: session.categoryOptions.contains(.mixWithOthers)))
         } catch {
             Log.audioSession.error("setCategory failed, code=\((error as NSError).code)")
         }
@@ -29,9 +31,13 @@ enum AudioSessionManager {
     static func activate() -> Bool {
         do {
             try AVAudioSession.sharedInstance().setActive(true)
+            PlaybackDiagnostics.shared.record(.init(phase: .audioSessionActivated,
+                audioMixingEnabled: AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers),
+                audioActivationSucceeded: true))
             Log.audioSession.info("Audio session activated for playback")
             return true
         } catch {
+            PlaybackDiagnostics.shared.record(.init(phase: .audioSessionActivated, audioActivationSucceeded: false))
             Log.audioSession.error("Activation failed, code=\((error as NSError).code)")
             return false
         }

@@ -6,6 +6,7 @@ final class LrcApiPreviewHTTPFixture: URLProtocol {
     static func session(resetSelection: Bool) -> URLSession {
         if resetSelection {
             UserDefaults.standard.removeObject(forKey: "lyrics.selection." + LyricsCandidatePreviewHTTPFixture.selectionKey)
+            UserDefaults.standard.removeObject(forKey: "lyrics.selection." + LyricsCandidatePreviewHTTPFixture.legacySelectionKey)
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
@@ -16,9 +17,10 @@ final class LrcApiPreviewHTTPFixture: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
         guard let url = request.url,
-              let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems else {
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
         }
+        let query = components.queryItems ?? []
         let primary = url.host == "lrclib.net"
         let title = query.first { $0.name == (primary ? "track_name" : "title") }?.value ?? "Arcadia"
         let artist = query.first { $0.name == (primary ? "artist_name" : "artist") }?.value ?? "Kevin MacLeod"

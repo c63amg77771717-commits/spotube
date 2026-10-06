@@ -23,6 +23,37 @@ final class LrcApiService: LyricsRepositoryProtocol {
         self.retryTransient = retryTransient
     }
 
+    func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
+        guard let metadata = LyricsCanonicalMetadata(context) else { return nil }
+        var candidates: [LyricsCandidate] = []
+        var failures: [LyricsSourceFailure] = []
+        // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
+        for pair in LyricsQueryPlanner.secondaryPairs(metadata) {
+            try Task.checkCancellation()
+            do {
+                let records = try await request(pair: pair)
+                try Task.checkCancellation()
+                candidates += records.prefix(30).compactMap { record -> LyricsCandidate? in
+                    guard !record.id.isEmpty, record.id.count <= 256, let title = record.title, let artist = record.artist,
+                          let lyrics = LyricsMatchingPolicy.lyrics(syncedLRC: record.lrc ?? record.lyrics ?? "",
+                              plainText: record.lyrics, recordingDuration: record.duration,
+                              videoDuration: context.duration, provider: .lrcapi) else { return nil }
+                    return LyricsCandidate(id: .init(providerID: .lrcapi, recordID: record.id),
+                                           title: title, artist: artist, duration: record.duration, lyrics: lyrics, album: record.album)
+                }
+                if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) {
+                    return result
+                }
+            } catch {
+                try LyricsMatchingPolicy.checkCancellation(error)
+                failures.append(.init(providerID: .lrcapi, message: error.localizedDescription))
+                break
+            }
+        }
+        if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
+        return nil
+    }
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
         try await getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: false)
     }
@@ -80,18 +111,20 @@ final class LrcApiService: LyricsRepositoryProtocol {
 private struct LrcApiRecord: Decodable {
     let id: String
     let title: String?
+    let album: String?
     let artist: String?
     let duration: Double?
     let lyrics: String?
     let lrc: String?
 
-    enum CodingKeys: String, CodingKey { case id, title, artist, duration, lyrics, lrc }
+    enum CodingKeys: String, CodingKey { case id, title, artist, album, duration, lyrics, lrc }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         if let string = try? c.decode(String.self, forKey: .id) { id = string }
         else if let number = try? c.decode(Int.self, forKey: .id) { id = String(number) }
         else { id = "" }
         title = try c.decodeIfPresent(String.self, forKey: .title)
+        album = try c.decodeIfPresent(String.self, forKey: .album)
         artist = try c.decodeIfPresent(String.self, forKey: .artist)
         duration = try c.decodeIfPresent(Double.self, forKey: .duration)
         lyrics = try c.decodeIfPresent(String.self, forKey: .lyrics)

@@ -56,7 +56,7 @@ jobs:
                   assert any(a['name'] == 'EvanTube-native-iOS-unsigned' and not a['expired'] for a in artifacts)
                   print('Packaged IPA ready:', run['html_url'])
                   with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-                      out.write('Testing Debug simulator fixtures derived from packaged build19 source: ' + run['html_url'] + '\n')
+                      out.write('Testing Debug simulator fixtures derived from packaged build20 source: ' + run['html_url'] + '\n')
                   break
               if attempt == 100:
                   raise SystemExit('IPA packaging did not complete; agent-device tests not started')
@@ -133,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build19-agent-device-evidence
+          name: EvanTube-build20-agent-device-evidence
           path: |
             ${{ runner.temp }}/evantube-agent-device-evidence
           if-no-files-found: error

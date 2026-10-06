@@ -15,6 +15,56 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         self.secondaryEnabled = secondaryEnabled ?? { LyricsSecondarySettings.isEnabled(defaults: defaults) }
     }
 
+    func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
+        guard let metadata = LyricsCanonicalMetadata(context) else { return nil }
+        let saved = LyricsCandidateScorer.remembered(context, defaults: defaults)
+        var failures: [LyricsSourceFailure] = []
+        var first: SyncedLyrics?
+        do {
+            first = try await primary.getLyrics(context: context)
+            try Task.checkCancellation()
+            failures += first?.sourceFailures ?? []
+        } catch {
+            try LyricsMatchingPolicy.checkCancellation(error)
+            failures.append(.init(providerID: .lrclib, message: error.localizedDescription))
+        }
+        let enabled = secondaryEnabled()
+        if let first, !first.lines.isEmpty, first.isTimeSynced,
+           !enabled || saved?.providerID != .lrcapi { return first }
+        guard enabled else {
+            if let first { return first }
+            if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
+            return nil
+        }
+        var second: SyncedLyrics?
+        do {
+            second = try await secondary.getLyrics(context: context)
+            try Task.checkCancellation()
+            failures += second?.sourceFailures ?? []
+        } catch {
+            try LyricsMatchingPolicy.checkCancellation(error)
+            failures.append(.init(providerID: .lrcapi, message: error.localizedDescription))
+        }
+        try Task.checkCancellation()
+        if !secondaryEnabled() {
+            if let first { return first }
+            let primaryFailures = failures.filter { $0.providerID == .lrclib }
+            if !primaryFailures.isEmpty { throw LyricsLookupError.unavailable(primaryFailures) }
+            return nil
+        }
+        let candidates = (first?.candidates ?? []) + (second?.candidates ?? [])
+        if !candidates.isEmpty {
+            return LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures)
+        }
+        if let content = second ?? first, !content.lines.isEmpty {
+            return SyncedLyrics(lines: content.lines, source: content.source, isTimeSynced: content.isTimeSynced,
+                                selectionKey: context.selectionKey, providerID: content.providerID, sourceFailures: failures)
+        }
+        if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
+        return nil
+    }
+
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
         try await getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: false)
     }
