@@ -46,6 +46,20 @@ function simctl(args, env = {}) {
   assert.equal(result.status, 0, `${args[0]}: ${result.stderr}`);
   return result.stdout.trim();
 }
+// Read the installed simulator product instead of inheriting an older report label.
+const installedAppPath = simctl(['get_app_container', udid, app, 'app']);
+const installedInfoResult = spawnSync('/usr/bin/plutil',
+  ['-convert', 'json', '-o', '-', path.join(installedAppPath, 'Info.plist')],
+  { encoding: 'utf8', timeout: 10000 });
+assert.equal(installedInfoResult.status, 0, `Installed app metadata: ${installedInfoResult.stderr}`);
+const installedInfo = JSON.parse(installedInfoResult.stdout);
+const installedBuild = Number(installedInfo.CFBundleVersion);
+assert.equal(installedInfo.CFBundleIdentifier, app, 'The selected simulator must contain EvanTube');
+assert.equal(installedBuild, 20, 'Build20 acceptance must test an installed Build20 app');
+save('installed-build.json', { sourceCommit: process.env.GITHUB_SHA, build: installedBuild,
+  bundleIdentifier: installedInfo.CFBundleIdentifier, marketingVersion: installedInfo.CFBundleShortVersionString,
+  target: 'iPhone 16 Pro Simulator', signedPhysicalIPhone: false });
+
 async function launch(reset = true) {
   const env = { SIMCTL_CHILD_REVIEW_MODE: '1',
     SIMCTL_CHILD_EVANTUBE_LYRICS_CANDIDATE_RESET: reset ? '1' : '0',
@@ -273,7 +287,7 @@ for (const [name, config, action] of cases) {
       save(`${name}-cleanup-failure.json`, { message: error.message });
     }
     save('results.json', { agentDeviceVersion: '0.21.20', sourceCommit: process.env.GITHUB_SHA,
-      build: 19, target: 'iPhone 16 Pro Simulator', instrumentedDebugFixtures: true,
+      build: installedBuild, target: 'iPhone 16 Pro Simulator', instrumentedDebugFixtures: true,
       releaseIPAModified: false, physicalIPhoneSignedLockscreen: 'NOT RUN',
       total: cases.length, passed: results.filter(r => r.status === 'PASS').length,
       failed: results.filter(r => r.status === 'FAIL').length, cases: results });
