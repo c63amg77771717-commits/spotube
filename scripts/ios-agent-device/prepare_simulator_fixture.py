@@ -41,9 +41,20 @@ replace('LovelyMusic/App/DIContainer.swift',
     'let session = LrcApiPreviewHTTPFixture.session(\n                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")',
     '''let session = LrcApiPreviewHTTPFixture.session(
                 resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")
+            let sourceDefaults = UserDefaults.standard
+            let sourceDomain = Bundle.main.bundleIdentifier ?? "missing-bundle-id"
+            let storedSource = sourceDefaults.object(forKey: LyricsSecondarySettings.enabledKey)
+            let domainSource = sourceDefaults.persistentDomain(forName: sourceDomain)?[LyricsSecondarySettings.enabledKey]
             AgentDeviceFixtureLog.record(["kind": "launch_preferences",
                 "pid": Int(ProcessInfo.processInfo.processIdentifier),
-                "secondaryEnabled": LyricsSecondarySettings.isEnabled()])''')
+                "secondaryEnabled": LyricsSecondarySettings.isEnabled(),
+                "suite": "standard", "preferenceKey": LyricsSecondarySettings.enabledKey,
+                "bundleIdentifier": sourceDomain,
+                "bundleBuild": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? NSNull(),
+                "storedObject": storedSource ?? NSNull(),
+                "storedObjectType": storedSource.map { String(describing: type(of: $0)) } ?? "missing",
+                "applicationDomainObject": domainSource ?? NSNull(),
+                "usesDefaultFallback": storedSource as? Bool == nil])''')
 replace('LovelyMusic/Presentation/Navigation/ContentView.swift', '''                playerVM.play(song: Song(
                     id: "demo_song_morning_light", title: "Arcadia", artistName: "Kevin MacLeod",
                     artistId: nil, albumName: "Peaceful Moments", albumId: nil,

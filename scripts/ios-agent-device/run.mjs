@@ -121,7 +121,7 @@ function fixtureEvents() {
 function readPreferencesFile() {
   const container = simctl(['get_app_container', udid, app, 'data']);
   const file = path.join(container, 'Library/Preferences', `${app}.plist`);
-  const code = `import json,plistlib,sys; d=plistlib.load(open(sys.argv[1],'rb')); print(json.dumps({k:v for k,v in d.items() if k == 'lyrics.secondary.lrcapi.enabled' or k.startswith('lyrics.selection.')}))`;
+  const code = `import hashlib,json,os,plistlib,sys; p=sys.argv[1]; b=open(p,'rb').read(); d=plistlib.loads(b); s=os.stat(p); v={k:v for k,v in d.items() if k == 'lyrics.secondary.lrcapi.enabled' or k.startswith('lyrics.selection.')}; v['_readMetadata']={'path':os.path.realpath(p),'bytes':len(b),'file_sha256':hashlib.sha256(b).hexdigest(),'mtime_ns_after_read':s.st_mtime_ns,'inode_after_read':s.st_ino}; print(json.dumps(v))`;
   const result = spawnSync('python3', ['-c', code, file], { encoding: 'utf8', timeout: 10000 });
   assert.equal(result.status, 0, result.stderr);
   const value = JSON.parse(result.stdout);
