@@ -263,7 +263,7 @@ enum LyricsLookupMetadata {
         }
         let bare = "(?:official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
         let bracketed = "(?:\(bare)|官方頻道|官方频道)"
-        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|\\s+\(bare))\\s*$"
+        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》】]))\(bare))\\s*$"
         while let range = value.range(of: suffix, options: .regularExpression) {
             let preceding = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalized(preceding).hasSuffix("unofficial") else { break }

@@ -76,6 +76,24 @@ jobs:
               'get-task-allow': True,
           }))
           PY
+          # Verify diagnosed regressions before allowing the full suite.
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme EvanTubeTests \
+            -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -only-testing:EvanTubeTests/Build20LyricsTests \
+            -only-testing:EvanTubeTests/CapturedEightSongReplayTests \
+            -only-testing:EvanTubeTests/ChineseLyricsLookupTests \
+            -only-testing:EvanTubeTests/PlaylistLyricsMatrixTests \
+            -only-testing:EvanTubeTests/Build20AudioSessionTests \
+            -resultBundlePath "$RUNNER_TEMP/evantube-focused-tests.xcresult" \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme EvanTubeTests \
@@ -93,7 +111,9 @@ jobs:
         if: always() && steps.unit_tests.outcome != 'skipped'
         with:
           name: EvanTube-unit-test-results
-          path: ${{ runner.temp }}/evantube-unit-tests.xcresult
+          path: |
+            ${{ runner.temp }}/evantube-focused-tests.xcresult
+            ${{ runner.temp }}/evantube-unit-tests.xcresult
           if-no-files-found: warn
       - name: Capture Traditional Chinese settings previews
         id: settings_preview
