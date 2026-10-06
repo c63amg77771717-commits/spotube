@@ -52,6 +52,10 @@ enum LyricsLookupMetadata {
     /// A supplied performer matching either side fixes the direction; never invent names.
     static func videoCreditPairs(_ context: LyricsLookupContext) -> [Pair] {
         guard context.hasYouTubeOrigin else { return [] }
+        let explicit = strippingVideoPresentation(strippingChineseLyricPresentation(context.title))
+        // A bounded song span already establishes the roles. Do not re-split
+        // its bilingual performer or song title into a whitespace hypothesis.
+        guard bracketedVideoCredit(explicit) == nil else { return [] }
         var input = context.title.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
         input = strippingChineseLyricPresentation(input)
         input = strippingPresentationSuffix(input)
@@ -86,7 +90,8 @@ enum LyricsLookupMetadata {
 
     static func isWhitespaceVideoCredit(_ title: String) -> Bool {
         let presented = strippingChineseLyricPresentation(title)
-        guard strippingPresentationSuffix(presented) != presented else { return false }
+        guard bracketedVideoCredit(strippingVideoPresentation(presented)) == nil,
+              strippingPresentationSuffix(presented) != presented else { return false }
         let input = strippingSoundtrackPresentation(strippingPresentationSuffix(presented))
         guard !input.contains(" - "), !input.contains("《"), !input.contains("【") else { return false }
         return input.range(of: "^([\\p{Han}]{2,4})\\s+(.+)$", options: .regularExpression) != nil
