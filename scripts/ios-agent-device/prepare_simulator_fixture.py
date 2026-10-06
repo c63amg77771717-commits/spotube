@@ -36,6 +36,18 @@ replace('LovelyMusic/App/DIContainer.swift',
         } else if isReviewMode, ProcessInfo.processInfo.environment["EVANTUBE_LRCAPI_FIXTURE"] == "1" {''')
 replace('LovelyMusic/App/DIContainer.swift', 'secondary: LrcApiService(session: session), secondaryEnabled: { true })',
     'secondary: LrcApiService(session: session))')
+# Observe the original UI setter without adding, suppressing, or synchronizing a write.
+replace('LovelyMusic/Presentation/Settings/SettingsViewModel.swift',
+    'didSet { UserDefaults.standard.set(isLrcApiEnabled, forKey: LyricsSecondarySettings.enabledKey) }',
+    '''didSet {
+            UserDefaults.standard.set(isLrcApiEnabled, forKey: LyricsSecondarySettings.enabledKey)
+            AgentDeviceFixtureLog.record(["kind": "source_preference_write",
+                "pid": Int(ProcessInfo.processInfo.processIdentifier),
+                "value": isLrcApiEnabled,
+                "apiObjectAfterWrite": UserDefaults.standard.object(forKey: LyricsSecondarySettings.enabledKey) ?? NSNull(),
+                "suite": "standard", "preferenceKey": LyricsSecondarySettings.enabledKey,
+                "bundleIdentifier": Bundle.main.bundleIdentifier ?? "missing-bundle-id"])
+        }''')
 # Observe the actual preference API in each new test App process, without writing or synchronizing it.
 replace('LovelyMusic/App/DIContainer.swift',
     'let session = LrcApiPreviewHTTPFixture.session(\n                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")',
