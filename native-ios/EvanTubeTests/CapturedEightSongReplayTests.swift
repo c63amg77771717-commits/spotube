@@ -57,9 +57,15 @@ final class CapturedEightSongReplayTests: XCTestCase {
             let afterRepo = CompositeLyricsRepository(primary: LrcLibService(session: session, defaults: defaults),
                 secondary: LrcApiService(session: session, defaults: defaults), defaults: defaults, secondaryEnabled: { true })
             let after = try await afterRepo.getLyrics(context: context)
-            let result = try XCTUnwrap(after, c.songID)
-            XCTAssertFalse(result.candidates.isEmpty, c.songID)
-            XCTAssertTrue(!result.lines.isEmpty || !result.candidates.isEmpty, c.songID)
+            // Actual provider capture contains no correct ycccc recording. A
+            // successful decoder must reject unrelated songs, not invent lyrics.
+            if c.songID == "3hw92j4SqrI" {
+                XCTAssertNil(after, "Both captured providers contain no valid ycccc candidate")
+            } else {
+                let result = try XCTUnwrap(after, c.songID)
+                XCTAssertFalse(result.candidates.isEmpty, c.songID)
+                XCTAssertTrue(!result.lines.isEmpty || !result.candidates.isEmpty, c.songID)
+            }
             XCTAssertEqual(context.title, c.title)
             XCTAssertEqual(context.artist, "")
             let events = LyricsLookupDiagnostics.shared.events.filter { $0.lookupID == context.diagnosticLookupID }
