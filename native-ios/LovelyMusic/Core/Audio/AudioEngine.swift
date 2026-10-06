@@ -1359,9 +1359,8 @@ final class AudioEngine {
         savePlaybackState()
     }
 
-    @discardableResult
-    func resumePlayer() -> Bool {
-        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return false }
+    func resumePlayer() {
+        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
         guard audioSessionActivator() else {
             invalidateCrossfadePreparation(clearReservation: false)
             player?.pause()
@@ -1372,10 +1371,9 @@ final class AudioEngine {
             lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
             nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
             savePlaybackState()
-            return false
+            return
         }
         player?.rate = playbackSpeed
-        return true
     }
 
     /// Persist current playback state (called on significant state changes)
