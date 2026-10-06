@@ -55,7 +55,7 @@ assert.equal(installedInfoResult.status, 0, `Installed app metadata: ${installed
 const installedInfo = JSON.parse(installedInfoResult.stdout);
 const installedBuild = Number(installedInfo.CFBundleVersion);
 assert.equal(installedInfo.CFBundleIdentifier, app, 'The selected simulator must contain EvanTube');
-assert.equal(installedBuild, 21, 'Build21 acceptance must test an installed Build21 app');
+assert.equal(installedBuild, 22, 'Build22 acceptance must test an installed Build22 app');
 save('installed-build.json', { sourceCommit: process.env.GITHUB_SHA, build: installedBuild,
   bundleIdentifier: installedInfo.CFBundleIdentifier, marketingVersion: installedInfo.CFBundleShortVersionString,
   target: 'iPhone 16 Pro Simulator', signedPhysicalIPhone: false });

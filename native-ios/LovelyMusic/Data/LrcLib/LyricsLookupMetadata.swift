@@ -114,21 +114,9 @@ enum LyricsLookupMetadata {
         var lookupInput = title
         if allowVideoCredits {
             lookupInput = lookupInput.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
-            lookupInput = strippingChineseLyricPresentation(lookupInput)
-            lookupInput = strippingPresentationSuffix(lookupInput)
-            lookupInput = strippingSoundtrackPresentation(lookupInput)
-            let songBrackets: [(Character, Character)] = [("《", "》"), ("【", "】")]
-            for (opening, closing) in songBrackets {
-                guard let (open, close) = balancedBracket(opening, closing, in: lookupInput), open < close,
-                      !lookupInput[..<open].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                      !lookupInput[..<open].contains(" - ")
-                else { continue }
-                let credit = String(lookupInput[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
-                    .replacingOccurrences(of: "\\s*[-–—－]\\s*$", with: "", options: .regularExpression)
-                let track = String(lookupInput[lookupInput.index(after: open)..<close])
-                let suffix = String(lookupInput[lookupInput.index(after: close)...])
-                lookupInput = credit + " - " + track + (suffix.isEmpty ? "" : " " + suffix)
-                break
+            lookupInput = strippingVideoPresentation(strippingChineseLyricPresentation(lookupInput))
+            if let credit = bracketedVideoCredit(lookupInput) {
+                lookupInput = credit.artist + " - " + credit.title
             }
         }
         let parts = lookupInput.components(separatedBy: " - ")
@@ -165,7 +153,7 @@ enum LyricsLookupMetadata {
         lookupTitle = strippingPresentationSuffix(lookupTitle)
         if allowVideoCredits {
             lookupTitle = strippingChineseLyricPresentation(lookupTitle)
-            lookupTitle = strippingSoundtrackPresentation(lookupTitle)
+            lookupTitle = strippingVideoPresentation(lookupTitle)
         }
         guard !lookupTitle.isEmpty, !lookupArtist.isEmpty,
               normalized(lookupTitle) != normalized(title) || normalized(lookupArtist) != normalized(artist) else { return nil }
@@ -242,9 +230,61 @@ enum LyricsLookupMetadata {
         return nil
     }
 
+    /// Locate the first song span by source position, never by bracket type.
+    /// Later work titles inside soundtrack notes cannot become performer credits.
+    static func bracketedVideoCredit(_ input: String) -> Pair? {
+        let brackets: [(Character, Character)] = [("《", "》"), ("〈", "〉"), ("【", "】"), ("[", "]")]
+        let spans = brackets.compactMap { open, close in balancedBracket(open, close, in: input) }
+        guard let (open, close) = spans.min(by: { $0.0 < $1.0 }),
+              !input[..<open].contains(" - ") else { return nil }
+        let credit = String(input[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s*[-–—－]\\s*$", with: "", options: .regularExpression)
+        guard !credit.isEmpty, credit.count <= 128,
+              !credit.contains(where: { "()（）《》〈〉【】[]".contains($0) }) else { return nil }
+        let track = String(input[input.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !track.isEmpty, track.count <= 256 else { return nil }
+        // [Live] / [Official MV] on a bare title is not a song-credit span.
+        if input[open] == "[" || input[open] == "〈" {
+            guard track.range(of: "(?i)^(?:live|remix|acoustic|instrumental|karaoke|cover)(?:\\s+(?:live|remix|acoustic|instrumental|karaoke|cover))*$", options: .regularExpression) == nil,
+                  strippingPresentationSuffix(track) == track,
+                  normalized(track) != "official mv", normalized(track) != "lyrics mv" else { return nil }
+        }
+        let tail = String(input[input.index(after: close)...])
+        let suffix = strippingVideoPresentation(tail).trimmingCharacters(in: .whitespacesAndNewlines)
+        return Pair(title: track + (suffix.isEmpty ? "" : " " + suffix), artist: credit)
+    }
+
+    /// Alternating bounded standalone labels may follow a song span in either order.
+    /// The song span and version-bearing text are retained.
+    static func strippingVideoPresentation(_ input: String) -> String {
+        var value = input.replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")")
+        for _ in 0..<8 {
+            let next = strippingPresentationSuffix(strippingSoundtrackPresentation(value))
+            if next == value { break }
+            value = next
+        }
+        return value
+    }
+
+    private static func soundtrackNote(_ text: String) -> Bool {
+        guard text.count <= 240, LyricsCanonicalMetadata.versions(text).isEmpty else { return false }
+        let role = "(?:電視劇|电视剧|電影|电影|插曲|主題曲|主题曲|推廣曲|推广曲)"
+        // A named work plus explicit role, Chinese role plus OST, or a bounded
+        // foreign OST translation footer with a pipe establishes presentation.
+        let pattern = "(?i)(?:\(role).*?[《【].*?[》】]|[《【].*?[》】].*?\(role)|\(role).*?\\bOST\\b|\\bOST\\b.*?\(role)|\\bOST\\b.*?\\|)"
+        return text.range(of: pattern, options: .regularExpression) != nil
+    }
+
     private static func strippingSoundtrackPresentation(_ input: String) -> String {
         let suffix = "(?i)\\s*(?:【\\s*《[^》]{1,80}》(?:電視劇|电视剧)(?:情感)?(?:主題曲|主题曲)\\s*】|[（(](?:電影|电影)《[^》]{1,80}》(?:推廣曲|推广曲|主題曲|主题曲)[）)])\\s*$"
         var value = input
+        let brackets: [(Character, Character)] = [("（", "）"), ("(", ")"), ("【", "】"), ("[", "]")]
+        for _ in 0..<8 {
+            guard let (open, close) = brackets.compactMap({ a, b in balancedBracket(a, b, in: value) })
+                .first(where: { value.index(after: $0.1) == value.endIndex }),
+                  soundtrackNote(String(value[value.index(after: open)..<close])) else { break }
+            value = String(value[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         while let range = value.range(of: suffix, options: .regularExpression) {
             let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !prefix.isEmpty else { break }
@@ -254,6 +294,8 @@ enum LyricsLookupMetadata {
     }
 
     private static func strippingPresentationSuffix(_ input: String) -> String {
+        let standalone = "(?i)^(?:MV|official\\s+(?:music\\s+video|video|audio|mv)|官方\\s*MV)$"
+        if input.trimmingCharacters(in: .whitespacesAndNewlines).range(of: standalone, options: .regularExpression) != nil { return "" }
         var value = input
         let channelSuffix = "(?i)\\s*[-–—]\\s*[\\p{Han}A-Za-z]{1,16}official\\s+(?:HQ|HD)官方版MV\\s*$"
         if let range = value.range(of: channelSuffix, options: .regularExpression) {
@@ -262,7 +304,7 @@ enum LyricsLookupMetadata {
         }
         let bare = "(?:official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
         let bracketed = "(?:\(bare)|官方頻道|官方频道)"
-        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》】]))\(bare))\\s*$"
+        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》〉】\\]]))\(bare))\\s*$"
         while let range = value.range(of: suffix, options: .regularExpression) {
             let preceding = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalized(preceding).hasSuffix("unofficial") else { break }

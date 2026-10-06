@@ -9,6 +9,8 @@ final class YouTubeSearchTests: XCTestCase {
         let result = try await service.search(query: "化身孤島的鯨", key: "test-key")
         XCTAssertEqual(result.songs.map(\.id), ["4DARsEmUxMg"])
         XCTAssertEqual(result.songs.first?.title, "化身孤島的鯨 & 音樂")
+        XCTAssertEqual(result.songs.first?.artistNameSource, .uploader)
+        XCTAssertEqual(result.songs.first?.artistName, "張靚穎", "Keep display metadata while recording uploader provenance")
         XCTAssertNil(result.songs.first?.artistId, "Channel IDs must not be used as Music browse IDs")
         XCTAssertNil(result.songs.first?.duration, "Unknown duration must not hide search results")
         XCTAssertFalse(result.continuation?.contains("test-key") ?? true)

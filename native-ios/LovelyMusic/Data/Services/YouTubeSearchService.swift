@@ -77,7 +77,7 @@ final class YouTubeSearchService {
                 id: id, title: Self.decodingEntities(snippet.title),
                 artistName: Self.decodingEntities(snippet.channelTitle),
                 artistId: nil, albumName: nil, albumId: nil, duration: nil,
-                thumbnailURL: thumbnail
+                thumbnailURL: thumbnail, artistNameSource: .uploader
             )
         }
         let continuation: String?

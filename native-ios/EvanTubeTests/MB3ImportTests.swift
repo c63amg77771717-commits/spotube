@@ -69,6 +69,17 @@ final class MB3ImportTests: XCTestCase {
         XCTAssertEqual(reloaded[1].songs.map(\.id), [b.id, a.id])
     }
 
+    func testTitlePriorityUsesFirstNonemptyTitleThenRawTitleThenNameThenID() throws {
+        let rows: [[String: Any]] = [
+            ["youtube_id": "abcdefghijk", "title": "Edited title", "title_raw": "Original title", "name": "Name"],
+            ["youtube_id": "12345678901", "title": "  ", "title_raw": " Raw title ", "name": "Name"],
+            ["youtube_id": "video000001", "title_raw": "", "name": "Fallback name"],
+            ["youtube_id": "video000002", "title": "", "title_raw": "", "name": ""]
+        ].map { row in var value = row; value["playlist_id"] = "7"; value["playlist_name"] = "Player"; return value }
+        let result = try MB3PlaylistImporter.parseJSON(JSONSerialization.data(withJSONObject: ["songs": rows]))
+        XCTAssertEqual(result.playlists.first?.songs.map(\.title), ["Edited title", "Raw title", "Fallback name", "video000002"])
+    }
+
     private func song(_ id: String) -> Song {
         Song(id: id, title: id, artistName: "", artistId: nil,
              albumName: nil, albumId: nil, duration: nil, thumbnailURL: nil)

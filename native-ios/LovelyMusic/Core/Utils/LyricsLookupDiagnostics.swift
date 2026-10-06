@@ -24,6 +24,7 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         let hasYouTubeOrigin: Bool
         let musicVideoType: String?
         let videoDuration: Int?
+        let artistNameSource: SongArtistNameSource?
         let phase: Phase
         let reason: Reason?
         let endpoint: String?
@@ -49,6 +50,7 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
             self.provider = provider; self.phase = phase; self.reason = reason
             album = Self.bounded(context.album); artistID = Self.bounded(context.artistID); albumID = Self.bounded(context.albumID)
             hasYouTubeOrigin = context.hasYouTubeOrigin; musicVideoType = Self.bounded(context.musicVideoType); videoDuration = context.duration
+            artistNameSource = context.artistNameSource
             self.endpoint = Self.bounded(endpoint); self.title = Self.bounded(title); self.artist = Self.bounded(artist)
             self.duration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
             self.recordID = Self.bounded(recordID); self.httpStatus = httpStatus; self.count = count.map { max(0, min(10000, $0)) }

@@ -138,7 +138,7 @@ enum MB3PlaylistImporter {
                 groups[id]?.skipped += 1
                 continue
             }
-            let rawTitle = value(row["title"] ?? row["name"])
+            let rawTitle = ["title", "title_raw", "name"].lazy.map { value(row[$0]) }.first { !$0.isEmpty } ?? ""
             let title = rawTitle.isEmpty ? videoID : rawTitle
             let artist = value(row["artist"] ?? row["artist_name"])
             let duration = Int(value(row["duration_seconds"]))

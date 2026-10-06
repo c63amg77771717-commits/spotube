@@ -1,5 +1,8 @@
 import Foundation
 
+/// Search channel names are display metadata, not verified performers.
+enum SongArtistNameSource: String, Codable, Sendable { case artistMetadata, uploader }
+
 struct Song: Identifiable, Hashable, Codable {
     let id: String
     let title: String
@@ -9,6 +12,7 @@ struct Song: Identifiable, Hashable, Codable {
     let albumId: String?
     let duration: Int?
     let thumbnailURL: String?
+    var artistNameSource: SongArtistNameSource? = nil
     var isExplicit: Bool = false
     var musicVideoType: String?
     var isEpisode: Bool = false
@@ -18,7 +22,7 @@ struct Song: Identifiable, Hashable, Codable {
 
     // Exclude transient stream data from persistence — URLs expire after ~6h.
     private enum CodingKeys: String, CodingKey {
-        case id, title, artistName, artistId, albumName, albumId
+        case id, title, artistName, artistId, albumName, albumId, artistNameSource
         case duration, thumbnailURL, isExplicit, musicVideoType
         case isEpisode, episodeOf
     }

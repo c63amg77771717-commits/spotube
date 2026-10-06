@@ -6,6 +6,7 @@ struct LyricsLookupContext: Sendable {
     let diagnosticLookupID: String
     let title: String
     let artist: String
+    let artistNameSource: SongArtistNameSource?
     let album: String?
     let duration: Int?
     let artistID: String?
@@ -15,19 +16,20 @@ struct LyricsLookupContext: Sendable {
 
     init(songID: String? = nil, title: String, artist: String, album: String? = nil,
          duration: Int? = nil, artistID: String? = nil, albumID: String? = nil,
-         hasYouTubeOrigin: Bool = false, musicVideoType: String? = nil, diagnosticLookupID: String = UUID().uuidString) {
+         hasYouTubeOrigin: Bool = false, musicVideoType: String? = nil, artistNameSource: SongArtistNameSource? = nil, diagnosticLookupID: String = UUID().uuidString) {
         self.diagnosticLookupID = diagnosticLookupID
         self.songID = songID; self.title = title; self.artist = artist; self.album = album
         self.duration = LyricsMatchingPolicy.validDuration(duration)
         self.artistID = artistID; self.albumID = albumID
         self.hasYouTubeOrigin = hasYouTubeOrigin; self.musicVideoType = musicVideoType
+        self.artistNameSource = artistNameSource
     }
 
     init(song: Song) {
         self.init(songID: song.id, title: song.title, artist: song.artistName, album: song.albumName,
                   duration: song.duration, artistID: song.artistId, albumID: song.albumId,
                   hasYouTubeOrigin: song.hasYouTubeOrigin && !song.isEpisode && song.id.utf8.allSatisfy { $0 < 128 },
-                  musicVideoType: song.musicVideoType)
+                  musicVideoType: song.musicVideoType, artistNameSource: song.artistNameSource)
     }
 
     var legacySelectionKey: String { LyricsMatchingPolicy.selectionKey(title: title, artist: artist, duration: duration) }
@@ -47,7 +49,7 @@ struct LyricsCanonicalMetadata {
 
     init?(_ context: LyricsLookupContext) {
         let title = context.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let artist = context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = context.artistNameSource == .uploader ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
         var pair = LyricsLookupMetadata.Pair(title: title, artist: artist)
         if let clean = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: context.hasYouTubeOrigin) {
@@ -59,6 +61,23 @@ struct LyricsCanonicalMetadata {
         if context.hasYouTubeOrigin { pair = .init(title: Self.presentationTitle(pair.title), artist: pair.artist) }
         self.context = context; originalTitle = title; originalArtist = artist; self.pair = pair
         artistTokens = Self.tokens(pair.artist); versionTags = Self.versions(pair.title)
+    }
+
+    /// Only an explicit bracketed video credit can establish a bilingual title.
+    /// Version words are never aliases and bare titles are never split into words.
+    var explicitTitleVariants: [String] {
+        guard context.hasYouTubeOrigin,
+              LyricsLookupMetadata.bracketedVideoCredit(LyricsLookupMetadata.strippingVideoPresentation(context.title)) != nil,
+              Self.versions(pair.title).isEmpty,
+              let regex = try? NSRegularExpression(pattern: "^([\\p{Han}]+)\\s+([A-Za-z][A-Za-z\\s'’,.?!-]*)$"),
+              let match = regex.firstMatch(in: pair.title, range: NSRange(pair.title.startIndex..., in: pair.title)),
+              let han = Range(match.range(at: 1), in: pair.title),
+              let latin = Range(match.range(at: 2), in: pair.title) else { return [pair.title] }
+        return [pair.title, String(pair.title[han]), String(pair.title[latin])]
+    }
+
+    func matchesTitle(_ title: String) -> Bool {
+        explicitTitleVariants.contains { LyricsLookupMetadata.identityKey($0) == LyricsLookupMetadata.identityKey(title) }
     }
 
     var alternateVideoPair: LyricsLookupMetadata.Pair? {
@@ -184,6 +203,10 @@ enum LyricsQueryPlanner {
             queries.append(.init(endpoint: "get", pair: original, duration: nil))
         }
         queries.append(.init(endpoint: "search", pair: metadata.pair, duration: nil))
+        if let han = LyricsLookupMetadata.chineseVideoPair(title: metadata.pair.title, artist: metadata.pair.artist,
+                                                          allowVideoCredits: metadata.context.hasYouTubeOrigin) {
+            queries.append(.init(endpoint: "search", pair: han, duration: nil))
+        }
         for alternative in metadata.alternativePairs {
             queries.append(.init(endpoint: "search", pair: alternative, duration: nil))
         }
@@ -240,30 +263,31 @@ enum LyricsCandidateScorer {
     }
 
     private static func scoreSingle(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
-        let title = metadata.context.hasYouTubeOrigin ? LyricsCanonicalMetadata.presentationTitle(candidate.title) : candidate.title
         guard !candidate.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !candidate.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              LyricsCanonicalMetadata.versions(title) == metadata.versionTags,
-              LyricsLookupMetadata.identityKey(title) == LyricsLookupMetadata.identityKey(metadata.pair.title) else { return nil }
-        var score = LyricsLookupMetadata.normalized(candidate.title) == LyricsLookupMetadata.normalized(metadata.originalTitle) ? 40 : 35
+              !candidate.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        // Filter the same response locally by performer first, without another request.
         let tokens = LyricsCanonicalMetadata.tokens(candidate.artist)
+        var completeCredit = true
         if let primary = metadata.artistTokens.first {
             guard let otherPrimary = tokens.first,
                   metadata.performerIdentity(primary) == metadata.performerIdentity(otherPrimary) else { return nil }
             let expected = Set(metadata.artistTokens.map(metadata.performerIdentity))
             let actual = Set(tokens.map(metadata.performerIdentity))
-            // A different credited guest changes recording identity; incomplete credits are manual.
             guard actual.isSubset(of: expected) else { return nil }
-            if LyricsLookupMetadata.normalized(candidate.artist) == LyricsLookupMetadata.normalized(metadata.pair.artist) { score += 30 }
-            else if Set(tokens) == Set(metadata.artistTokens) { score += 30 }
-            else if expected == actual { score += 30 }
-            else { return min(score + 40, 84) }
+            completeCredit = expected == actual
+        }
+        let title = metadata.context.hasYouTubeOrigin
+            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(candidate.title)) : candidate.title
+        guard LyricsCanonicalMetadata.versions(title) == metadata.versionTags,
+              metadata.matchesTitle(title) else { return nil }
+        var score = LyricsLookupMetadata.normalized(candidate.title) == LyricsLookupMetadata.normalized(metadata.originalTitle) ? 40 : 35
+        if !metadata.artistTokens.isEmpty {
+            if !completeCredit { return min(score + 40, 84) }
+            score += 30
         }
         if let album = candidate.album, let expected = metadata.context.album,
            !expected.isEmpty, LyricsLookupMetadata.identityKey(album) == LyricsLookupMetadata.identityKey(expected) { score += 10 }
-        // MV length is a retrieval/timing hint, not recording identity. The
-        // timestamp policy separately requires compatible known durations.
-        score += 20 // Exact version set, including an explicitly untagged studio recording.
+        score += 20
         return score
     }
 
@@ -276,17 +300,21 @@ enum LyricsCandidateScorer {
                 identities.append(alternative)
             }
         }
-        let title = metadata.context.hasYouTubeOrigin ? LyricsCanonicalMetadata.presentationTitle(candidate.title) : candidate.title
-        let matching = identities.filter { LyricsLookupMetadata.identityKey(title) == LyricsLookupMetadata.identityKey($0.pair.title) }
-        guard !matching.isEmpty else { return .titleMismatch }
-        let versions = matching.filter { LyricsCanonicalMetadata.versions(title) == $0.versionTags }
-        guard let identity = versions.first else { return .versionMismatch }
         let tokens = LyricsCanonicalMetadata.tokens(candidate.artist)
-        if let primary = identity.artistTokens.first,
-           tokens.first.map(identity.performerIdentity) != identity.performerIdentity(primary) { return .primaryPerformerMismatch }
-        let expected = Set(identity.artistTokens.map(identity.performerIdentity))
-        let actual = Set(tokens.map(identity.performerIdentity))
-        if !actual.isSubset(of: expected) { return .guestMismatch }
+        let performers = identities.filter { identity in
+            guard let primary = identity.artistTokens.first else { return true }
+            return tokens.first.map(identity.performerIdentity) == identity.performerIdentity(primary)
+        }
+        guard !performers.isEmpty else { return .primaryPerformerMismatch }
+        let credits = performers.filter { identity in
+            identity.artistTokens.isEmpty || Set(tokens.map(identity.performerIdentity)).isSubset(of: Set(identity.artistTokens.map(identity.performerIdentity)))
+        }
+        guard !credits.isEmpty else { return .guestMismatch }
+        let title = metadata.context.hasYouTubeOrigin
+            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(candidate.title)) : candidate.title
+        let matching = credits.filter { $0.matchesTitle(title) }
+        guard !matching.isEmpty else { return .titleMismatch }
+        guard matching.contains(where: { LyricsCanonicalMetadata.versions(title) == $0.versionTags }) else { return .versionMismatch }
         return .identityMismatch
     }
 

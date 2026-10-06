@@ -1,0 +1,188 @@
+{
+  "sourceDiagnosticSHA256": "837c37de1780f06ebba4d5c89685705a243d6be05be7fa02a5fc25143bf05465",
+  "sourceBuild": 21,
+  "capturedWindowUTC": [
+    "2026-10-06T08:57:38Z",
+    "2026-10-06T09:00:38Z"
+  ],
+  "evidenceLimit": "Phone export includes candidate metadata, not provider bodies or lyric text. Test bodies use synthetic one-line content; they establish parsing/routing/scoring, not live availability.",
+  "cases": [
+    {
+      "songID": "JSMKvZdOmPc",
+      "original": {
+        "title": "潘嘉麗 Kelly Pan [Goodbye] (【莫非，這就是愛情】插曲) Official MV",
+        "artist": "",
+        "duration": 271
+      },
+      "derived": {
+        "title": "莫非，這就是愛情 插曲)",
+        "artist": "潘嘉麗 Kelly Pan [Goodbye] ("
+      },
+      "lookup_ids": [
+        "2E903605-17BC-4A86-9F58-EFB0727E1E95"
+      ],
+      "queries": [
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "莫非，這就是愛情 插曲)",
+          "artist": "潘嘉麗 Kelly Pan [Goodbye] ("
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "莫非，这就是爱情 插曲)",
+          "artist": "潘嘉丽 Kelly Pan [Goodbye] ("
+        }
+      ],
+      "correct_artist_candidates_rejected": [],
+      "failure_reasons": {
+        "cancelled": 1
+      }
+    },
+    {
+      "songID": "g2R4HuBN7W8",
+      "original": {
+        "title": "許茹芸〈健忘〉MV（【被偷走的那五年】電影插曲)",
+        "artist": "",
+        "duration": 275
+      },
+      "derived": {
+        "title": "被偷走的那五年 電影插曲)",
+        "artist": "許茹芸〈健忘〉MV（"
+      },
+      "lookup_ids": [
+        "B21F42CA-00D4-4DA1-97F8-B10F1FABB114"
+      ],
+      "queries": [
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "被偷走的那五年 電影插曲)",
+          "artist": "許茹芸〈健忘〉MV（"
+        },
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "被偷走的那五年 电影插曲)",
+          "artist": "许茹芸〈健忘〉MV（"
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "被偷走的那五年 電影插曲)",
+          "artist": "許茹芸〈健忘〉MV（"
+        }
+      ],
+      "correct_artist_candidates_rejected": [],
+      "failure_reasons": {
+        "cancelled": 1
+      }
+    },
+    {
+      "songID": "W0b6HramCug",
+      "original": {
+        "title": "黃齡 Isabelle Huang《繁華夢 Flourished Dream》【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+        "artist": "",
+        "duration": 299
+      },
+      "derived": {
+        "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+        "artist": "黃齡 Isabelle Huang"
+      },
+      "lookup_ids": [
+        "1D2A1AA5-9022-4773-BD56-CE40FFDAE538",
+        "AA7ED406-BFC0-4C83-8E11-3ACD26979B19",
+        "86AF98BD-144F-4993-8BA9-FBB100E205E0"
+      ],
+      "queries": [
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黃齡 Isabelle Huang"
+        },
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "繁华梦 Flourished Dream 【扶摇插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黄龄 Isabelle Huang"
+        },
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黃齡"
+        },
+        {
+          "provider": "lrclib",
+          "endpoint": "search",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "Isabelle Huang"
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黃齡 Isabelle Huang"
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "繁华梦 Flourished Dream 【扶摇插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黄龄 Isabelle Huang"
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "黃齡"
+        },
+        {
+          "provider": "lrcapi",
+          "endpoint": "jsonapi",
+          "title": "繁華夢 Flourished Dream 【扶搖插曲 Legend Of Fu Yao OST】官方MV (Phù Dao OST | Mộng Phồn Hoa)",
+          "artist": "Isabelle Huang"
+        }
+      ],
+      "correct_artist_candidates_rejected": [
+        {
+          "recordID": "1446860830",
+          "title": "繁华梦 (电视剧《扶摇》插曲)",
+          "artist": "黄龄",
+          "duration": 306.207,
+          "reason": "titleMismatch"
+        },
+        {
+          "recordID": "1399374416",
+          "title": "繁华梦 (电视剧《扶摇》插曲)",
+          "artist": "黄龄",
+          "duration": 306.207,
+          "reason": "titleMismatch"
+        },
+        {
+          "recordID": "96fc79721c848a75f1b0706983d71e5e",
+          "title": "繁华梦",
+          "artist": "黄龄",
+          "duration": null,
+          "reason": "titleMismatch"
+        },
+        {
+          "recordID": "5050bf3fae593a5b1956dca729e71552",
+          "title": "繁华梦",
+          "artist": "黄龄",
+          "duration": null,
+          "reason": "titleMismatch"
+        },
+        {
+          "recordID": "5978da906843c8933fd448a02d0ee05c",
+          "title": "繁华梦",
+          "artist": "黄龄",
+          "duration": null,
+          "reason": "titleMismatch"
+        }
+      ],
+      "failure_reasons": {}
+    }
+  ]
+}
