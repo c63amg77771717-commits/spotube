@@ -35,7 +35,6 @@ final class LrcLibService: LyricsRepositoryProtocol {
             } catch {
                 try LyricsMatchingPolicy.checkCancellation(error)
                 failures.append(.init(providerID: .lrclib, message: error.localizedDescription))
-                break // Availability errors are not corrected by spelling variants.
             }
         }
         for query in LyricsQueryPlanner.queries(metadata) {
@@ -58,6 +57,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
             } catch {
                 try LyricsMatchingPolicy.checkCancellation(error)
                 failures.append(.init(providerID: .lrclib, message: error.localizedDescription))
+                break // Availability errors are not corrected by spelling variants.
             }
         }
         try Task.checkCancellation()
