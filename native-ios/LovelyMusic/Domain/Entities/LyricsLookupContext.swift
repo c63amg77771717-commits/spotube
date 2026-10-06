@@ -185,12 +185,19 @@ enum LyricsCandidateScorer {
 
     static func choose(_ candidates: [LyricsCandidate], metadata: LyricsCanonicalMetadata,
                        defaults: UserDefaults, failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
-        var seen = Set<LyricsRecordID>()
-        let ranked = candidates.compactMap { candidate -> (LyricsCandidate, Int)? in
-            guard seen.insert(candidate.id).inserted, let score = score(candidate, metadata: metadata),
-                  score >= 65 || metadata.artistTokens.isEmpty else { return nil }
-            return (candidate, score)
-        }.sorted { $0.1 == $1.1 ? $0.0.id.providerID.rawValue + $0.0.id.recordID < $1.0.id.providerID.rawValue + $1.0.id.recordID : $0.1 > $1.1 }
+        var accepted: [LyricsRecordID: (LyricsCandidate, Int)] = [:]
+        for candidate in candidates {
+            guard let score = score(candidate, metadata: metadata),
+                  score >= 65 || metadata.artistTokens.isEmpty else { continue }
+            // Rejected identities never reserve an ID. Keep the stronger complete record,
+            // including newly verified timestamps, without merging different timelines.
+            if let previous = accepted[candidate.id],
+               previous.1 > score || (previous.1 == score && (previous.0.lyrics.isTimeSynced || !candidate.lyrics.isTimeSynced)) {
+                continue
+            }
+            accepted[candidate.id] = (candidate, score)
+        }
+        let ranked = accepted.values.sorted { $0.1 == $1.1 ? $0.0.id.providerID.rawValue + $0.0.id.recordID < $1.0.id.providerID.rawValue + $1.0.id.recordID : $0.1 > $1.1 }
         guard let best = ranked.first else { return nil }
         let saved = remembered(metadata.context, defaults: defaults).flatMap { id in ranked.first { $0.0.id == id }?.0 }
         if let saved, metadata.context.selectionKey != metadata.context.legacySelectionKey {
