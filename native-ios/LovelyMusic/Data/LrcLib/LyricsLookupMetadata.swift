@@ -80,7 +80,6 @@ enum LyricsLookupMetadata {
         if !artist.isEmpty {
             if identityKey(forward.artist) == artist { return [forward] }
             if identityKey(reverse.artist) == artist { return [reverse] }
-            return [] // Retain an existing performer rather than invent another.
         }
         return [forward, reverse]
     }
@@ -157,7 +156,7 @@ enum LyricsLookupMetadata {
             } else { return nil }
         }
         if parts.count == 1, allowVideoCredits {
-            let video = LyricsLookupContext(title: lookupInput, artist: lookupArtist, hasYouTubeOrigin: true)
+            let video = LyricsLookupContext(title: title, artist: lookupArtist, hasYouTubeOrigin: true)
             if let hypothesis = videoCreditPairs(video).first {
                 lookupTitle = hypothesis.title
                 lookupArtist = hypothesis.artist

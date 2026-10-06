@@ -623,6 +623,16 @@ final class Build20LyricsTests: XCTestCase {
                        metadata.performerIdentity(LyricsLookupMetadata.identityKey(metadata.pair.artist)))
     }
 
+    func testWhitespacePublisherCreditRetainsOriginalEvidenceAndManualConfirmation() throws {
+        let c = importedContexts().first { $0.songID == "4RVl7b0X88Y" }!
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertEqual(metadata.pair.title, "會痛的石頭")
+        XCTAssertEqual(metadata.pair.artist, "蕭敬騰")
+        XCTAssertTrue(metadata.requiresManualIdentityConfirmation)
+        XCTAssertEqual(c.artist, "")
+        XCTAssertEqual(c.title, "蕭敬騰 會痛的石頭-華納official HQ官方版MV")
+    }
+
     private func importedContexts() -> [LyricsLookupContext] {
         [
          .init(songID: "dtVR0oi_N4U", title: "李杰明 W.M.L x 陳忻玥 Vicky Chen【I'm Alive】Official MV", artist: "", album: nil, duration: 185, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),
