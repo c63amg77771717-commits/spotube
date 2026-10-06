@@ -61,7 +61,8 @@ jobs:
           trap 'kill "$monitor_pid" 2>/dev/null || true' EXIT
           xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug             -destination "platform=iOS Simulator,id=$EVANTUBE_PICKER_SIMULATOR"             -derivedDataPath "$RUNNER_TEMP/evantube-picker-derived" -parallel-testing-enabled NO             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-picker.entitlements" build-for-testing             2>&1 | tee "$EVANTUBE_PICKER_EVIDENCE/build-for-testing.log"
       - name: Run original real selection and relaunch tests
-        timeout-minutes: 8
+        # Three sequential simulator cases; one observed case alone took 302 seconds.
+        timeout-minutes: 20
         working-directory: native-ios
         run: |
           set -o pipefail
