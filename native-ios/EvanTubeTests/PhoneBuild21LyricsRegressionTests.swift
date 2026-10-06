@@ -115,8 +115,13 @@ final class PhoneBuild21LyricsRegressionTests: XCTestCase {
             XCTAssertEqual(metadata.pair.artist, "Singer")
             XCTAssertEqual(metadata.versionTags, LyricsCanonicalMetadata.versions(track))
         }
-        for preserved in ["Song (OST)", "Song【Live OST】", "Song (Remix Official MV)", "Song Unofficial MV"] {
+        for preserved in ["MV", "Official MV", "Song (OST)", "Song【Live OST】", "Song (Remix Official MV)", "Song Unofficial MV"] {
             XCTAssertEqual(LyricsLookupMetadata.strippingVideoPresentation(preserved), preserved)
+        }
+        for title in ["MV", "Official MV"] {
+            let full = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: title, artist: "Singer", hasYouTubeOrigin: true)))
+            XCTAssertEqual(full.pair.title, title)
+            XCTAssertNotNil(LyricsCandidateScorer.score(candidate(title: title, artist: "Singer"), metadata: full))
         }
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Singer《Song Live》", artist: "", hasYouTubeOrigin: true)))
         XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "Song", artist: "Singer"), metadata: metadata))

@@ -255,17 +255,19 @@ enum LyricsLookupMetadata {
                   normalized(track) != "official mv", normalized(track) != "lyrics mv" else { return nil }
         }
         let tail = String(input[input.index(after: close)...])
-        let suffix = strippingVideoPresentation(tail).trimmingCharacters(in: .whitespacesAndNewlines)
+        let suffix = strippingVideoPresentation(tail, allowEmpty: true).trimmingCharacters(in: .whitespacesAndNewlines)
         return Pair(title: track + (suffix.isEmpty ? "" : " " + suffix), artist: credit)
     }
 
     /// Alternating bounded standalone labels may follow a song span in either order.
     /// The song span and version-bearing text are retained.
-    static func strippingVideoPresentation(_ input: String) -> String {
+    static func strippingVideoPresentation(_ input: String, allowEmpty: Bool = false) -> String {
+        let standalone = "(?i)^(?:MV|official\\s+(?:music\\s+video|video|audio|mv)|官方\\s*MV)$"
+        if allowEmpty, input.trimmingCharacters(in: .whitespacesAndNewlines).range(of: standalone, options: .regularExpression) != nil { return "" }
         var value = input.replacingOccurrences(of: "（", with: "(").replacingOccurrences(of: "）", with: ")")
         for _ in 0..<8 {
             let next = strippingPresentationSuffix(strippingSoundtrackPresentation(value))
-            if next == value { break }
+            if next == value || (!allowEmpty && next.isEmpty) { break }
             value = next
         }
         return value
@@ -299,8 +301,6 @@ enum LyricsLookupMetadata {
     }
 
     private static func strippingPresentationSuffix(_ input: String) -> String {
-        let standalone = "(?i)^(?:MV|official\\s+(?:music\\s+video|video|audio|mv)|官方\\s*MV)$"
-        if input.trimmingCharacters(in: .whitespacesAndNewlines).range(of: standalone, options: .regularExpression) != nil { return "" }
         var value = input
         let channelSuffix = "(?i)\\s*[-–—]\\s*[\\p{Han}A-Za-z]{1,16}official\\s+(?:HQ|HD)官方版MV\\s*$"
         if let range = value.range(of: channelSuffix, options: .regularExpression) {
