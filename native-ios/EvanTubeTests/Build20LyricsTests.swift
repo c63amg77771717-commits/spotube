@@ -614,6 +614,15 @@ final class Build20LyricsTests: XCTestCase {
         XCTAssertEqual(result.candidates.count, 2)
     }
 
+    func testNestedMovieAnnotationRetainsWildAmbitionIdentity() throws {
+        let c = importedContexts().first { $0.songID == "oJFEOqekQ7Y" }!
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+        XCTAssertEqual(metadata.pair.title, "野心")
+        XCTAssertEqual(metadata.pair.artist, "薛之謙 Joker Xue")
+        XCTAssertEqual(metadata.performerIdentity(LyricsLookupMetadata.identityKey("薛之謙")),
+                       metadata.performerIdentity(LyricsLookupMetadata.identityKey(metadata.pair.artist)))
+    }
+
     private func importedContexts() -> [LyricsLookupContext] {
         [
          .init(songID: "dtVR0oi_N4U", title: "李杰明 W.M.L x 陳忻玥 Vicky Chen【I'm Alive】Official MV", artist: "", album: nil, duration: 185, artistID: nil, albumID: nil, hasYouTubeOrigin: true, musicVideoType: nil),

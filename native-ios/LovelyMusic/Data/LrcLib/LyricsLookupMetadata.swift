@@ -58,6 +58,11 @@ enum LyricsLookupMetadata {
         input = strippingSoundtrackPresentation(input)
         var pieces = input.components(separatedBy: " - ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         if pieces.count == 1 {
+            let presented = strippingChineseLyricPresentation(context.title)
+            // Whitespace is not credit syntax for a bare bilingual title or Live
+            // version. Only an observed official/publisher MV suffix permits this
+            // uncertain hypothesis, which still requires manual confirmation.
+            guard strippingPresentationSuffix(presented) != presented else { return [] }
             // A bounded explicit Han credit followed by whitespace is an alternative
             // hypothesis, not a general split on every word in a song title.
             let pattern = "^([\\p{Han}]{2,4})\\s+([^《【]+)$"
@@ -75,12 +80,15 @@ enum LyricsLookupMetadata {
         if !artist.isEmpty {
             if identityKey(forward.artist) == artist { return [forward] }
             if identityKey(reverse.artist) == artist { return [reverse] }
+            return [] // Retain an existing performer rather than invent another.
         }
         return [forward, reverse]
     }
 
     static func isWhitespaceVideoCredit(_ title: String) -> Bool {
-        let input = strippingSoundtrackPresentation(strippingPresentationSuffix(strippingChineseLyricPresentation(title)))
+        let presented = strippingChineseLyricPresentation(title)
+        guard strippingPresentationSuffix(presented) != presented else { return false }
+        let input = strippingSoundtrackPresentation(strippingPresentationSuffix(presented))
         guard !input.contains(" - "), !input.contains("《"), !input.contains("【") else { return false }
         return input.range(of: "^([\\p{Han}]{2,4})\\s+(.+)$", options: .regularExpression) != nil
     }

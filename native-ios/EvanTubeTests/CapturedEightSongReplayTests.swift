@@ -61,10 +61,11 @@ final class CapturedEightSongReplayTests: XCTestCase {
             // successful decoder must reject unrelated songs, not invent lyrics.
             if c.songID == "3hw92j4SqrI" {
                 XCTAssertNil(after, "Both captured providers contain no valid ycccc candidate")
-            } else {
-                let result = try XCTUnwrap(after, c.songID)
+            } else if let result = after {
                 XCTAssertFalse(result.candidates.isEmpty, c.songID)
                 XCTAssertTrue(!result.lines.isEmpty || !result.candidates.isEmpty, c.songID)
+            } else {
+                XCTFail("No captured valid candidate survived: " + c.songID)
             }
             XCTAssertEqual(context.title, c.title)
             XCTAssertEqual(context.artist, "")
@@ -78,6 +79,7 @@ final class CapturedEightSongReplayTests: XCTestCase {
             report.append(["songID": c.songID, "before": describe(before), "after": describe(after),
                 "beforeQueries": beforeQueries, "afterQueries": CapturedReplayProtocol.queries(),
                 "capturedPrimaryCount": c.responses["LRCLib"]!.count, "capturedSecondaryCount": c.responses["LrcApi"]!.count,
+                "canonicalPair": LyricsCanonicalMetadata(context).map { ["title": $0.pair.title, "artist": $0.pair.artist] } ?? [:],
                 "afterTrace": try JSONSerialization.jsonObject(with: JSONEncoder().encode(events))])
         }
         let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
