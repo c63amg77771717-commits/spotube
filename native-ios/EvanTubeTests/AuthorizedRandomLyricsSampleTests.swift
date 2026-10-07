@@ -79,13 +79,14 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                 let selectedIdentity = report.lyrics?.candidates.first { $0.providerID == report.lyrics?.providerID && $0.lyrics.lines.first?.id == report.lyrics?.lines.first?.id }
                 XCTAssertEqual(selectedIdentity?.identityDecision?.kind, .confirmed, "Uncertain sample identities must never count as automatic success")
             }
-            let providers: [[String: Any]] = report.providers.map { outcome in
-                ["provider": outcome.providerID?.rawValue ?? "unknown", "result": outcome.kind.rawValue,
+            let providers: [[String: Any]] = try report.providers.map { outcome in
+                let evaluated = try JSONSerialization.jsonObject(with: JSONEncoder().encode(outcome.evaluatedCandidates))
+                return ["provider": outcome.providerID?.rawValue ?? "unknown", "result": outcome.kind.rawValue,
                  "receivedCount": outcome.receivedCount, "contentCandidateCount": outcome.contentCandidateCount,
                  "acceptedCount": outcome.acceptedCount, "successfulResponses": outcome.successfulResponses,
                  "httpFailures": outcome.failures.compactMap(\.httpStatus), "failureCount": outcome.failures.count,
                  "failures": outcome.failures.map { ["reason": $0.reason.rawValue, "httpStatus": $0.httpStatus.map { $0 as Any } ?? NSNull()] },
-                 "rejectionReasons": outcome.rejectionReasons,
+                 "rejectionReasons": outcome.rejectionReasons, "evaluatedCandidates": evaluated,
                  "discardedContentOrMetadataCount": max(0, outcome.receivedCount - outcome.contentCandidateCount)]
             }
             let candidates: [[String: Any]] = (report.lyrics?.candidates ?? []).map { candidate in
@@ -96,7 +97,11 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
             results.append(["index": index, "compositionKeys": Array(try compositionKeys(LyricsLookupContext(song: song))).sorted(), "title": title, "artist": artist, "stratum": row["stratum"] ?? "unknown",
                 "state": report.state.rawValue, "providers": providers, "candidates": candidates, "requests": requests,
                 "contentRetrieved": report.providers.contains { $0.contentCandidateCount > 0 },
-                "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain])
+                "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain,
+                "selectionMode": report.state == .synchronized || report.state == .confirmedPlain ? "automatic"
+                    : report.state == .manualSelection ? "manual" : report.state == .candidatesRejected ? "rejected" : "noUsableResult",
+                "identityHumanGroundTruth": "NOT_RUN", "actualVocalAlignment": "NOT_RUN",
+                "manualChoiceVerified": "NOT_RUN", "timestampStructureEvidence": candidates])
         }
         let result: [String: Any] = ["seed": 20261006, "batch": batch, "previousManifestSHA256": document["previousManifestSHA256"] ?? NSNull(), "sampleCount": results.count, "nativeExecution": true,
             "realProviderQueries": true, "probeBothSources": true,

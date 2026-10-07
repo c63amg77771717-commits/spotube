@@ -12,7 +12,7 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         case providerEmpty, noUsableCandidate, allCandidatesRejected, plainOnly, timingUnknown, durationMismatch, instrumental
         case originalMetadata, derivedMetadata, reverseCredit, quotedTitleRetained, explicitBilingualCredit, identityConfirmationRequired
         case metadataRejected, cancelled, network, schema, http, rateLimited, providerUnavailable, secondaryDisabled
-        case normalizationApplied, invalidTimestamp, unsupportedTiming, timingCompatible
+        case normalizationApplied, invalidTimestamp, unsupportedTiming, timingCompatible, artistSpellingUncertain
     }
     struct Event: Codable, Sendable {
         let timestamp: Date

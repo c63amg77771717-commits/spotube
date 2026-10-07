@@ -1,0 +1,154 @@
+{
+  "seed": 20261006,
+  "batch": 1,
+  "drawSeed": 20261006,
+  "previousManifestSHA256": null,
+  "samples": [
+    {
+      "title": "程響 - 四季予你『大雪漫天飄零 做你的嫁衣多美麗』【動態歌詞】",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 249,
+      "sampleKey": "sample-01"
+    },
+    {
+      "title": "林冠吟-毀滅愛情(2004)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 306,
+      "sampleKey": "sample-02"
+    },
+    {
+      "title": "楊凱琳-不忘 (歌詞版)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 270,
+      "sampleKey": "sample-03"
+    },
+    {
+      "title": "柯有綸 Alan Kuo - 哭笑不得",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 281,
+      "sampleKey": "sample-04"
+    },
+    {
+      "title": "不惜时光",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 264,
+      "sampleKey": "sample-05"
+    },
+    {
+      "title": "Pandora (Music Video) David Win",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 164,
+      "sampleKey": "sample-06"
+    },
+    {
+      "title": "望 - 周深 拼音歌詞【手中線，繞啊繞，繞啊繞，繞幾千日夜，也望向歸途】Memory Pin Yin Ge Ci Lyrics video music Chinese song",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 246,
+      "sampleKey": "sample-07"
+    },
+    {
+      "title": "大头针 - 出卖 「你的多情出卖我的爱情赔了我的命，我卖了一个世界却换来灰烬 。」",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 273,
+      "sampleKey": "sample-08"
+    },
+    {
+      "title": "蔡依林 Jolin Tsai - 什麼什麼 Stand Up (《捉妖記2》電影主題曲 華納official 官方MV)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 211,
+      "sampleKey": "sample-09"
+    },
+    {
+      "title": "Illenium - U & Me (Lyrics) ft. Sasha Sloan",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 214,
+      "sampleKey": "sample-10"
+    },
+    {
+      "title": "陳慧琳鄭中基神級對唱《都是你的錯》，歌聲經典動聽，百聽不厭！",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 245,
+      "sampleKey": "sample-11"
+    },
+    {
+      "title": "J Hus - Bouff Daddy (Official Video)",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 214,
+      "sampleKey": "sample-12"
+    },
+    {
+      "title": "汪蘇瀧 - 眼淚落下之前 (《暗戀·橘生淮南》電影插曲)『年輕的愛人總不知天高地厚，把邂逅當擁有。』【動態歌詞/Vietsub/Pinyin Lyrics】",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 263,
+      "sampleKey": "sample-13"
+    },
+    {
+      "title": "戴佩妮-淡水河邊",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 316,
+      "sampleKey": "sample-14"
+    },
+    {
+      "title": "許慧欣 - 失眠(歌詞版)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 256,
+      "sampleKey": "sample-15"
+    },
+    {
+      "title": "孫耀威 x 梁文音 – 幸福的忘記 (Official Music Video)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 257,
+      "sampleKey": "sample-16"
+    },
+    {
+      "title": "郁可唯—我們都愛過（歌詞版）",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 298,
+      "sampleKey": "sample-17"
+    },
+    {
+      "title": "蔡健雅-當你離開的時候",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 238,
+      "sampleKey": "sample-18"
+    },
+    {
+      "title": "劉家奇阿 - 望子成龍 「可是啊 他築的高樓啊 卻沒有他的家 孩子能出頭嗎」【動態歌詞/PinyinLyrics】♪",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 231,
+      "sampleKey": "sample-19"
+    },
+    {
+      "title": "[MV] DAVICHI(다비치) - This Love(이 사랑) l Descendants of the Sun 태양의 후예 OST",
+      "artist": "",
+      "stratum": "hangul-title",
+      "duration": 230,
+      "sampleKey": "sample-20"
+    }
+  ],
+  "strata": {
+    "han-title-proxy": 16,
+    "latin-title": 3,
+    "hangul-title": 1
+  },
+  "manifestSHA256": "cfb9c6e63edc670d55748676d5abdf664b726fbf6749c3edd178b258c1cf0e7a"
+}

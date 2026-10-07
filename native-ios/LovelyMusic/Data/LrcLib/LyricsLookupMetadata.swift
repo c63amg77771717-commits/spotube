@@ -7,7 +7,7 @@ enum LyricsLookupMetadata {
     }
 
     struct NormalizationStep {
-        enum Reason: String { case separatorPresentation, lyricPresentation, soundtrackPresentation, videoPresentation, explicitSongSpan, creditRoles, uncertainRoleAlternative }
+        enum Reason: String { case separatorPresentation, lyricPresentation, soundtrackPresentation, videoPresentation, explicitSongSpan, creditRoles, uncertainRoleAlternative, chineseCleaner }
         let before: String
         let after: String
         let reason: Reason
@@ -23,6 +23,7 @@ enum LyricsLookupMetadata {
             guard next != value else { return }
             steps.append(.init(before: value, after: next, reason: reason)); value = next
         }
+        apply(ChineseLyricsMetadataCleaner.preparedTitle(value, suppliedArtist: context.artist), .chineseCleaner)
         apply(value.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression), .separatorPresentation)
         apply(strippingChineseLyricPresentation(value), .lyricPresentation)
         for _ in 0..<8 {
@@ -81,6 +82,10 @@ enum LyricsLookupMetadata {
     /// Preserve both exact components when a verified video does not establish order.
     /// A supplied performer matching either side fixes the direction; never invent names.
     static func videoCreditPairs(_ context: LyricsLookupContext) -> [Pair] {
+        ChineseLyricsMetadataCleaner.roles(context)
+    }
+
+    static func videoCreditPairsLegacy(_ context: LyricsLookupContext) -> [Pair] {
         guard context.hasYouTubeOrigin else { return [] }
         let explicit = strippingVideoPresentation(strippingChineseLyricPresentation(context.title))
         // A bounded song span already establishes the roles. Do not re-split
@@ -147,6 +152,19 @@ enum LyricsLookupMetadata {
 
     static func cleaned(title: String, artist: String, allowVideoCredits: Bool,
                         allowArtistReplacement: Bool = false) -> Pair? {
+        // The explicit legacy uploader compatibility route retains its previous behavior.
+        if allowArtistReplacement || !allowVideoCredits {
+            return cleanedLegacy(title: title, artist: artist, allowVideoCredits: allowVideoCredits,
+                                 allowArtistReplacement: allowArtistReplacement)
+        }
+        let pair = ChineseLyricsMetadataCleaner.analyze(.init(title: title, artist: artist, hasYouTubeOrigin: true)).pair
+        guard !pair.title.isEmpty, !pair.artist.isEmpty,
+              pair.title != title || pair.artist != artist else { return nil }
+        return pair
+    }
+
+    static func cleanedLegacy(title: String, artist: String, allowVideoCredits: Bool,
+                              allowArtistReplacement: Bool = false) -> Pair? {
         var lookupInput = title
         if allowVideoCredits {
             lookupInput = lookupInput.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
@@ -166,7 +184,10 @@ enum LyricsLookupMetadata {
                 // An explicit bounded x credit is retained as a collaboration. Never
                 // invent missing artists from an ambiguous A & B upload title.
                 let boundedX = credit.range(of: "\\s+x\\s+", options: .regularExpression) != nil
-                guard allowVideoCredits, boundedX else { return nil }
+                let suppliedPrimary = LyricsCanonicalMetadata.creditComponents(lookupArtist).first.map {
+                    identityKey($0) == identityKey(credit)
+                } == true
+                guard allowVideoCredits, boundedX || (!hasGuestCredit(credit) && suppliedPrimary) else { return nil }
             }
             let track = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
             if allowVideoCredits, !lookupArtist.isEmpty,
@@ -229,7 +250,7 @@ enum LyricsLookupMetadata {
         return String(value[range])
     }
 
-    private static func strippingChineseLyricPresentation(_ input: String, removePrecedingSnippet: Bool = true) -> String {
+    static func strippingChineseLyricPresentation(_ input: String, removePrecedingSnippet: Bool = true) -> String {
         let versions = "(?i)\\b(?:live|remix|cover|acoustic|instrumental|karaoke)\\b|翻唱|现场|現場|演唱会|演唱會|改编|改編|加速|慢速"
         guard input.range(of: versions, options: .regularExpression) == nil else { return input }
         let words = "(?:(?:動態歌詞|动态歌词)(?:\\s*/\\s*PinyinLyrics)?|非官方歌詞|非官方歌词|lyrics?\\s*(?:video)?)"

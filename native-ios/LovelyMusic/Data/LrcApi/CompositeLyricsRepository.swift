@@ -62,7 +62,8 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
             let evaluatedProviders = lyrics == nil ? providers.map { outcome in
                 LyricsProviderOutcome(providerID: outcome.providerID, kind: outcome.kind == .usable ? .rejected : outcome.kind,
                     receivedCount: outcome.receivedCount, acceptedCount: 0, successfulResponses: outcome.successfulResponses,
-                    failures: outcome.failures, contentCandidateCount: outcome.contentCandidateCount)
+                    failures: outcome.failures, contentCandidateCount: outcome.contentCandidateCount,
+                    rejectionReasons: outcome.rejectionReasons, evaluatedCandidates: outcome.evaluatedCandidates)
             } : providers
             return .init(lyrics: lyrics, providers: evaluatedProviders)
         }
@@ -122,10 +123,9 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         }
         let candidates = (first?.candidates ?? []) + (second?.candidates ?? [])
         if !candidates.isEmpty {
-            let pair = LyricsLookupMetadata.secondaryPair(title: title, artist: artist,
-                                                         allowVideoCredits: allowVideoCredits)
-            return LyricsMatchingPolicy.choose(candidates, key: key, missingArtist: pair?.artist.isEmpty ?? true,
-                                               defaults: defaults, failures: failures)
+            guard let metadata = LyricsCanonicalMetadata(.init(title: title, artist: artist, duration: duration,
+                                                                hasYouTubeOrigin: allowVideoCredits)) else { return nil }
+            return LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures)
         }
         if let content = second ?? first, !content.lines.isEmpty {
             return SyncedLyrics(lines: content.lines, source: content.source, isTimeSynced: content.isTimeSynced,

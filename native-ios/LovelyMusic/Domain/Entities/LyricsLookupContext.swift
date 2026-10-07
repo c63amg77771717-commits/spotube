@@ -48,34 +48,28 @@ struct LyricsCanonicalMetadata {
     let artistTokens: [String]
     let versionTags: Set<String>
     let context: LyricsLookupContext
+    let presentationContext: [String]
 
     init?(_ context: LyricsLookupContext) {
         let title = context.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let artist = context.artistNameSource == .uploader ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
-        var pair = LyricsLookupMetadata.Pair(title: title, artist: artist)
-        if let clean = LyricsLookupMetadata.cleaned(title: title, artist: artist, allowVideoCredits: context.hasYouTubeOrigin) {
-            pair = clean
-        }
+        let cleaned = ChineseLyricsMetadataCleaner.analyze(context)
+        var pair = cleaned.pair
         if pair.artist.isEmpty {
             guard context.hasYouTubeOrigin else { return nil }
         }
         if context.hasYouTubeOrigin { pair = .init(title: Self.presentationTitle(pair.title), artist: pair.artist) }
+        guard !pair.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         self.context = context; originalTitle = title; originalArtist = artist; self.pair = pair
+        presentationContext = cleaned.presentationContext
         artistTokens = Self.tokens(pair.artist); versionTags = Self.versions(pair.title)
     }
 
-    /// Only an explicit bracketed video credit can establish a bilingual title.
+    /// Explicit bracket or dash credits can establish bounded bilingual title variants.
     /// Version words are never aliases and bare titles are never split into words.
     var explicitTitleVariants: [String] {
-        guard context.hasYouTubeOrigin,
-              LyricsLookupMetadata.bracketedVideoCredit(LyricsLookupMetadata.strippingVideoPresentation(context.title)) != nil,
-              Self.versions(pair.title).isEmpty,
-              let regex = try? NSRegularExpression(pattern: "^([\\p{Han}]+)\\s+([A-Za-z][A-Za-z\\s'’,.?!-]*)$"),
-              let match = regex.firstMatch(in: pair.title, range: NSRange(pair.title.startIndex..., in: pair.title)),
-              let han = Range(match.range(at: 1), in: pair.title),
-              let latin = Range(match.range(at: 2), in: pair.title) else { return [pair.title] }
-        return [pair.title, String(pair.title[han]), String(pair.title[latin])]
+        ChineseLyricsMetadataCleaner.titleVariants(pair.title, context: context)
     }
 
     func matchesTitle(_ title: String) -> Bool {
@@ -179,7 +173,7 @@ struct LyricsCanonicalMetadata {
         let patterns: [(String, String)] = [
             ("live", "\\blive(?:\\s+session)?(?=\\b|版|影音)|現場|现场|演唱會|演唱会|\\bconcert\\b"),
             ("remix", "\\bremix\\b"), ("acoustic", "\\bacoustic\\b"), ("cover", "\\bcover\\b|翻唱"),
-            ("instrumental", "\\binstrumental\\b"), ("karaoke", "\\bkaraoke\\b"), ("demo", "\\bdemo\\b"),
+            ("instrumental", "\\binstrumental\\b|伴奏"), ("karaoke", "\\bkaraoke\\b"), ("demo", "\\bdemo\\b"),
             ("remastered", "\\bremaster(?:ed)?\\b"), ("spedup", "\\bsped\\s*up\\b|加速"),
             ("slowed", "\\bslowed\\b|慢速"), ("nightcore", "\\bnightcore\\b"),
             ("radioedit", "\\bradio\\s+edit\\b"), ("extended", "\\bextended\\b"),
@@ -204,28 +198,32 @@ enum LyricsQueryPlanner {
             if metadata.context.includeDurationInQuery, let duration = metadata.context.duration { queries.append(.init(endpoint: "get", pair: original, duration: duration)) }
             queries.append(.init(endpoint: "get", pair: original, duration: nil))
         }
-        queries.append(.init(endpoint: "search", pair: metadata.pair, duration: nil))
-        if let han = LyricsLookupMetadata.chineseVideoPair(title: metadata.pair.title, artist: metadata.pair.artist,
-                                                          allowVideoCredits: metadata.context.hasYouTubeOrigin) {
-            queries.append(.init(endpoint: "search", pair: han, duration: nil))
+        let titles = metadata.explicitTitleVariants
+        let primaryTitle = titles.first { $0.unicodeScalars.allSatisfy { (0x3400...0x9FFF).contains($0.value) } } ?? metadata.pair.title
+        let artists = metadata.explicitArtistVariants
+        let strongest = LyricsLookupMetadata.Pair(title: primaryTitle, artist: artists.first ?? metadata.pair.artist)
+        // Strong complete role/alias combinations precede weaker reverse/literal probes.
+        queries.append(.init(endpoint: "search", pair: strongest, duration: nil))
+        if metadata.pair.title != strongest.title || metadata.pair.artist != strongest.artist {
+            queries.append(.init(endpoint: "search", pair: metadata.pair, duration: nil))
         }
-        for alternative in metadata.alternativePairs {
-            queries.append(.init(endpoint: "search", pair: alternative, duration: nil))
+        if let latin = artists.last, artists.count > 1 {
+            queries.append(.init(endpoint: "search", pair: .init(title: primaryTitle, artist: latin), duration: nil))
+            if let aliasTitle = titles.last, aliasTitle != primaryTitle {
+                queries.append(.init(endpoint: "search", pair: .init(title: aliasTitle, artist: latin), duration: nil))
+            }
         }
-        if let simplified = LyricsLookupMetadata.simplifiedPair(metadata.pair) {
+        if let simplified = LyricsLookupMetadata.simplifiedPair(strongest) {
             queries.append(.init(endpoint: "search", pair: simplified, duration: nil))
         } else {
-            let title = metadata.pair.title.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? metadata.pair.title
-            let artist = metadata.pair.artist.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? metadata.pair.artist
-            if title != metadata.pair.title || artist != metadata.pair.artist {
+            let title = strongest.title.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? strongest.title
+            let artist = strongest.artist.applyingTransform(StringTransform("Simplified-Traditional"), reverse: false) ?? strongest.artist
+            if title != strongest.title || artist != strongest.artist {
                 queries.append(.init(endpoint: "search", pair: .init(title: title, artist: artist), duration: nil))
             }
         }
-        if let alias = LyricsCanonicalMetadata.alternateArtist(metadata.pair.artist) {
-            queries.append(.init(endpoint: "search", pair: .init(title: metadata.pair.title, artist: alias), duration: nil))
-        }
-        for artist in metadata.explicitArtistVariants {
-            queries.append(.init(endpoint: "search", pair: .init(title: metadata.pair.title, artist: artist), duration: nil))
+        if let alias = LyricsCanonicalMetadata.alternateArtist(strongest.artist) {
+            queries.append(.init(endpoint: "search", pair: .init(title: primaryTitle, artist: alias), duration: nil))
         }
         for hypothesis in metadata.hypotheses {
             for title in hypothesis.titleVariants {
@@ -248,8 +246,9 @@ enum LyricsQueryPlanner {
 }
 
 enum LyricsCandidateScorer {
-    static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> LyricsIdentityDecision {
-        LyricsIdentityPolicy.decision(candidate, metadata: metadata)
+    static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata,
+                         remembered: LyricsRecordID? = nil) -> LyricsIdentityDecision {
+        LyricsIdentityPolicy.decision(candidate, metadata: metadata, remembered: remembered)
     }
 
     static func score(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
@@ -270,7 +269,7 @@ enum LyricsCandidateScorer {
                        defaults: UserDefaults, failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
         var accepted: [LyricsRecordID: (LyricsCandidate, Int)] = [:]
         for rawCandidate in candidates {
-            let identity = decision(rawCandidate, metadata: metadata)
+            let identity = decision(rawCandidate, metadata: metadata, remembered: remembered(metadata.context, defaults: defaults))
             guard identity.kind != .rejected else {
                 LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: rawCandidate.providerID,
                     phase: .candidateDropped, reason: rejectionReason(rawCandidate, metadata: metadata),

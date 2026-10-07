@@ -37,16 +37,17 @@ final class LrcApiService: LyricsRepositoryProtocol {
         }
         LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrcapi)
         var candidates: [LyricsCandidate] = []
+        var evidence: [LyricsCandidateEvidence] = []
+        let remembered = LyricsCandidateScorer.remembered(context, defaults: defaults)
         var failures: [LyricsSourceFailure] = []
         var received = 0
         var successfulResponses = 0
         func report(_ lyrics: SyncedLyrics?) -> LyricsLookupReport {
             .provider(.lrcapi, lyrics: lyrics, received: received,
-                      successfulResponses: successfulResponses, failures: failures, contentCandidates: candidates.count,
-                      rejectionReasons: candidates.reduce(into: [String: Int]()) { counts, candidate in
-                          let decision = LyricsCandidateScorer.decision(candidate, metadata: metadata)
-                          if decision.kind == .rejected { counts[(decision.reason ?? .identityMismatch).rawValue, default: 0] += 1 }
-                      })
+                      successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
+                      rejectionReasons: evidence.reduce(into: [String: Int]()) { counts, record in
+                          if record.identity == "rejected" { counts[record.reason ?? "identityMismatch", default: 0] += 1 }
+                      }, evaluatedCandidates: evidence)
         }
         // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
         for pair in LyricsQueryPlanner.secondaryPairs(metadata) {
@@ -60,16 +61,26 @@ final class LrcApiService: LyricsRepositoryProtocol {
                 candidates += records.prefix(30).compactMap { record -> LyricsCandidate? in
                     guard !record.id.isEmpty, record.id.count <= 256, let title = record.title, let artist = record.artist else {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped, reason: .missingMetadata))
+                        evidence.append(.init(provider: .lrcapi, recordID: record.id, title: record.title, artist: record.artist,
+                            album: record.album, duration: record.duration, metadata: metadata, discardedReason: .missingMetadata,
+                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
                         return nil
                     }
                     guard let lyrics = LyricsMatchingPolicy.lyrics(syncedLRC: record.lrc ?? record.lyrics ?? "",
                         plainText: record.lyrics, recordingDuration: record.duration, videoDuration: context.duration, provider: .lrcapi) else {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped,
                             reason: .emptyContent, title: title, artist: artist, recordID: record.id))
+                        evidence.append(.init(provider: .lrcapi, recordID: record.id, title: title, artist: artist,
+                            album: record.album, duration: record.duration, metadata: metadata, discardedReason: .emptyContent,
+                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
                         return nil
                     }
-                    return LyricsCandidate(id: .init(providerID: .lrcapi, recordID: record.id),
+                    let candidate = LyricsCandidate(id: .init(providerID: .lrcapi, recordID: record.id),
                                            title: title, artist: artist, duration: record.duration, lyrics: lyrics, album: record.album)
+                    evidence.append(.init(provider: .lrcapi, recordID: record.id, title: title, artist: artist,
+                        album: record.album, duration: record.duration, metadata: metadata, candidate: candidate, remembered: remembered,
+                        queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
+                    return candidate
                 }
                 if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) {
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
@@ -90,33 +101,8 @@ final class LrcApiService: LyricsRepositoryProtocol {
     }
 
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics? {
-        try Task.checkCancellation()
-        guard let pair = LyricsLookupMetadata.secondaryPair(title: title, artist: artist,
-                                                           allowVideoCredits: allowVideoCredits) else { return nil }
-        let missingArtist = pair.artist.isEmpty
-        let key = LyricsMatchingPolicy.selectionKey(title: title, artist: artist, duration: duration)
-        var pairs = [pair]
-        if let simplified = LyricsLookupMetadata.simplifiedPair(pair) { pairs.append(simplified) }
-        // At most two spelling queries, each with at most one transient retry.
-        for lookup in pairs.prefix(2) {
-            try Task.checkCancellation()
-            let records = try await request(pair: lookup)
-            try Task.checkCancellation()
-            var seen = Set<String>()
-            let candidates = records.prefix(30).compactMap { record -> LyricsCandidate? in
-                guard !record.id.isEmpty, seen.insert(record.id).inserted,
-                      LyricsMatchingPolicy.identityMatches(title: record.title, artist: record.artist,
-                                                           pair: lookup, missingArtist: missingArtist),
-                      let lyrics = LyricsMatchingPolicy.lyrics(syncedLRC: record.lrc ?? record.lyrics ?? "",
-                          plainText: record.lyrics, recordingDuration: record.duration,
-                          videoDuration: duration, provider: .lrcapi) else { return nil }
-                return LyricsCandidate(id: LyricsRecordID(providerID: .lrcapi, recordID: record.id),
-                                       title: record.title!, artist: record.artist!, duration: record.duration, lyrics: lyrics)
-            }
-            if let result = LyricsMatchingPolicy.choose(candidates, key: key, missingArtist: missingArtist,
-                                                       defaults: defaults) { return result }
-        }
-        return nil
+        try await lookup(context: .init(title: title, artist: artist, duration: duration,
+                                       hasYouTubeOrigin: allowVideoCredits)).legacyValue()
     }
 
     private func request(pair: LyricsLookupMetadata.Pair, diagnosticContext: LyricsLookupContext? = nil) async throws -> [LrcApiRecord] {

@@ -1,0 +1,154 @@
+{
+  "seed": 20261006,
+  "batch": 2,
+  "drawSeed": 20261007,
+  "previousManifestSHA256": "cfb9c6e63edc670d55748676d5abdf664b726fbf6749c3edd178b258c1cf0e7a",
+  "samples": [
+    {
+      "title": "弦子-看走眼-弦內之音",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 266,
+      "sampleKey": "sample-01"
+    },
+    {
+      "title": "王樾安 - 会开花的云♫『你说 翻越那座天空 会有谁在等着我。』『动态歌词 | 高音质 | pinyin Lyrics』",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 215,
+      "sampleKey": "sample-02"
+    },
+    {
+      "title": "虎二 - 可惜我追不回時間 | Tiger Wang - But I Couldn't Turn Back Time（原創歌曲 | Original Song）",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 264,
+      "sampleKey": "sample-03"
+    },
+    {
+      "title": "愛情乞丐",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 300,
+      "sampleKey": "sample-04"
+    },
+    {
+      "title": "When Night Is Falling",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 206,
+      "sampleKey": "sample-05"
+    },
+    {
+      "title": "戴佩妮  Penny Tai - 怎樣 What If We Still Stay Together? (官方完整版MV)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 272,
+      "sampleKey": "sample-06"
+    },
+    {
+      "title": "徐佳瑩 - 行走的魚 (汪蘇瀧概念創作集《聯名》作品)『寫一首歌給你聽，來致敬你的陰影，人們傳頌勇氣 而我可不可以愛你哭泣的心。』【動態歌詞/Vietsub/Pinyin Lyrics】",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 245,
+      "sampleKey": "sample-07"
+    },
+    {
+      "title": "周杰倫 Jay Chou【等你下課 Waiting For You  (with 楊瑞代 Gary)】歌詞版Lyrics MV",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 275,
+      "sampleKey": "sample-08"
+    },
+    {
+      "title": "郁可唯 ─ 傷不起 (有歌詞字幕 Lyrics)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 238,
+      "sampleKey": "sample-09"
+    },
+    {
+      "title": "邱軍 Kui  l 我不會【高音質 動態歌詞 Lyrics】",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 216,
+      "sampleKey": "sample-10"
+    },
+    {
+      "title": "閻奕格 Janice Yan [ 也可以 Might as well ] Official Music Video (電影「追婚日記」插曲)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 280,
+      "sampleKey": "sample-11"
+    },
+    {
+      "title": "Shawn Mendes, Camila Cabello - Señorita",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 205,
+      "sampleKey": "sample-12"
+    },
+    {
+      "title": "戴佩妮 penny《單身潛逃》Official MV",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 289,
+      "sampleKey": "sample-13"
+    },
+    {
+      "title": "吉星出租 - 暮色迴響「神啊可不可以讓我感受一下 看在我們對彼此都放心不下」【動態歌詞/PinyinLyrics】♪",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 179,
+      "sampleKey": "sample-14"
+    },
+    {
+      "title": "Avril Lavigne - Don't Tell Me (Official Video)",
+      "artist": "",
+      "stratum": "latin-title",
+      "duration": 203,
+      "sampleKey": "sample-15"
+    },
+    {
+      "title": "閻韋伶 傻孩子",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 251,
+      "sampleKey": "sample-16"
+    },
+    {
+      "title": "陳小春 Jordan Chan – 獨家記憶 (Official Music Video)",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 304,
+      "sampleKey": "sample-17"
+    },
+    {
+      "title": "张碧晨《骗》电影「如果声音不记得」极虐心插曲【动态歌词Lyrics】",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 295,
+      "sampleKey": "sample-18"
+    },
+    {
+      "title": "PANDORA feat. Beverly / 『Be The One』（TVオープニングサイズ）ミュージックビデオ",
+      "artist": "",
+      "stratum": "kana-title",
+      "duration": 113,
+      "sampleKey": "sample-19"
+    },
+    {
+      "title": "閻奕格 Janice Yan [新寵 New Love] Official Music video",
+      "artist": "",
+      "stratum": "han-title-proxy",
+      "duration": 288,
+      "sampleKey": "sample-20"
+    }
+  ],
+  "strata": {
+    "han-title-proxy": 16,
+    "latin-title": 3,
+    "kana-title": 1
+  },
+  "manifestSHA256": "fc933e893a1471794ae3df7281a864c946750f973d6db15b55229524e126fae5"
+}

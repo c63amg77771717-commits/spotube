@@ -19,6 +19,55 @@ enum LyricsLookupState: String, Equatable {
     }
 }
 
+/// Bounded response evidence, including rejected records. Never includes lyric text or user video IDs.
+struct LyricsCandidateEvidence: Codable {
+    let provider: String
+    let recordID: String?
+    let title: String?
+    let artist: String?
+    let album: String?
+    let duration: Double?
+    let queryEndpoint: String?
+    let queryTitle: String?
+    let queryArtist: String?
+    let identity: String
+    let reason: String?
+    let score: Int
+    let scoreBreakdown: [String: Int]
+    let hypothesisID: String?
+    let canonicalTitle: String
+    let canonicalArtist: String
+    let titleVariants: [String]
+    let versionTags: [String]
+    let contentLineCount: Int
+    let timing: String
+    let actualVocalAlignment: String
+
+    init(provider: LyricsProviderID, recordID: String?, title: String?, artist: String?, album: String?,
+         duration: Double?, metadata: LyricsCanonicalMetadata, candidate: LyricsCandidate? = nil,
+         discardedReason: LyricsLookupDiagnostics.Reason? = nil, remembered: LyricsRecordID? = nil,
+         queryEndpoint: String? = nil, queryTitle: String? = nil, queryArtist: String? = nil) {
+        let decision = candidate.map { LyricsCandidateScorer.decision($0, metadata: metadata, remembered: remembered) }
+        let hypothesis = metadata.hypotheses.first { $0.id == decision?.hypothesisID }
+        self.provider = provider.rawValue; self.recordID = recordID
+        self.title = title; self.artist = artist; self.album = album
+        self.duration = duration.flatMap { $0.isFinite ? $0 : nil }
+        self.queryEndpoint = queryEndpoint; self.queryTitle = queryTitle; self.queryArtist = queryArtist
+        identity = discardedReason != nil ? "rejected" : (decision?.kind.rawValue ?? "rejected")
+        reason = (discardedReason ?? decision?.reason)?.rawValue
+        score = discardedReason == nil ? (decision?.score ?? 0) : 0
+        scoreBreakdown = discardedReason == nil ? (decision?.scoreBreakdown ?? [:]) : [:]
+        hypothesisID = decision?.hypothesisID
+        canonicalTitle = hypothesis?.pair.title ?? metadata.pair.title
+        canonicalArtist = hypothesis?.pair.artist ?? metadata.pair.artist
+        titleVariants = hypothesis?.titleVariants ?? metadata.explicitTitleVariants
+        versionTags = LyricsCanonicalMetadata.versions(title ?? "").sorted()
+        contentLineCount = candidate?.lyrics.lines.count ?? 0
+        timing = candidate?.lyrics.timingState.rawValue ?? "noContent"
+        actualVocalAlignment = "NOT_RUN"
+    }
+}
+
 struct LyricsProviderOutcome {
     enum Kind: String, Equatable { case unavailable, empty, rejected, usable, metadataRejected }
     let providerID: LyricsProviderID?
@@ -26,15 +75,17 @@ struct LyricsProviderOutcome {
     /// Counts refer to bounded records inspected, not distinct songs or HTTP attempts.
     let receivedCount: Int
     let rejectionReasons: [String: Int]
+    let evaluatedCandidates: [LyricsCandidateEvidence]
     let contentCandidateCount: Int
     let acceptedCount: Int
     let successfulResponses: Int
     let failures: [LyricsSourceFailure]
     init(providerID: LyricsProviderID?, kind: Kind, receivedCount: Int, acceptedCount: Int,
-         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidateCount: Int = 0, rejectionReasons: [String: Int] = [:]) {
+         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidateCount: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = []) {
         self.providerID = providerID; self.kind = kind; self.receivedCount = receivedCount
         self.acceptedCount = acceptedCount; self.successfulResponses = successfulResponses
         self.failures = failures; self.contentCandidateCount = contentCandidateCount; self.rejectionReasons = rejectionReasons
+        self.evaluatedCandidates = evaluatedCandidates
     }
 }
 
@@ -64,14 +115,14 @@ struct LyricsLookupReport {
     }
 
     static func provider(_ id: LyricsProviderID, lyrics: SyncedLyrics?, received: Int,
-                         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidates: Int = 0, rejectionReasons: [String: Int] = [:]) -> LyricsLookupReport {
+                         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidates: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = []) -> LyricsLookupReport {
         let accepted = lyrics?.candidates.count ?? 0
         let usable = lyrics.map { !$0.lines.isEmpty || !$0.candidates.isEmpty } ?? false
         let kind: LyricsProviderOutcome.Kind = usable ? .usable : received > 0 ? .rejected
             : successfulResponses > 0 ? .empty : !failures.isEmpty ? .unavailable : .empty
         return .init(lyrics: lyrics, providers: [.init(providerID: id, kind: kind,
             receivedCount: received, acceptedCount: accepted, successfulResponses: successfulResponses, failures: failures,
-            contentCandidateCount: max(contentCandidates, accepted), rejectionReasons: rejectionReasons)])
+            contentCandidateCount: max(contentCandidates, accepted), rejectionReasons: rejectionReasons, evaluatedCandidates: evaluatedCandidates)])
     }
 
     static func metadataRejected(provider: LyricsProviderID? = nil) -> LyricsLookupReport {
