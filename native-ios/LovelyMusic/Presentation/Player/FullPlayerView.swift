@@ -633,6 +633,13 @@ struct FullPlayerView: View {
             VStack(spacing: Theme.Spacing.md) {
                 Spacer()
                 Text(error).foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("lyrics_lookup_outcome")
+                if let report = playerVM.lyricsLookupReport {
+                    Text(report.failureSummary)
+                        .accessibilityIdentifier("lyrics_failed_sources")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
                 Button("重試取得歌詞") { playerVM.retryLyrics() }
                     .accessibilityIdentifier("lyrics_retry")
                 Spacer()
@@ -644,13 +651,21 @@ struct FullPlayerView: View {
                     Image(systemName: "music.note.list")
                         .font(.system(size: 32))
                         .foregroundStyle(Theme.Colors.brandGradient)
-                    Text("找不到這首歌的相符歌詞")
+                    Text(playerVM.lyricsLookupReport?.state.message ?? LocalizationManager.text("Lyrics sources returned no results"))
+                        .accessibilityIdentifier("lyrics_lookup_outcome")
                         .font(Theme.Typography.subheadline)
                         .foregroundStyle(Theme.Colors.textSecondary)
                     Text("歌詞查詢依歌曲名稱與歌手配對；影片標題可能與歌曲資料不同。")
                         .font(Theme.Typography.caption)
                         .foregroundStyle(Theme.Colors.textSecondary)
                         .multilineTextAlignment(.center)
+                    if let report = playerVM.lyricsLookupReport, !report.failures.isEmpty {
+                        Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
+                             + report.failureSummary)
+                            .accessibilityIdentifier("lyrics_partial_source_failure")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
                     Button("重試取得歌詞") { playerVM.retryLyrics() }
                         .accessibilityIdentifier("lyrics_retry")
                 }

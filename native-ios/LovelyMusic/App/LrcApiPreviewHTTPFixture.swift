@@ -25,7 +25,13 @@ final class LrcApiPreviewHTTPFixture: URLProtocol {
         let title = query.first { $0.name == (primary ? "track_name" : "title") }?.value ?? "Arcadia"
         let artist = query.first { $0.name == (primary ? "artist_name" : "artist") }?.value ?? "Kevin MacLeod"
         let payload: Any
-        if primary {
+        var status = 200
+        let mode = ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_OUTCOME_FIXTURE"] ?? ""
+        if ["rejected", "empty", "unavailable"].contains(mode) {
+            status = primary || mode == "unavailable" ? 503 : 200
+            payload = mode == "rejected" && !primary
+                ? [["id": "rejected", "title": "Different song", "artist": "Other performer", "lyrics": "Synthetic unrelated content"]] : []
+        } else if primary {
             let one: [String: Any] = ["id": 101, "trackName": title, "artistName": artist,
                                      "duration": 300.0, "plainLyrics": "LRCLib UI recording"]
             payload = url.lastPathComponent == "search" ? [one] : one
@@ -37,7 +43,7 @@ final class LrcApiPreviewHTTPFixture: URLProtocol {
                  "lrc": "[!text]LrcApi UI second recording"]
             ] as [[String: Any]]
         }
-        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: 200,
+        client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: status,
             httpVersion: nil, headerFields: nil)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: payload))
         client?.urlProtocolDidFinishLoading(self)

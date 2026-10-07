@@ -180,7 +180,9 @@ final class Build20LyricsTests: XCTestCase {
         XCTAssertTrue(result.lines.isEmpty)
         XCTAssertEqual(result.candidates.count, 1)
         XCTAssertNil(LyricsCanonicalMetadata(context(artist: "", video: false)))
-        XCTAssertNil(LyricsCanonicalMetadata(context(title: "A & B - Song", artist: "", video: true)))
+        let ambiguous = try XCTUnwrap(LyricsCanonicalMetadata(context(title: "A & B - Song", artist: "", video: true)))
+        XCTAssertTrue(ambiguous.hypotheses.contains { $0.evidence == .literal })
+        XCTAssertTrue(ambiguous.requiresManualIdentityConfirmation)
     }
 
     func testPlannerAndNoResultTransportStayWithinSixMetadataRequests() async throws {
@@ -216,7 +218,7 @@ final class Build20LyricsTests: XCTestCase {
         XCTAssertTrue(result.lines.isEmpty)
     }
 
-    func testVerifiedEmptyArtistUsesExtractedCreditForSecondaryRequest() async throws {
+    func testUncertainDashCreditUsesSecondaryRequestButRequiresManualIdentity() async throws {
         let f = Build20Transport { _ in .json([
             ["id": "1", "title": "Fixture song", "artist": "Fixture performer", "duration": 200,
              "lrc": "[00:01.00]Extracted credit lyric"]
@@ -224,8 +226,9 @@ final class Build20LyricsTests: XCTestCase {
         defer { f.close() }
         let c = context(title: "Fixture performer - Fixture song (Official Video)", artist: "", video: true)
         let result = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c)
-        XCTAssertEqual(result?.lines.first?.text, "Extracted credit lyric")
-        XCTAssertEqual(f.requests.count, 1)
+        XCTAssertTrue(result?.lines.isEmpty ?? false)
+        XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Extracted credit lyric")
+        XCTAssertLessThanOrEqual(f.requests.count, 6)
         let query = try XCTUnwrap(URLComponents(url: XCTUnwrap(f.requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(query.first { $0.name == "title" }?.value, "Fixture song")
         XCTAssertEqual(query.first { $0.name == "artist" }?.value, "Fixture performer")
@@ -319,7 +322,7 @@ final class Build20LyricsTests: XCTestCase {
         }
     }
 
-    func testImportedDuetRejectsWrongPrimaryGuestExtraGuestAndOtherVersions() async throws {
+    func testImportedDuetRequiresFullCoequalSetAndRejectsExtraGuestsAndOtherVersions() async throws {
         let c = importedContexts()[0]
         let f = Build20Transport { request in
             guard request.url!.lastPathComponent == "search" else { return .status(404) }
@@ -335,8 +338,8 @@ final class Build20LyricsTests: XCTestCase {
         }
         defer { f.close() }
         let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
-        XCTAssertEqual(result?.candidates.map(\.recordID), ["7"])
-        XCTAssertEqual(result?.lines.first?.text, "Context fixture")
+        XCTAssertEqual(Set(result?.candidates.map(\.recordID) ?? []), Set(["7", "12"]))
+        XCTAssertTrue(result?.lines.isEmpty ?? false, "Two independent matching records require a choice")
     }
 
     func testImportedDuetIncompleteCreditsRemainManualAndAsciiXDoesNotSplitNames() async throws {

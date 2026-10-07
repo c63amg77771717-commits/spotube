@@ -1,0 +1,93 @@
+{
+  "sourceBuild": 22,
+  "sourceLibraryFileID": "libfile_84c858e1ee188191968c5753e81a2fe6",
+  "sourceFileID": "file_0000000001bc8209bb077692c769d7c1",
+  "observedLookupID": "5FD62B74-04C3-4648-83C7-AD8A7A3B28F7",
+  "sourceBytes": 193853,
+  "correctRecordID": "1185835188",
+  "original": {
+    "songID": "vOM-6qIVyFs",
+    "title": "郁可唯 Yisa Yu【倒流 Revert】三立華劇《浮士德的微笑》插曲 Official Lyric Video",
+    "artist": "",
+    "duration": 254,
+    "hasYouTubeOrigin": true,
+    "album": null,
+    "artistID": null,
+    "albumID": null,
+    "musicVideoType": null,
+    "artistNameSource": null
+  },
+  "observedCanonicalTitle": "倒流 Revert 三立華劇《浮士德的微笑》插曲",
+  "expectedCanonical": {
+    "title": "倒流 Revert",
+    "artist": "郁可唯 Yisa Yu"
+  },
+  "acceptedQuery": {
+    "title": "倒流",
+    "artist": "郁可唯"
+  },
+  "observedQueries": [
+    {
+      "provider": "lrclib",
+      "endpoint": "search",
+      "title": "倒流 Revert 三立華劇《浮士德的微笑》插曲",
+      "artist": "郁可唯 Yisa Yu",
+      "timestamp": "2026-10-06T15:48:49Z"
+    },
+    {
+      "provider": "lrcapi",
+      "endpoint": "jsonapi",
+      "title": "倒流 Revert 三立華劇《浮士德的微笑》插曲",
+      "artist": "郁可唯 Yisa Yu",
+      "timestamp": "2026-10-06T15:48:53Z"
+    },
+    {
+      "provider": "lrcapi",
+      "endpoint": "jsonapi",
+      "title": "倒流 Revert 三立华剧《浮士德的微笑》插曲",
+      "artist": "郁可唯 Yisa Yu",
+      "timestamp": "2026-10-06T15:48:54Z"
+    },
+    {
+      "provider": "lrcapi",
+      "endpoint": "jsonapi",
+      "title": "倒流 Revert 三立華劇《浮士德的微笑》插曲",
+      "artist": "郁可唯",
+      "timestamp": "2026-10-06T15:48:55Z"
+    },
+    {
+      "provider": "lrcapi",
+      "endpoint": "jsonapi",
+      "title": "倒流 Revert 三立華劇《浮士德的微笑》插曲",
+      "artist": "Yisa Yu",
+      "timestamp": "2026-10-06T15:48:58Z"
+    }
+  ],
+  "candidates": [
+    {
+      "recordID": "1185835188",
+      "title": "倒流",
+      "artist": "郁可唯",
+      "reason": "titleMismatch",
+      "duration": 253.067
+    },
+    {
+      "recordID": "1504847387",
+      "title": "小小天涯 (剧情版) [电视剧《上古情歌》插曲]",
+      "artist": "郁可唯",
+      "reason": "titleMismatch",
+      "duration": 247.752
+    },
+    {
+      "recordID": "1222935707",
+      "title": "好好的 (三立华剧 只为你停留 插曲)",
+      "artist": "吴思贤",
+      "reason": "primaryPerformerMismatch",
+      "duration": 255.306
+    }
+  ],
+  "syntheticLyricContent": true,
+  "liveAvailabilityVerified": false,
+  "lyricBodyCaptured": false,
+  "newLiveProviderCalls": 0
+}

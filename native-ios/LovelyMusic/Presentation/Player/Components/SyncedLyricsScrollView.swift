@@ -182,7 +182,7 @@ struct SyncedLyricsScrollView: View {
             }
             if !lyrics.sourceFailures.isEmpty {
                 Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
-                     + lyrics.sourceFailures.map { $0.providerID.displayName }.joined(separator: ", "))
+                     + Array(Set(lyrics.sourceFailures.map(\.displayLabel))).sorted().joined(separator: ", "))
                     .accessibilityIdentifier("lyrics_source_unavailable")
                     .font(Theme.Typography.caption2)
                     .foregroundStyle(Theme.Colors.textSecondary)

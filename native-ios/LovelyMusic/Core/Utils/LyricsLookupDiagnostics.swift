@@ -12,6 +12,7 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         case providerEmpty, noUsableCandidate, allCandidatesRejected, plainOnly, timingUnknown, durationMismatch, instrumental
         case originalMetadata, derivedMetadata, reverseCredit, quotedTitleRetained, explicitBilingualCredit, identityConfirmationRequired
         case metadataRejected, cancelled, network, schema, http, rateLimited, providerUnavailable, secondaryDisabled
+        case normalizationApplied, invalidTimestamp, unsupportedTiming, timingCompatible
     }
     struct Event: Codable, Sendable {
         let timestamp: Date
@@ -35,6 +36,10 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         let httpStatus: Int?
         let count: Int?
         let score: Int?
+        let outcome: String?
+        let hypothesisID: String?
+        let normalizationReason: String?
+        let normalizationBefore: String?
         let cacheSource: String
         let repositoryCacheSource: String
         let upstreamCacheSource: String
@@ -44,6 +49,7 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         init(context: LyricsLookupContext, provider: LyricsProviderID? = nil, phase: Phase,
              reason: Reason? = nil, endpoint: String? = nil, title: String? = nil, artist: String? = nil,
              duration: Double? = nil, recordID: String? = nil, httpStatus: Int? = nil, count: Int? = nil, score: Int? = nil,
+             outcome: String? = nil, hypothesisID: String? = nil, normalizationReason: String? = nil, normalizationBefore: String? = nil,
              cacheSource: String = "not-observed", attempt: Int? = nil, transportErrorCode: Int? = nil,
              latencyMilliseconds: Int? = nil) {
             timestamp = Date(); lookupID = context.diagnosticLookupID; songID = Self.bounded(context.songID)
@@ -55,6 +61,10 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
             self.duration = duration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
             self.recordID = Self.bounded(recordID); self.httpStatus = httpStatus; self.count = count.map { max(0, min(10000, $0)) }
             self.score = score
+            self.outcome = Self.bounded(outcome)
+            self.hypothesisID = Self.bounded(hypothesisID)
+            self.normalizationReason = Self.bounded(normalizationReason)
+            self.normalizationBefore = Self.bounded(normalizationBefore)
             self.cacheSource = ["network", "local-cache", "server-push", "mixed", "not-observed"].contains(cacheSource) ? cacheSource : "not-observed"
             repositoryCacheSource = "uncached-provider-repository; selection-memory-separate"
             upstreamCacheSource = "not-observed"
@@ -95,6 +105,16 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         for artist in metadata.explicitArtistVariants {
             record(.init(context: context, provider: provider, phase: .hypothesis, reason: .explicitBilingualCredit,
                 title: metadata.pair.title, artist: artist))
+        }
+        for hypothesis in metadata.hypotheses {
+            record(.init(context: context, provider: provider, phase: .hypothesis,
+                reason: hypothesis.evidence == .literal ? .originalMetadata : .derivedMetadata,
+                title: hypothesis.pair.title, artist: hypothesis.pair.artist, hypothesisID: hypothesis.id))
+            for step in hypothesis.normalization {
+                record(.init(context: context, provider: provider, phase: .hypothesis, reason: .normalizationApplied,
+                    title: step.after, hypothesisID: hypothesis.id,
+                    normalizationReason: step.reason.rawValue, normalizationBefore: step.before))
+            }
         }
         if metadata.requiresManualIdentityConfirmation {
             record(.init(context: context, provider: provider, phase: .hypothesis, reason: .identityConfirmationRequired))

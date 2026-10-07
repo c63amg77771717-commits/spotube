@@ -6,6 +6,36 @@ enum LyricsLookupMetadata {
         let artist: String
     }
 
+    struct NormalizationStep {
+        enum Reason: String { case separatorPresentation, lyricPresentation, soundtrackPresentation, videoPresentation, explicitSongSpan, creditRoles, uncertainRoleAlternative }
+        let before: String
+        let after: String
+        let reason: Reason
+    }
+
+    /// Every changed stage retains its exact input/output and operation reason.
+    /// Whole original metadata stays in LyricsLookupContext and the literal hypothesis.
+    static func normalizationSteps(context: LyricsLookupContext, pair: Pair) -> [NormalizationStep] {
+        guard context.hasYouTubeOrigin else { return [] }
+        var value = context.title
+        var steps: [NormalizationStep] = []
+        func apply(_ next: String, _ reason: NormalizationStep.Reason) {
+            guard next != value else { return }
+            steps.append(.init(before: value, after: next, reason: reason)); value = next
+        }
+        apply(value.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression), .separatorPresentation)
+        apply(strippingChineseLyricPresentation(value), .lyricPresentation)
+        for _ in 0..<8 {
+            let previous = value
+            apply(strippingSoundtrackPresentation(value), .soundtrackPresentation)
+            apply(strippingPresentationSuffix(value), .videoPresentation)
+            if value == previous { break }
+        }
+        if let credit = bracketedVideoCredit(value) { apply(credit.title, .explicitSongSpan) }
+        if value != pair.title { apply(pair.title, .creditRoles) }
+        return Array(steps.prefix(20))
+    }
+
     static func normalized(_ value: String) -> String {
         value.folding(options: [.caseInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .split(whereSeparator: \.isWhitespace).joined(separator: " ")
@@ -145,14 +175,16 @@ enum LyricsLookupMetadata {
                 lookupArtist = track
             } else if normalized(credit) == normalized(lookupArtist) || allowVideoCredits {
                 lookupTitle = track
-                lookupArtist = credit
+                // A supplied performer remains a constraint. A weak video title
+                // can propose a track, but cannot turn another name into fact.
+                if lookupArtist.isEmpty { lookupArtist = credit }
             } else { return nil }
         }
         if parts.count == 1, allowVideoCredits {
             let video = LyricsLookupContext(title: title, artist: lookupArtist, hasYouTubeOrigin: true)
             if let hypothesis = videoCreditPairs(video).first {
                 lookupTitle = hypothesis.title
-                lookupArtist = hypothesis.artist
+                if lookupArtist.isEmpty { lookupArtist = hypothesis.artist }
             }
         }
         lookupTitle = strippingPresentationSuffix(lookupTitle)
@@ -255,7 +287,10 @@ enum LyricsLookupMetadata {
                   normalized(track) != "official mv", normalized(track) != "lyrics mv" else { return nil }
         }
         let tail = String(input[input.index(after: close)...])
-        let suffix = strippingVideoPresentation(tail, allowEmpty: true).trimmingCharacters(in: .whitespacesAndNewlines)
+        let remainder = strippingVideoPresentation(tail, allowEmpty: true).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Only a complete named-work role after an explicit song span can be
+        // presentation. Unknown prose and version-bearing suffixes survive.
+        let suffix = unbracketedSoundtrackNote(remainder) ? "" : remainder
         return Pair(title: track + (suffix.isEmpty ? "" : " " + suffix), artist: credit)
     }
 
@@ -279,6 +314,16 @@ enum LyricsLookupMetadata {
         // A named work plus explicit role, Chinese role plus OST, or a bounded
         // foreign OST translation footer with a pipe establishes presentation.
         let pattern = "(?i)(?:\(role).*?[《【].*?[》】]|[《【].*?[》】].*?\(role)|\(role).*?\\bOST\\b|\\bOST\\b.*?\(role)|\\bOST\\b.*?\\|)"
+        return text.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private static func unbracketedSoundtrackNote(_ text: String) -> Bool {
+        guard !text.isEmpty, text.count <= 240, LyricsCanonicalMetadata.versions(text).isEmpty else { return false }
+        let medium = "(?:[\\p{Han}]{0,8}(?:華劇|华剧|台劇|台剧|電視劇|电视剧|電影|电影|劇集|剧集))"
+        let work = "(?:《[^《》\\r\\n]{1,80}》|〈[^〈〉\\r\\n]{1,80}〉|【[^【】\\r\\n]{1,80}】)"
+        let role = "(?:插曲|主題曲|主题曲|片頭曲|片头曲|片尾曲|推廣曲|推广曲|宣傳曲|宣传曲)"
+        let qualifier = "(?:情感|情緒|情绪|人物)?"
+        let pattern = "(?i)^(?:" + medium + "\\s*" + work + "|" + work + "(?:\\s*" + medium + ")?)\\s*" + qualifier + role + "(?:\\s+OST)?$"
         return text.range(of: pattern, options: .regularExpression) != nil
     }
 

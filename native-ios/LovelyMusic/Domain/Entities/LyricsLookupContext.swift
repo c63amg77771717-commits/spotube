@@ -13,10 +13,12 @@ struct LyricsLookupContext: Sendable {
     let albumID: String?
     let hasYouTubeOrigin: Bool
     let musicVideoType: String?
+    let includeDurationInQuery: Bool
 
     init(songID: String? = nil, title: String, artist: String, album: String? = nil,
          duration: Int? = nil, artistID: String? = nil, albumID: String? = nil,
-         hasYouTubeOrigin: Bool = false, musicVideoType: String? = nil, artistNameSource: SongArtistNameSource? = nil, diagnosticLookupID: String = UUID().uuidString) {
+         hasYouTubeOrigin: Bool = false, musicVideoType: String? = nil, artistNameSource: SongArtistNameSource? = nil, diagnosticLookupID: String = UUID().uuidString, includeDurationInQuery: Bool = true) {
+        self.includeDurationInQuery = includeDurationInQuery
         self.diagnosticLookupID = diagnosticLookupID
         self.songID = songID; self.title = title; self.artist = artist; self.album = album
         self.duration = LyricsMatchingPolicy.validDuration(duration)
@@ -25,11 +27,11 @@ struct LyricsLookupContext: Sendable {
         self.artistNameSource = artistNameSource
     }
 
-    init(song: Song) {
+    init(song: Song, includeDurationInQuery: Bool = true) {
         self.init(songID: song.id, title: song.title, artist: song.artistName, album: song.albumName,
                   duration: song.duration, artistID: song.artistId, albumID: song.albumId,
                   hasYouTubeOrigin: song.hasYouTubeOrigin && !song.isEpisode && song.id.utf8.allSatisfy { $0 < 128 },
-                  musicVideoType: song.musicVideoType, artistNameSource: song.artistNameSource)
+                  musicVideoType: song.musicVideoType, artistNameSource: song.artistNameSource, includeDurationInQuery: includeDurationInQuery)
     }
 
     var legacySelectionKey: String { LyricsMatchingPolicy.selectionKey(title: title, artist: artist, duration: duration) }
@@ -56,7 +58,7 @@ struct LyricsCanonicalMetadata {
             pair = clean
         }
         if pair.artist.isEmpty {
-            guard context.hasYouTubeOrigin, !title.contains(" - "), !title.contains("《"), !title.contains("【") else { return nil }
+            guard context.hasYouTubeOrigin else { return nil }
         }
         if context.hasYouTubeOrigin { pair = .init(title: Self.presentationTitle(pair.title), artist: pair.artist) }
         self.context = context; originalTitle = title; originalArtist = artist; self.pair = pair
@@ -95,10 +97,10 @@ struct LyricsCanonicalMetadata {
         return quoted
     }
 
+    var hypotheses: [LyricsIdentityHypothesis] { LyricsIdentityPolicy.hypotheses(self) }
+
     var requiresManualIdentityConfirmation: Bool {
-        if quotedVideoPair != nil { return true }
-        guard context.hasYouTubeOrigin, LyricsLookupMetadata.isWhitespaceVideoCredit(context.title) else { return false }
-        return LyricsLookupMetadata.identityKey(context.artist) != LyricsLookupMetadata.identityKey(pair.artist)
+        hypotheses.first?.allowsAutomaticSelection != true
     }
 
     var alternativePairs: [LyricsLookupMetadata.Pair] {
@@ -175,7 +177,7 @@ struct LyricsCanonicalMetadata {
 
     static func versions(_ title: String) -> Set<String> {
         let patterns: [(String, String)] = [
-            ("live", "\\blive(?:\\s+session)?\\b|現場|现场|演唱會|演唱会|\\bconcert\\b"),
+            ("live", "\\blive(?:\\s+session)?(?=\\b|版|影音)|現場|现场|演唱會|演唱会|\\bconcert\\b"),
             ("remix", "\\bremix\\b"), ("acoustic", "\\bacoustic\\b"), ("cover", "\\bcover\\b|翻唱"),
             ("instrumental", "\\binstrumental\\b"), ("karaoke", "\\bkaraoke\\b"), ("demo", "\\bdemo\\b"),
             ("remastered", "\\bremaster(?:ed)?\\b"), ("spedup", "\\bsped\\s*up\\b|加速"),
@@ -199,7 +201,7 @@ enum LyricsQueryPlanner {
         let original = LyricsLookupMetadata.Pair(title: metadata.originalTitle, artist: metadata.originalArtist)
         var queries: [Query] = []
         if !original.artist.isEmpty {
-            if let duration = metadata.context.duration { queries.append(.init(endpoint: "get", pair: original, duration: duration)) }
+            if metadata.context.includeDurationInQuery, let duration = metadata.context.duration { queries.append(.init(endpoint: "get", pair: original, duration: duration)) }
             queries.append(.init(endpoint: "get", pair: original, duration: nil))
         }
         queries.append(.init(endpoint: "search", pair: metadata.pair, duration: nil))
@@ -225,97 +227,38 @@ enum LyricsQueryPlanner {
         for artist in metadata.explicitArtistVariants {
             queries.append(.init(endpoint: "search", pair: .init(title: metadata.pair.title, artist: artist), duration: nil))
         }
+        for hypothesis in metadata.hypotheses {
+            for title in hypothesis.titleVariants {
+                queries.append(.init(endpoint: "search", pair: .init(title: title, artist: hypothesis.pair.artist), duration: nil))
+            }
+        }
         var seen = Set<String>()
         return Array(queries.filter { seen.insert($0.endpoint + "|" + $0.pair.title + "|" + $0.pair.artist + "|" + String($0.duration ?? 0)).inserted }.prefix(6))
     }
 
     static func secondaryPairs(_ metadata: LyricsCanonicalMetadata) -> [LyricsLookupMetadata.Pair] {
         var seen = Set<String>()
-        let original = LyricsLookupMetadata.Pair(title: metadata.originalTitle, artist: metadata.originalArtist)
-        return Array(([original, metadata.pair] + queries(metadata).map(\.pair))
-            .filter { seen.insert($0.title + "|" + $0.artist).inserted && (!$0.artist.isEmpty || metadata.pair.artist.isEmpty) }.prefix(6))
+        let planned = queries(metadata)
+        let pairs = planned.filter { $0.endpoint == "search" }.map(\.pair) + planned.map(\.pair)
+        return Array(pairs.filter {
+            seen.insert($0.title + "|" + $0.artist).inserted
+        }.prefix(6))
     }
+
 }
 
 enum LyricsCandidateScorer {
-    static func score(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
-        var best = scoreSingle(candidate, metadata: metadata)
-        // Removing a preceding quote could remove a formal subtitle. Keep that
-        // hypothesis and require manual choice for the shortened title.
-        if metadata.requiresManualIdentityConfirmation, let value = best { best = min(value, 84) }
-        for alternative in metadata.alternativePairs {
-            let context = metadata.context
-            let alternateContext = LyricsLookupContext(songID: context.songID, title: alternative.title, artist: alternative.artist,
-                album: context.album, duration: context.duration, artistID: context.artistID, albumID: context.albumID,
-                hasYouTubeOrigin: context.hasYouTubeOrigin, musicVideoType: context.musicVideoType,
-                diagnosticLookupID: context.diagnosticLookupID)
-            guard let alternate = LyricsCanonicalMetadata(alternateContext),
-                  var value = scoreSingle(candidate, metadata: alternate) else { continue }
-            if LyricsLookupMetadata.normalized(candidate.title) == LyricsLookupMetadata.normalized(alternative.title),
-               LyricsLookupMetadata.normalized(candidate.title) != LyricsLookupMetadata.normalized(metadata.originalTitle) {
-                value -= 5
-            }
-            if metadata.requiresManualIdentityConfirmation,
-               metadata.quotedVideoPair?.title != alternative.title { value = min(value, 84) }
-            best = max(best ?? Int.min, value)
-        }
-        return best
+    static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> LyricsIdentityDecision {
+        LyricsIdentityPolicy.decision(candidate, metadata: metadata)
     }
 
-    private static func scoreSingle(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
-        guard !candidate.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !candidate.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-        // Filter the same response locally by performer first, without another request.
-        let tokens = LyricsCanonicalMetadata.tokens(candidate.artist)
-        var completeCredit = true
-        if let primary = metadata.artistTokens.first {
-            guard let otherPrimary = tokens.first,
-                  metadata.performerIdentity(primary) == metadata.performerIdentity(otherPrimary) else { return nil }
-            let expected = Set(metadata.artistTokens.map(metadata.performerIdentity))
-            let actual = Set(tokens.map(metadata.performerIdentity))
-            guard actual.isSubset(of: expected) else { return nil }
-            completeCredit = expected == actual
-        }
-        let title = metadata.context.hasYouTubeOrigin
-            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(candidate.title)) : candidate.title
-        guard LyricsCanonicalMetadata.versions(title) == metadata.versionTags,
-              metadata.matchesTitle(title) else { return nil }
-        var score = LyricsLookupMetadata.normalized(candidate.title) == LyricsLookupMetadata.normalized(metadata.originalTitle) ? 40 : 35
-        if !metadata.artistTokens.isEmpty {
-            if !completeCredit { return min(score + 40, 84) }
-            score += 30
-        }
-        if let album = candidate.album, let expected = metadata.context.album,
-           !expected.isEmpty, LyricsLookupMetadata.identityKey(album) == LyricsLookupMetadata.identityKey(expected) { score += 10 }
-        score += 20
-        return score
+    static func score(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
+        let result = decision(candidate, metadata: metadata)
+        return result.kind == .rejected ? nil : result.score
     }
 
     static func rejectionReason(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> LyricsLookupDiagnostics.Reason {
-        guard !candidate.title.isEmpty, !candidate.artist.isEmpty else { return .missingMetadata }
-        var identities = [metadata]
-        for pair in metadata.alternativePairs {
-            if let alternative = LyricsCanonicalMetadata(LyricsLookupContext(title: pair.title, artist: pair.artist,
-                duration: metadata.context.duration, hasYouTubeOrigin: metadata.context.hasYouTubeOrigin)) {
-                identities.append(alternative)
-            }
-        }
-        let tokens = LyricsCanonicalMetadata.tokens(candidate.artist)
-        let performers = identities.filter { identity in
-            guard let primary = identity.artistTokens.first else { return true }
-            return tokens.first.map(identity.performerIdentity) == identity.performerIdentity(primary)
-        }
-        guard !performers.isEmpty else { return .primaryPerformerMismatch }
-        let credits = performers.filter { identity in
-            identity.artistTokens.isEmpty || Set(tokens.map(identity.performerIdentity)).isSubset(of: Set(identity.artistTokens.map(identity.performerIdentity)))
-        }
-        guard !credits.isEmpty else { return .guestMismatch }
-        let title = metadata.context.hasYouTubeOrigin
-            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(candidate.title)) : candidate.title
-        let matching = credits.filter { $0.matchesTitle(title) }
-        guard !matching.isEmpty else { return .titleMismatch }
-        guard matching.contains(where: { LyricsCanonicalMetadata.versions(title) == $0.versionTags }) else { return .versionMismatch }
-        return .identityMismatch
+        decision(candidate, metadata: metadata).reason ?? .identityMismatch
     }
 
     static func remembered(_ context: LyricsLookupContext, defaults: UserDefaults) -> LyricsRecordID? {
@@ -326,24 +269,28 @@ enum LyricsCandidateScorer {
     static func choose(_ candidates: [LyricsCandidate], metadata: LyricsCanonicalMetadata,
                        defaults: UserDefaults, failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
         var accepted: [LyricsRecordID: (LyricsCandidate, Int)] = [:]
-        for candidate in candidates {
-            guard let score = score(candidate, metadata: metadata) else {
-                LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: candidate.providerID,
-                    phase: .candidateDropped, reason: rejectionReason(candidate, metadata: metadata),
-                    title: candidate.title, artist: candidate.artist, duration: candidate.duration, recordID: candidate.recordID))
+        for rawCandidate in candidates {
+            let identity = decision(rawCandidate, metadata: metadata)
+            guard identity.kind != .rejected else {
+                LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: rawCandidate.providerID,
+                    phase: .candidateDropped, reason: rejectionReason(rawCandidate, metadata: metadata),
+                    title: rawCandidate.title, artist: rawCandidate.artist, duration: rawCandidate.duration, recordID: rawCandidate.recordID))
                 continue
             }
-            guard score >= 65 || metadata.artistTokens.isEmpty else {
-                LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: candidate.providerID,
-                    phase: .candidateDropped, reason: .scoreBelowManual, recordID: candidate.recordID, score: score))
-                continue
+            let score = identity.score
+            let candidate = rawCandidate.withIdentityDecision(identity)
+            let timingReason: LyricsLookupDiagnostics.Reason?
+            switch candidate.lyrics.timingState {
+            case .structurallyCompatible: timingReason = nil
+            case .timingUnknown: timingReason = .timingUnknown
+            case .durationMismatch: timingReason = .durationMismatch
+            case .invalidTimestamp: timingReason = .invalidTimestamp
+            case .unsupportedTiming: timingReason = .unsupportedTiming
+            case .plainOnly: timingReason = .plainOnly
             }
-            let timingReason: LyricsLookupDiagnostics.Reason? = candidate.lyrics.isTimeSynced ? nil
-                : candidate.duration == nil || metadata.context.duration == nil ? .timingUnknown
-                : abs(candidate.duration! - Double(metadata.context.duration!)) > 1 ? .durationMismatch : .plainOnly
             LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: candidate.providerID,
                 phase: .candidateAccepted, reason: timingReason, title: candidate.title, artist: candidate.artist,
-                duration: candidate.duration, recordID: candidate.recordID, score: score))
+                duration: candidate.duration, recordID: candidate.recordID, score: score, hypothesisID: identity.hypothesisID))
             // Rejected identities never reserve an ID. Keep the stronger complete record,
             // including newly verified timestamps, without merging different timelines.
             if let previous = accepted[candidate.id],
@@ -363,12 +310,13 @@ enum LyricsCandidateScorer {
             LyricsSelectionStore.select(saved.id, for: metadata.context.selectionKey, defaults: defaults)
         }
         let uniqueHigh = best.1 >= 85 && (ranked.count == 1 || best.1 - ranked[1].1 >= 10)
-        let chosen = saved ?? (!metadata.artistTokens.isEmpty && uniqueHigh ? best.0 : nil)
+        let chosen = saved ?? (best.0.identityDecision?.allowsAutomaticSelection == true && uniqueHigh ? best.0 : nil)
         LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: chosen?.providerID,
             phase: .selection, reason: saved != nil ? .rememberedSelected : chosen != nil ? .autoSelected : .manualRequired,
             recordID: chosen?.recordID, count: ranked.count, score: best.1))
         return SyncedLyrics(lines: chosen?.lyrics.lines ?? [], source: chosen?.lyrics.source ?? "",
                             isTimeSynced: chosen?.lyrics.isTimeSynced ?? false, candidates: ranked.map { $0.0 },
-                            selectionKey: metadata.context.selectionKey, providerID: chosen?.providerID, sourceFailures: failures)
+                            selectionKey: metadata.context.selectionKey, providerID: chosen?.providerID, sourceFailures: failures,
+                            timingState: chosen?.lyrics.timingState)
     }
 }

@@ -1,0 +1,242 @@
+[
+  {
+    "name": "both-empty",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": []
+    },
+    "expected": "providerEmpty",
+    "failureProviders": []
+  },
+  {
+    "name": "primary-failure-secondary-rejected",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 503,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Different song",
+          "artist": "Other performer",
+          "duration": 200,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "candidatesRejected",
+    "failureProviders": [
+      "lrclib"
+    ],
+    "failureStatus": 503
+  },
+  {
+    "name": "primary-failure-secondary-empty",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 503,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": []
+    },
+    "expected": "providerEmpty",
+    "failureProviders": [
+      "lrclib"
+    ],
+    "failureStatus": 503
+  },
+  {
+    "name": "both-failed",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 503,
+      "records": []
+    },
+    "secondary": {
+      "status": 429,
+      "records": []
+    },
+    "expected": "sourceUnavailable",
+    "failureProviders": [
+      "lrclib",
+      "lrcapi"
+    ],
+    "failureStatus": 429
+  },
+  {
+    "name": "unknown-performer-manual",
+    "title": "Song",
+    "artist": "",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Song",
+          "artist": "Singer",
+          "duration": 200,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "manualSelection",
+    "failureProviders": []
+  },
+  {
+    "name": "secondary-plain",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Song",
+          "artist": "Singer",
+          "duration": 200,
+          "lrc": null,
+          "lyrics": "Synthetic plain fixture content"
+        }
+      ]
+    },
+    "expected": "confirmedPlain",
+    "failureProviders": []
+  },
+  {
+    "name": "secondary-unknown-timing",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Song",
+          "artist": "Singer",
+          "duration": null,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "confirmedPlain",
+    "failureProviders": []
+  },
+  {
+    "name": "secondary-duration-mismatch",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Song",
+          "artist": "Singer",
+          "duration": 201.733,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "confirmedPlain",
+    "failureProviders": []
+  },
+  {
+    "name": "secondary-synced",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "Song",
+          "artist": "Singer",
+          "duration": 200,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "synchronized",
+    "failureProviders": []
+  },
+  {
+    "name": "primary-rejected-secondary-failed",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 200,
+      "records": [
+        {
+          "id": 1,
+          "trackName": "Different song",
+          "artistName": "Other performer",
+          "duration": 200,
+          "syncedLyrics": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "secondary": {
+      "status": 503,
+      "records": []
+    },
+    "expected": "candidatesRejected",
+    "failureProviders": [
+      "lrcapi"
+    ],
+    "failureStatus": 503
+  },
+  {
+    "name": "secondary-schema-failed",
+    "title": "Song",
+    "artist": "Singer",
+    "primary": {
+      "status": 503,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [],
+      "invalidJSON": true
+    },
+    "expected": "sourceUnavailable",
+    "failureProviders": [
+      "lrclib",
+      "lrcapi"
+    ],
+    "failureStatus": 503
+  }
+]

@@ -2,12 +2,33 @@ name: EvanTube native iOS IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      package_ipa:
+        description: 'Package only after this commit passes native/UI, picker/callstack, agent-device and both authorized twenty-song batches'
+        type: boolean
+        default: false
+      source_queries_authorized:
+        description: 'Explicit authorization for the fixed twenty-song LRCLib/LrcApi sample'
+        type: boolean
+        default: false
+      first_sample_run_id:
+        description: 'Successful same-commit batch-one workflow run, required before batch two and final IPA'
+        type: string
+        default: ''
+      random_sample_json:
+        description: 'Fixed sanitized twenty-row sample manifest; no video IDs, accounts or playlist names'
+        type: string
+        default: ''
   push:
     branches:
       - codex/ios-neonoir-20260930
     paths:
       - native-ios/**
       - .github/workflows/evantube-native-ios-ipa.yml
+
+permissions:
+  contents: read
+  actions: read
 
 concurrency:
   group: evantube-native-ios-${{ github.ref }}
@@ -28,6 +49,14 @@ jobs:
         run: |
           swiftc -parse-as-library native-ios/LovelyMusic/Domain/Entities/Song.swift native-ios/LovelyMusic/Domain/Entities/PersonalMusicTaste.swift native-ios/RecommendationChecks/RecommendationPolicyChecks.swift -o "$RUNNER_TEMP/recommendation-checks"
           "$RUNNER_TEMP/recommendation-checks"
+      - name: Prepare explicitly authorized fixed sample
+        if: github.event_name == 'workflow_dispatch' && inputs.source_queries_authorized && inputs.random_sample_json != ''
+        env:
+          EVANTUBE_SAMPLE_JSON: ${{ inputs.random_sample_json }}
+          EVANTUBE_FIRST_SAMPLE_RUN: ${{ inputs.first_sample_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          EVANTUBE_EXPECTED_SHA: ${{ github.sha }}
+        run: python3 scripts/ios-lyrics-sample/prepare_ci_manifest.py
       - name: Generate project
         working-directory: native-ios
         env:
@@ -47,18 +76,6 @@ jobs:
           print('Official YouTube search configured:', bool(key))
           PY
           xcodegen generate
-      - name: Build unsigned iOS app
-        working-directory: native-ios
-        run: |
-          xcodebuild \
-            -project LovelyMusic.xcodeproj \
-            -scheme LovelyMusic \
-            -configuration Release \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
-            CODE_SIGNING_ALLOWED=NO \
-            build
       - name: Test playback, lyrics, MB3 import and playlist sync
         id: unit_tests
         working-directory: native-ios
@@ -83,8 +100,15 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -only-testing:EvanTubeTests/CommonLyricsLogicTests \
+            -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testCompositionKeysIncludeUncertainTitleRoles \
+            -only-testing:EvanTubeTests/LyricsLookupOutcomeTests \
+            -only-testing:EvanTubeTests/AutomaticLyricsTests \
+            -only-testing:EvanTubeTests/LyricsCandidateVisibilityTests \
+            -only-testing:EvanTubeTests/LyricsSecondaryViewModelTests \
             -only-testing:EvanTubeTests/Build20LyricsTests \
             -only-testing:EvanTubeTests/PhoneBuild21LyricsRegressionTests \
+            -only-testing:EvanTubeTests/LrcApiSecondaryRepositoryTests \
             -only-testing:EvanTubeTests/MB3ImportTests \
             -only-testing:EvanTubeTests/YouTubeSearchTests \
             -only-testing:EvanTubeTests/CapturedEightSongReplayTests \
@@ -104,6 +128,7 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -only-testing:EvanTubeTests \
+            -skip-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests \
             -resultBundlePath "$RUNNER_TEMP/evantube-unit-tests.xcresult" \
             -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES \
@@ -145,6 +170,9 @@ jobs:
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" build-for-testing
           for test in \
+            EvanTubeLyricsOutcomeUITests/testSecondaryRejectedResponseIsNotMaskedByPrimary503 \
+            EvanTubeLyricsOutcomeUITests/testSecondaryEmptyResponseIsNotMaskedByPrimary503 \
+            EvanTubeLyricsOutcomeUITests/testBothUnavailableSourcesReachTheRetryUI \
             EvanTubeLyricsCandidateUITests/testCandidateOnlyResultReachesFullPlayerAndAllowsPlainLyricsSelection \
             EvanTubeLyricsCandidateUITests/testSelectedRecordingIsRememberedAcrossActualAppRelaunch \
             EvanTubeLrcApiSecondaryUITests/testCrossProviderSelectionAndAttributionSurviveActualRelaunch \
@@ -199,22 +227,84 @@ jobs:
             ${{ runner.temp }}/evantube-preview-evidence/**/*.log
             ${{ runner.temp }}/evantube-ui-diagnostics/*.log
           if-no-files-found: error
+      - name: Validate fixed random sample through real lyric providers
+        id: random_sample
+        if: github.event_name == 'workflow_dispatch' && inputs.source_queries_authorized && inputs.random_sample_json != ''
+        working-directory: native-ios
+        env:
+          EVANTUBE_AUTHORIZED_LYRICS_SAMPLE: '20'
+          EVANTUBE_SAMPLE_OUTPUT: ${{ runner.temp }}/evantube-random-sample.json
+        run: |
+          xcodebuild -project LovelyMusic.xcodeproj -scheme EvanTubeTests -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" -parallel-testing-enabled NO \
+            -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests \
+            -resultBundlePath "$RUNNER_TEMP/evantube-random-sample.xcresult" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" test
+          python3 ../scripts/ios-lyrics-sample/export_sample_result.py --bundle "$RUNNER_TEMP/evantube-random-sample.xcresult" --output "$RUNNER_TEMP/evantube-random-sample.json"
+      - name: Save authorized sample evidence
+        if: always() && steps.random_sample.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-random-lyrics-sample
+          path: |
+            ${{ runner.temp }}/evantube-random-sample.json
+            ${{ runner.temp }}/evantube-first-sample.json
+            ${{ runner.temp }}/evantube-random-sample.xcresult
+          if-no-files-found: error
+      - name: Verify same-commit tests before any final IPA build
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVANTUBE_EXPECTED_SHA: ${{ github.sha }}
+          EVANTUBE_SAMPLE_PASSED: ${{ steps.random_sample.outcome }}
+        run: python3 scripts/ios-lyrics-sample/verify_prepackage_tests.py
+      - name: Build unsigned iOS app
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
+        working-directory: native-ios
+        env:
+          YOUTUBE_DATA_API_KEY: ${{ secrets.EVANTUBE_YOUTUBE_DATA_API_KEY }}
+        run: |
+          # Restore only the existing production key after the test-only credentials were removed.
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          path = Path('LovelyMusic/Resources/Secrets.plist')
+          data = plistlib.loads(path.read_bytes())
+          key = os.environ.get('YOUTUBE_DATA_API_KEY', '').strip()
+          if key:
+              data['YOUTUBE_DATA_API_KEY'] = key
+              path.write_bytes(plistlib.dumps(data))
+          PY
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme LovelyMusic \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
       - name: Package IPA
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$RUNNER_TEMP/evantube-derived/Build/Products/Release-iphoneos/LovelyMusic.app" "$RUNNER_TEMP/Payload/EvanTube.app"
           cd "$RUNNER_TEMP"
           ditto -c -k --sequesterRsrc --keepParent Payload "$GITHUB_WORKSPACE/EvanTube-native-iOS.ipa"
       - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
         with:
           name: EvanTube-native-iOS-unsigned
           path: EvanTube-native-iOS.ipa
           if-no-files-found: error
       - name: Prepare verified IPA transfer parts
         id: ipa_parts
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
         run: python3 scripts/ios-picker-diagnostic/split_ipa.py --ipa EvanTube-native-iOS.ipa --output "$RUNNER_TEMP/evantube-ipa-parts"
       - uses: actions/upload-artifact@v4
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package_ipa
         with:
           name: EvanTube-build20-ipa-part0
           path: |

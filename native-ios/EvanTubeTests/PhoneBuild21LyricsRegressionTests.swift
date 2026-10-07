@@ -107,6 +107,132 @@ final class PhoneBuild21LyricsRegressionTests: XCTestCase {
         print("PHONE_BUILD21_REGRESSION " + String(decoding: data, as: UTF8.self))
     }
 
+    private struct RevertFixture: Decodable {
+        let sourceBuild: Int
+        let sourceLibraryFileID, sourceFileID, observedLookupID, correctRecordID: String
+        let original: RevertOriginal
+        let observedCanonicalTitle: String
+        let expectedCanonical, acceptedQuery: Pair
+        let observedQueries: [Query]
+        let candidates: [Record]
+    }
+    private struct RevertOriginal: Decodable {
+        let songID, title, artist: String
+        let duration: Int
+        let hasYouTubeOrigin: Bool
+        let album, artistID, albumID, musicVideoType: String?
+        let artistNameSource: SongArtistNameSource?
+    }
+
+    func testPhoneBuild22RevertNamedWorkTailRepairsExactQueryAndAcceptsRecordedCandidate() async throws {
+        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "phone_build22_revert_metadata", withExtension: "json"))
+        let fixture = try JSONDecoder().decode(RevertFixture.self, from: Data(contentsOf: url))
+        XCTAssertEqual(fixture.sourceBuild, 22)
+        XCTAssertEqual(fixture.sourceLibraryFileID, "libfile_84c858e1ee188191968c5753e81a2fe6")
+        let original = fixture.original
+        var song = Song(id: original.songID, title: original.title, artistName: original.artist, artistId: original.artistID,
+            albumName: original.album, albumId: original.albumID, duration: original.duration, thumbnailURL: nil,
+            artistNameSource: original.artistNameSource)
+        song.musicVideoType = original.musicVideoType
+        let context = LyricsLookupContext(song: song)
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
+        XCTAssertEqual(metadata.pair.title, fixture.expectedCanonical.title)
+        XCTAssertEqual(metadata.pair.artist, fixture.expectedCanonical.artist)
+        XCTAssertTrue(metadata.explicitTitleVariants.contains(fixture.acceptedQuery.title))
+        XCTAssertNil(metadata.alternateVideoPair)
+        XCTAssertFalse(metadata.requiresManualIdentityConfirmation)
+        XCTAssertTrue(LyricsQueryPlanner.secondaryPairs(metadata).contains {
+            $0.title == fixture.acceptedQuery.title && $0.artist == fixture.acceptedQuery.artist
+        })
+        XCTAssertEqual(fixture.candidates.first { $0.recordID == fixture.correctRecordID }?.reason, "titleMismatch",
+                       "Before-state rejection is actual phone metadata, not a simulated successful lookup")
+
+        let records: [[String: Any]] = fixture.candidates.map { record in
+            var row: [String: Any] = ["id": record.recordID, "title": record.title, "artist": record.artist,
+                "lrc": "[00:01.00]Synthetic regression line, not captured lyrics"]
+            if let duration = record.duration { row["duration"] = duration }
+            return row
+        }
+        let acceptedKey = fixture.acceptedQuery.title + "|" + fixture.acceptedQuery.artist
+        let observedKeys = fixture.observedQueries.filter { $0.provider == "lrcapi" }.map { $0.title + "|" + $0.artist }
+        // Captured polluted keys reproduce the actual rejection; only an exact
+        // corrected title/performer key can return the same synthetic records.
+        // Every other query returns an empty result, never a universal success.
+        RevertLyricsProtocol.configure(routes: Set(observedKeys + [acceptedKey]), records: try JSONSerialization.data(withJSONObject: records))
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [RevertLyricsProtocol.self]
+        let session = URLSession(configuration: config); defer { session.invalidateAndCancel() }
+        let suite = "phone-build22-revert-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
+        LyricsLookupDiagnostics.shared.clear()
+        let repository = CompositeLyricsRepository(primary: LrcLibService(session: session, defaults: defaults),
+            secondary: LrcApiService(session: session, defaults: defaults), defaults: defaults, secondaryEnabled: { true })
+        let result = try await GetLyricsUseCase(repository: repository).execute(song: song)
+        let requests = RevertLyricsProtocol.queries()
+        let events = LyricsLookupDiagnostics.shared.events.filter { $0.songID == original.songID }
+        XCTAssertEqual(result?.providerID, .lrcapi)
+        XCTAssertEqual(result?.candidates.map(\.recordID), [fixture.correctRecordID])
+        XCTAssertFalse(result?.lines.isEmpty ?? true)
+        XCTAssertEqual(result?.isTimeSynced, true, "Synthetic timing is allowed only within the existing duration policy")
+        XCTAssertEqual(result?.sourceFailures.map(\.providerID), [.lrclib])
+        XCTAssertTrue(requests.contains("lrcapi|" + acceptedKey))
+        XCTAssertFalse(requests.contains { observedKeys.contains(String($0.dropFirst("lrcapi|".count))) })
+        XCTAssertEqual(requests.filter { $0.hasPrefix("lrclib|") }.count, 2)
+        XCTAssertLessThanOrEqual(requests.filter { $0.hasPrefix("lrcapi|") }.count, 6)
+        XCTAssertFalse(requests.contains { $0.hasPrefix("unknown|") })
+        XCTAssertTrue(events.contains { $0.phase == .candidateAccepted && $0.recordID == fixture.correctRecordID })
+        XCTAssertFalse(events.contains { $0.phase == .candidateDropped && $0.recordID == fixture.correctRecordID })
+        for wrong in fixture.candidates where wrong.recordID != fixture.correctRecordID {
+            XCTAssertFalse(events.contains { $0.phase == .candidateAccepted && $0.recordID == wrong.recordID })
+        }
+        XCTAssertEqual(song.title, original.title); XCTAssertEqual(song.artistName, original.artist)
+        XCTAssertEqual(context.title, original.title); XCTAssertEqual(context.artist, original.artist)
+        XCTAssertEqual(context.duration, original.duration); XCTAssertEqual(context.hasYouTubeOrigin, original.hasYouTubeOrigin)
+        XCTAssertEqual(context.album, original.album); XCTAssertEqual(context.artistID, original.artistID)
+        XCTAssertEqual(context.albumID, original.albumID); XCTAssertEqual(context.musicVideoType, original.musicVideoType)
+        XCTAssertEqual(context.artistNameSource, original.artistNameSource)
+        XCTAssertEqual(context.selectionKey, "song:" + original.songID)
+        let report: [String: Any] = ["sourceBuild": fixture.sourceBuild, "sourceLibraryFileID": fixture.sourceLibraryFileID,
+            "sourceFileID": fixture.sourceFileID, "observedLookupID": fixture.observedLookupID,
+            "originalTitle": original.title, "phoneDerivedTitle": fixture.observedCanonicalTitle,
+            "repairedTitle": metadata.pair.title, "repairedArtist": metadata.pair.artist,
+            "phoneRejectedRecordID": fixture.correctRecordID, "acceptedRecordIDs": result?.candidates.map(\.recordID) ?? [],
+            "queries": requests, "syntheticLyricContent": true, "liveAvailabilityVerified": false,
+            "newLiveProviderCalls": 0, "trace": try JSONSerialization.jsonObject(with: JSONEncoder().encode(events))]
+        let data = try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys])
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "public.json")
+        attachment.name = "phone-build22-revert-query-record-regression"; attachment.lifetime = .keepAlways; add(attachment)
+        print("PHONE_BUILD22_REVERT_REGRESSION " + String(decoding: data, as: UTF8.self))
+    }
+
+    func testUnbracketedNamedWorkRolesAreBoundedAndKeepFormalTitlesAndVersions() throws {
+        let tails = ["三立華劇《Work》插曲", "電視劇《Work》情感主題曲", "电视剧《Work》片尾曲",
+                     "電影《Work》推廣曲", "《Work》電視劇插曲", "《Work》插曲 OST"]
+        let tracks = ["Song", "MV", "Official MV", "Song Live", "Song Remix", "Song Acoustic", "Song (OST)"]
+        for track in tracks {
+            for tail in tails {
+                let title = "Singer【" + track + "】" + tail + " Official Lyric Video"
+                let context = LyricsLookupContext(title: title, artist: "", hasYouTubeOrigin: true)
+                let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
+                XCTAssertEqual(metadata.pair.title, track, title)
+                XCTAssertEqual(metadata.pair.artist, "Singer")
+                XCTAssertEqual(metadata.versionTags, LyricsCanonicalMetadata.versions(track))
+                XCTAssertEqual(context.title, title); XCTAssertEqual(context.artist, "")
+                if !metadata.versionTags.isEmpty {
+                    XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "Song", artist: "Singer"), metadata: metadata))
+                }
+            }
+        }
+        for suffix in ["Part Two", "三立華劇《Work》插曲 Part Two", "Live 三立華劇《Work》插曲", "三立華劇《Work》插曲 Remix"] {
+            XCTAssertEqual(LyricsLookupMetadata.cleaned(title: "Singer【Song】 " + suffix, artist: "", allowVideoCredits: true)?.title,
+                           "Song " + suffix, "Unknown prose and version-bearing suffixes must survive")
+        }
+        for standalone in ["三立華劇《Work》插曲", "MV", "Official MV", "Song (OST)"] {
+            XCTAssertEqual(LyricsLookupMetadata.strippingVideoPresentation(standalone), standalone)
+            let catalog = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: standalone, artist: "Singer", hasYouTubeOrigin: false)))
+            XCTAssertEqual(catalog.pair.title, standalone)
+        }
+    }
+
     func testBoundedDisplayRolesPreserveFormalTitlesVersionsAndGuestIdentity() throws {
         for track in ["Song Live", "Song Remix", "Song Acoustic", "Song (Live Official MV)", "Song [Live Lyric Video]"] {
             let context = LyricsLookupContext(title: "Singer《" + track + "》【電視劇《Work》插曲】Official MV", artist: "", hasYouTubeOrigin: true)
@@ -198,6 +324,35 @@ private final class PhoneLyricsProtocol: URLProtocol {
         let data = secondary && Self.routes.contains(key) ? Self.payload : Data("[]".utf8)
         Self.lock.unlock()
         let response = HTTPURLResponse(url: url, statusCode: primary || secondary ? 200 : 404,
+            httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+private final class RevertLyricsProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var routes = Set<String>(), payload = Data(), requests: [String] = []
+    static func configure(routes: Set<String>, records: Data) {
+        lock.lock(); defer { lock.unlock() }; self.routes = routes; payload = records; requests = []
+    }
+    static func queries() -> [String] { lock.lock(); defer { lock.unlock() }; return requests }
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let url = request.url!
+        let primary = url.host == "lrclib.net" && ["/api/search", "/api/get"].contains(url.path)
+        let secondary = url.host == "api.lrc.cx" && url.path == "/jsonapi"
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let title = items.first { $0.name == (primary ? "track_name" : "title") }?.value ?? ""
+        let artist = items.first { $0.name == (primary ? "artist_name" : "artist") }?.value ?? ""
+        let key = title + "|" + artist
+        Self.lock.lock()
+        Self.requests.append((primary ? "lrclib" : secondary ? "lrcapi" : "unknown") + "|" + key)
+        let data = secondary && Self.routes.contains(key) ? Self.payload : Data("[]".utf8)
+        Self.lock.unlock()
+        let response = HTTPURLResponse(url: url, statusCode: primary ? 503 : secondary ? 200 : 404,
             httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)

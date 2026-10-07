@@ -206,6 +206,155 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
         XCTAssertGreaterThan(f.stopCount, 0)
     }
 
+    func testFormalAndLegacyPrimary503UseSecondaryAndKeepOriginalFailure() async throws {
+        for formal in [false, true] {
+            let f = try SecondaryContext(primary: .status(503), secondary: .json([secondary()]))
+            defer { f.close() }
+            let context = f.formalContext()
+            let result: SyncedLyrics?
+            if formal { result = try await f.lookupFormal(context: context) }
+            else { result = try await f.lookup() }
+            XCTAssertEqual(result?.providerID, .lrcapi)
+            XCTAssertEqual(result?.lines.first?.text, "Secondary fixture")
+            XCTAssertEqual(result?.sourceFailures.count, 1)
+            XCTAssertEqual(result?.sourceFailures.first?.providerID, .lrclib)
+            XCTAssertEqual(result?.sourceFailures.first?.message, PublicSourceError.http("LRCLib", 503).localizedDescription)
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "lrclib.net" }.count, 2)
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, 1)
+            emit503Report("success-" + (formal ? "context" : "legacy"), f: f, context: context,
+                          failures: result?.sourceFailures ?? [], result: "secondary-success")
+        }
+    }
+
+    func testFormalAndLegacyPrimary503SecondaryEmptyRemainUnavailableWithOneSourceLabel() async throws {
+        for formal in [false, true] {
+            let f = try SecondaryContext(primary: .status(503), secondary: .json([]))
+            defer { f.close() }
+            let context = f.formalContext()
+            do {
+                if formal { _ = try await f.lookupFormal(context: context) }
+                else { _ = try await f.lookup() }
+                XCTFail("A 503 cannot become a successful missing-lyrics result")
+            } catch let error as LyricsLookupError {
+                guard case .unavailable(let failures) = error else { return }
+                XCTAssertEqual(failures.map(\.providerID), [.lrclib])
+                XCTAssertEqual(failures.first?.message, PublicSourceError.http("LRCLib", 503).localizedDescription)
+                XCTAssertEqual(error.localizedDescription, PublicSourceError.http("LRCLib", 503).localizedDescription)
+                XCTAssertEqual(error.localizedDescription.components(separatedBy: "LRCLib").count - 1, 1)
+                if formal {
+                    XCTAssertTrue(LyricsLookupDiagnostics.shared.events.contains {
+                        $0.lookupID == context.diagnosticLookupID && $0.provider == .lrcapi && $0.phase == .providerEmpty
+                    }, "The secondary did run even though the terminal failure names only LRCLib")
+                }
+                emit503Report("empty-" + (formal ? "context" : "legacy"), f: f, context: context,
+                              failures: failures, result: "unavailable", terminal: error.localizedDescription)
+            }
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "lrclib.net" }.count, 2)
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, 1)
+        }
+    }
+
+    func testFormalPrimary503AndSecondaryErrorPreserveIndependentSourceFailures() async throws {
+        for (name, reply) in [("503", SecondaryReply.status(503)), ("timeout", SecondaryReply.failure(.timedOut))] {
+            let f = try SecondaryContext(primary: .status(503), secondary: reply)
+            defer { f.close() }
+            let context = f.formalContext()
+            do { _ = try await f.lookupFormal(context: context); XCTFail("Both source errors must remain visible") }
+            catch let error as LyricsLookupError {
+                guard case .unavailable(let failures) = error else { return }
+                XCTAssertEqual(failures.map(\.providerID), [.lrclib, .lrcapi])
+                XCTAssertEqual(failures.first?.message, PublicSourceError.http("LRCLib", 503).localizedDescription)
+                XCTAssertEqual(error.localizedDescription.components(separatedBy: "LRCLib").count - 1, 1)
+                XCTAssertEqual(error.localizedDescription.components(separatedBy: "LrcApi").count - 1, 1)
+                if name == "503" {
+                    XCTAssertEqual(failures.last?.message, PublicSourceError.http("LrcApi", 503).localizedDescription)
+                }
+                emit503Report("secondary-error-" + name, f: f, context: context,
+                              failures: failures, result: "unavailable", terminal: error.localizedDescription)
+            }
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "lrclib.net" }.count, 2)
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, 2)
+        }
+    }
+
+    func testFormalPrimary503WithSecondaryDisabledDoesNotRequestItOrLoseSelection() async throws {
+        let f = try SecondaryContext(primary: .status(503), secondary: .json([secondary()]))
+        defer { f.close() }
+        let context = f.formalContext()
+        let saved = LyricsRecordID(providerID: .lrcapi, recordID: "remembered-secondary")
+        LyricsSelectionStore.select(saved, for: context.selectionKey, defaults: f.defaults)
+        f.defaults.set(false, forKey: LyricsSecondarySettings.enabledKey)
+        do { _ = try await f.lookupFormal(context: context); XCTFail("Primary failure must not become nil") }
+        catch let error as LyricsLookupError {
+            guard case .unavailable(let failures) = error else { return }
+            XCTAssertEqual(failures.map(\.providerID), [.lrclib])
+            XCTAssertEqual(error.localizedDescription, PublicSourceError.http("LRCLib", 503).localizedDescription)
+            emit503Report("secondary-disabled", f: f, context: context,
+                          failures: failures, result: "unavailable", terminal: error.localizedDescription)
+        }
+        XCTAssertFalse(f.requests.contains { $0.url?.host == "api.lrc.cx" })
+        XCTAssertEqual(LyricsSelectionStore.selectedRecord(for: context.selectionKey, defaults: f.defaults), saved)
+        XCTAssertTrue(LyricsLookupDiagnostics.shared.events.contains {
+            $0.lookupID == context.diagnosticLookupID && $0.provider == .lrcapi && $0.reason == .secondaryDisabled
+        })
+    }
+
+    func testFormalPrimary503ThenSecondaryCancellationStopsWithoutLyricsOrRetry() async throws {
+        var slow = SecondaryReply.json([secondary()]); slow.delayMS = 10_000
+        let f = try SecondaryContext(primary: .status(503), secondary: slow)
+        defer { f.close() }
+        let context = f.formalContext()
+        let task = Task { try await f.lookupFormal(context: context) }
+        try await waitForRequest(f, host: "api.lrc.cx")
+        task.cancel()
+        do { _ = try await task.value; XCTFail("Cancelled fallback must not surface stale lyrics") }
+        catch { XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled) }
+        XCTAssertEqual(f.requests.filter { $0.url?.host == "lrclib.net" }.count, 2)
+        XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, 1)
+        try await waitForTransportStop(f)
+        XCTAssertGreaterThan(f.stopCount, 0)
+        emit503Report("secondary-cancelled", f: f, context: context, failures: [], result: "cancelled")
+    }
+
+    func testFormalPrimary503SwitchOffDuringFallbackDiscardsItAndRecordsDisabled() async throws {
+        var slow = SecondaryReply.json([secondary()]); slow.delayMS = 2_000
+        let f = try SecondaryContext(primary: .status(503), secondary: slow)
+        defer { f.close() }
+        let context = f.formalContext()
+        let task = Task { try await f.lookupFormal(context: context) }
+        try await waitForRequest(f, host: "api.lrc.cx")
+        f.defaults.set(false, forKey: LyricsSecondarySettings.enabledKey)
+        do { _ = try await task.value; XCTFail("Disabled secondary response must not replace primary failure") }
+        catch let error as LyricsLookupError {
+            guard case .unavailable(let failures) = error else { return }
+            XCTAssertEqual(failures.map(\.providerID), [.lrclib])
+            XCTAssertEqual(error.localizedDescription, PublicSourceError.http("LRCLib", 503).localizedDescription)
+            emit503Report("secondary-disabled-in-flight", f: f, context: context,
+                          failures: failures, result: "unavailable", terminal: error.localizedDescription)
+        }
+        XCTAssertTrue(LyricsLookupDiagnostics.shared.events.contains {
+            $0.lookupID == context.diagnosticLookupID && $0.provider == .lrcapi && $0.reason == .secondaryDisabled
+        })
+    }
+
+    private func emit503Report(_ name: String, f: SecondaryContext, context: LyricsLookupContext,
+                               failures: [LyricsSourceFailure], result: String, terminal: String? = nil) {
+        let events = LyricsLookupDiagnostics.shared.events.filter { $0.lookupID == context.diagnosticLookupID }
+        let raw = PublicSourceError.http("LRCLib", 503).localizedDescription
+        let report: [String: Any] = ["case": name, "result": result,
+            "primaryTransportCalls": f.requests.filter { $0.url?.host == "lrclib.net" }.count,
+            "secondaryTransportCalls": f.requests.filter { $0.url?.host == "api.lrc.cx" }.count,
+            "failureProviders": failures.map { $0.providerID.rawValue },
+            "failureMessages": failures.map(\.message), "terminalError": terminal ?? "",
+            "secondaryEmptyObserved": events.contains { $0.provider == .lrcapi && $0.phase == .providerEmpty },
+            "secondaryDisabledObserved": events.contains { $0.provider == .lrcapi && $0.reason == .secondaryDisabled },
+            "build22WrappingReproduction": "LRCLib: LRCLib: " + raw,
+            "newLiveProviderCalls": 0, "syntheticLyrics": true]
+        if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]) {
+            print("BUILD23_503_REPORT " + String(decoding: data, as: UTF8.self))
+        }
+    }
+
     // URLSession cancellation can finish its async continuation before URLProtocol.stopLoading.
     // Await that transport callback explicitly instead of assuming their queue ordering.
     private func waitForTransportStop(_ f: SecondaryContext) async throws {
@@ -267,6 +416,12 @@ private final class SecondaryContext {
     func repository() -> CompositeLyricsRepository {
         CompositeLyricsRepository(primary: LrcLibService(session: session, defaults: defaults),
             secondary: LrcApiService(session: session, defaults: defaults), defaults: defaults)
+    }
+    func formalContext() -> LyricsLookupContext {
+        .init(songID: "fixture5031", title: title, artist: artist, duration: 240, hasYouTubeOrigin: true)
+    }
+    func lookupFormal(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try await repository().getLyrics(context: context)
     }
     func lookup(repository: CompositeLyricsRepository? = nil) async throws -> SyncedLyrics? {
         try await (repository ?? self.repository()).getLyrics(title: title, artist: artist,

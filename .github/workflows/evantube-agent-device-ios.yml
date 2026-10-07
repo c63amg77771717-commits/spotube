@@ -18,53 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  package:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - name: Wait for the IPA built from the same native source tree
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PRODUCT_REF: ${{ github.sha }}
-        run: |
-          python3 - <<'PY'
-          import json, os, time, urllib.request
-          from urllib.parse import quote
-          base = 'https://api.github.com/repos/c63amg77771717-commits/spotube'
-          def get(path):
-              request = urllib.request.Request(base + path, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-              return json.load(urllib.request.urlopen(request, timeout=20))
-          expected_tree = get('/contents/native-ios?ref=' + quote(os.environ['PRODUCT_REF'], safe=''))
-          expected_files = [(item['name'], item['sha']) for item in expected_tree]
-          for attempt in range(101):
-              runs = get('/actions/workflows/evantube-native-ios-ipa.yml/runs?branch=codex%2Fios-neonoir-20260930&per_page=5')['workflow_runs']
-              matching = []
-              for run in runs:
-                  source = get('/contents/native-ios?ref=' + run['head_sha'])
-                  if [(item['name'], item['sha']) for item in source] == expected_files:
-                      matching.append(run)
-              if not matching:
-                  if attempt == 100:
-                      raise SystemExit('No IPA workflow for this native source tree; do not test a different product')
-                  print('Waiting for matching IPA workflow to start', flush=True)
-                  time.sleep(30)
-                  continue
-              run = matching[0]
-              if run['status'] == 'completed':
-                  assert run['conclusion'] == 'success', 'IPA workflow failed: ' + run['html_url']
-                  artifacts = get('/actions/runs/' + str(run['id']) + '/artifacts')['artifacts']
-                  assert any(a['name'] == 'EvanTube-native-iOS-unsigned' and not a['expired'] for a in artifacts)
-                  print('Packaged IPA ready:', run['html_url'])
-                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
-                      out.write('Testing Debug simulator fixtures derived from packaged build20 source: ' + run['html_url'] + '\n')
-                  break
-              if attempt == 100:
-                  raise SystemExit('IPA packaging did not complete; agent-device tests not started')
-              print('Waiting for IPA packaging', run['id'], run['status'], 'attempt', attempt + 1, flush=True)
-              time.sleep(30)
-          PY
   simulator:
-    needs: package
     runs-on: macos-14
     timeout-minutes: 40
     env:

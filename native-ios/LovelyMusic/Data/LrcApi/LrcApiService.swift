@@ -24,16 +24,30 @@ final class LrcApiService: LyricsRepositoryProtocol {
     }
 
     func getLyrics(context: LyricsLookupContext) async throws -> SyncedLyrics? {
+        try await lookup(context: context).legacyValue()
+    }
+
+    func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
         try Task.checkCancellation()
         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .lookup, reason: .originalMetadata,
             title: context.title, artist: context.artist, duration: context.duration.map { Double($0) }))
         guard let metadata = LyricsCanonicalMetadata(context) else {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .result, reason: .metadataRejected))
-            return nil
+            return .metadataRejected(provider: .lrcapi)
         }
         LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrcapi)
         var candidates: [LyricsCandidate] = []
         var failures: [LyricsSourceFailure] = []
+        var received = 0
+        var successfulResponses = 0
+        func report(_ lyrics: SyncedLyrics?) -> LyricsLookupReport {
+            .provider(.lrcapi, lyrics: lyrics, received: received,
+                      successfulResponses: successfulResponses, failures: failures, contentCandidates: candidates.count,
+                      rejectionReasons: candidates.reduce(into: [String: Int]()) { counts, candidate in
+                          let decision = LyricsCandidateScorer.decision(candidate, metadata: metadata)
+                          if decision.kind == .rejected { counts[(decision.reason ?? .identityMismatch).rawValue, default: 0] += 1 }
+                      })
+        }
         // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
         for pair in LyricsQueryPlanner.secondaryPairs(metadata) {
             try Task.checkCancellation()
@@ -42,6 +56,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                 try Task.checkCancellation()
                 LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi,
                     phase: .response, count: records.count))
+                successfulResponses += 1; received += min(records.count, 30)
                 candidates += records.prefix(30).compactMap { record -> LyricsCandidate? in
                     guard !record.id.isEmpty, record.id.count <= 256, let title = record.title, let artist = record.artist else {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped, reason: .missingMetadata))
@@ -57,18 +72,18 @@ final class LrcApiService: LyricsRepositoryProtocol {
                                            title: title, artist: artist, duration: record.duration, lyrics: lyrics, album: record.album)
                 }
                 if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) {
-                    if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return result }
+                    if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
             } catch {
                 LyricsLookupDiagnostics.shared.recordFailure(context: context, provider: .lrcapi, error: error)
                 try LyricsMatchingPolicy.checkCancellation(error)
-                failures.append(.init(providerID: .lrcapi, message: error.localizedDescription))
+                failures += LyricsSourceFailure.from(error, providerID: .lrcapi)
                 break
             }
         }
-        if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) { return result }
-        if !failures.isEmpty { throw LyricsLookupError.unavailable(failures) }
-        return nil
+        if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) { return report(result) }
+        try Task.checkCancellation()
+        return report(nil)
     }
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
         try await getLyrics(title: title, artist: artist, duration: duration, allowVideoCredits: false)

@@ -127,6 +127,7 @@ final class PlayerViewModel {
     private(set) var lyrics: SyncedLyrics?
     private(set) var isLoadingLyrics = false
     private(set) var lyricsError: String?
+    private(set) var lyricsLookupReport: LyricsLookupReport?
     @ObservationIgnored private var lyricsTask: Task<Void, Never>?
     @ObservationIgnored private var lyricsGeneration = 0
     private var lyricsTrackID: String?
@@ -308,7 +309,7 @@ final class PlayerViewModel {
 
     func retryInterruptedLyrics() {
         guard !isLoadingLyrics, lyrics == nil,
-              lyricsTrackID == nil || lyricsError != nil,
+              lyricsTrackID == nil || lyricsError != nil || lyricsLookupReport?.canRetryAvailability == true,
               let song = currentSong else { return }
         requestLyricsAfterFailure(for: song)
     }
@@ -329,6 +330,7 @@ final class PlayerViewModel {
         lyricsTrackID = nil
         lyrics = nil
         lyricsError = nil
+        lyricsLookupReport = nil
         isLoadingLyrics = false
     }
 
@@ -347,14 +349,17 @@ final class PlayerViewModel {
         lyricsTrackID = song.id
         isLoadingLyrics = true
         lyricsError = nil
+        lyricsLookupReport = nil
         lyrics = nil
         let task = Task { [weak self] in
             guard let self else { return }
             do {
-                let result = try await self.getLyricsUseCase.execute(song: song)
+                let report = try await self.getLyricsUseCase.executeReport(song: song)
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
-                if let result, !result.lines.isEmpty || !result.candidates.isEmpty {
+                self.lyricsLookupReport = report
+                if report.state == .sourceUnavailable { self.lyricsError = report.state.message }
+                if let result = report.lyrics, !result.lines.isEmpty || !result.candidates.isEmpty {
                     // Candidate-only results must reach the player's selection UI.
                     self.lyrics = result
                 } else {
