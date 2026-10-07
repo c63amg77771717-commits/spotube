@@ -5,7 +5,7 @@ enum LyricsLookupState: String, Equatable {
     case sourceUnavailable, providerEmpty, candidatesRejected, manualSelection, confirmedPlain, synchronized, metadataRejected
 
     var message: String {
-        let key: String
+        let key: String.LocalizationValue
         switch self {
         case .sourceUnavailable: key = "Lyrics source temporarily unavailable"
         case .providerEmpty: key = "Lyrics sources returned no results"
