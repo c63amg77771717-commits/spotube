@@ -16,6 +16,10 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         XCTAssertFalse(bilingual.isDisjoint(with: try keys("Revert", artist: "Singer")))
         XCTAssertFalse(bilingual.isDisjoint(with: try keys("倒流", artist: "Singer")))
         XCTAssertFalse(try keys("愛你", artist: "Singer").isDisjoint(with: try keys("爱你", artist: "Singer")))
+        XCTAssertFalse(try keys("柯有綸 Alan Kuo - 哭笑不得")
+            .isDisjoint(with: try keys("柯有纶 Alan Kuo - 不用擔心")))
+        XCTAssertEqual(LyricsLookupMetadata.identityKey("DAVICHI(다비치)"), "davichi다비치")
+        XCTAssertEqual(LyricsLookupMetadata.identityKey("ＡＢＣ ♪"), "abc♪")
         XCTAssertTrue(try keys("Singer - First Song", artist: "Singer")
             .isDisjoint(with: try keys("Singer - Second Song", artist: "Singer")))
         XCTAssertTrue(try keys("愛你", artist: "Singer").isDisjoint(with: try keys("不愛你", artist: "Singer")))
@@ -36,7 +40,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         for row in selected {
             let context = LyricsLookupContext(title: row["title"] as! String, artist: row["artist"] as! String, hasYouTubeOrigin: true)
             let keys = try compositionKeys(context)
-            XCTAssertTrue(seenCompositions.isDisjoint(with: keys), "Same composition cannot become a new song by changing its video ID")
+            XCTAssertTrue(seenCompositions.isDisjoint(with: keys), "Composition projections overlap before any query: " + keys.intersection(seenCompositions).sorted().joined(separator: ", "))
             guard seenCompositions.isDisjoint(with: keys) else { throw SampleValidationError.duplicateComposition }
             seenCompositions.formUnion(keys)
         }

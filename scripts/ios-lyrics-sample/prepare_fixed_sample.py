@@ -1,5 +1,5 @@
 """Local-only draw; this command does not contact lyric services or upload a playlist."""
-import argparse, pathlib, zipfile, json, re, random, hashlib, collections, unicodedata
+import argparse, pathlib, zipfile, json, re, random, hashlib, collections, unicodedata, ctypes, os
 parser=argparse.ArgumentParser()
 parser.add_argument('--source',required=True,type=pathlib.Path)
 parser.add_argument('--output',required=True,type=pathlib.Path)
@@ -17,8 +17,20 @@ if first:
  assert previous['sourceSHA256']==hashlib.sha256(source.read_bytes()).hexdigest(), 'Do not switch populations between batches'
 prior_keys={key for row in first['results'] for key in row['compositionKeys']} if first else set()
 prior_ids={row['localVideoID'] for row in previous['selectedLocal']} if previous else set()
+assert os.name == 'nt', 'The local draw requires Windows native Chinese script normalization; the Mac runner independently validates identities before queries'
+script_map=ctypes.WinDLL('kernel32',use_last_error=True).LCMapStringEx
+script_map.argtypes=[ctypes.c_wchar_p,ctypes.c_uint32,ctypes.c_wchar_p,ctypes.c_int,ctypes.c_wchar_p,ctypes.c_int,ctypes.c_void_p,ctypes.c_void_p,ctypes.c_ssize_t]
 def key(text):
- return ''.join(c for c in unicodedata.normalize('NFKD',text.casefold()) if c.isalnum())
+ # Match native identity keys: simplified script, intact Hangul, punctuation/space removal.
+ size=script_map('zh-CN',0x02000000,text,-1,None,0,None,None,0)
+ if not size:raise ctypes.WinError(ctypes.get_last_error())
+ mapped=ctypes.create_unicode_buffer(size)
+ if not script_map('zh-CN',0x02000000,text,-1,mapped,size,None,None,0):raise ctypes.WinError(ctypes.get_last_error())
+ return ''.join(c for c in unicodedata.normalize('NFKC',mapped.value).casefold() if unicodedata.category(c)[0] not in 'PZ')
+assert key('柯有綸 Alan Kuo') == key('柯有纶 Alan Kuo') == '柯有纶alankuo'
+assert key('愛你') == key('爱你') and key('愛你') != key('不愛你')
+assert key('DAVICHI(다비치)') == 'davichi다비치'
+assert key('ＡＢＣ ♪') == 'abc♪'
 def composition_keys(title,artist=''):
  # Deduplication only; never use these projections as provider query metadata.
  value=re.sub(r'(?i)\s*(?:official\s+(?:music\s+video|video|audio|mv|lyrics?\s+video)|lyrics?\s+video|official\s+lyrics?|4k|hd|visualizer)\s*$', '',re.sub(r' [–—－] ', ' - ',title)).strip()
