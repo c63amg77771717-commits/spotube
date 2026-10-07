@@ -25,3 +25,9 @@ export function currentRef(snapshot, node) {
   const ref = node.ref.startsWith('@') ? node.ref : `@${node.ref}`;
   return snapshot.refsGeneration ? `${ref}~s${snapshot.refsGeneration}` : ref;
 }
+
+export function candidateButton(snapshot, identifier) {
+  assert(identifier.startsWith('lyrics_candidate_'), 'Candidate identifier required');
+  return uniqueActionable(snapshot.nodes.filter(node => node.kind === 'button' &&
+    node.identifier === identifier && node.hittable), `Candidate ${identifier} button`);
+}

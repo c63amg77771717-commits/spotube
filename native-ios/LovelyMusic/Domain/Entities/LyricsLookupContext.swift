@@ -256,6 +256,15 @@ enum LyricsQueryPlanner {
 /// Composition deduplication preserves reverse-credit uncertainty without
 /// treating a shared possible performer alone as a shared song title.
 enum LyricsCompositionIdentity {
+    /// Conservative possibilities retain every uncertain reverse title.
+    /// Their overlap alone is ambiguity, not proof of one composition.
+    static func possibleTitleKeys(_ metadata: LyricsCanonicalMetadata) -> Set<String> {
+        let versions = "(?i)\\s*[\\[(][^\\])]*(?:live|remix|acoustic|cover|instrumental|karaoke|demo|remaster|sped\\s*up|slowed|nightcore|現場|演唱會|翻唱)[^\\])]*[\\])]\\s*$"
+        return Set(metadata.hypotheses.flatMap(\.titleVariants).map {
+            LyricsLookupMetadata.identityKey($0.replacingOccurrences(of: versions, with: "", options: .regularExpression))
+        }.filter { !$0.isEmpty })
+    }
+
     static func keys(_ metadata: LyricsCanonicalMetadata) -> Set<String> {
         let versions = "(?i)\\s*[\\[(][^\\])]*(?:live|remix|acoustic|cover|instrumental|karaoke|demo|remaster|sped\\s*up|slowed|nightcore|現場|演唱會|翻唱)[^\\])]*[\\])]\\s*$"
         func titleKey(_ title: String) -> String {

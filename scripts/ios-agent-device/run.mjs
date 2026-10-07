@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-import { fullPlayerProgress, fullPlayerButton, currentRef } from './accessibility-selectors.mjs';
+import { fullPlayerProgress, fullPlayerButton, currentRef, candidateButton } from './accessibility-selectors.mjs';
 import { retryUndispatchedRunnerBusy } from './runner-recovery.mjs';
 import { observePersistedPreferences } from './preferences-observer.mjs';
 import { verifyInstalledAppMetadata } from './build-metadata.mjs';
@@ -199,7 +199,12 @@ const cases = [
   ['cross-provider-setting-and-memory', { sources: true }, async () => {
     await fullPlayer(); await pressID('lyrics_version_picker', false);
     await waitID('lyrics_candidate_lrcapi_101'); await screenshot('provider-candidates');
-    await pressID('lyrics_candidate_lrcapi_101'); await waitText('LrcApi UI first recording');
+    const candidateSnapshot = await snapshot();
+    const choice = candidateButton(candidateSnapshot, 'lyrics_candidate_lrcapi_101');
+    // Act once on the current, unique hittable button; never retry a possibly applied selection.
+    await step('select-lrcapi-candidate-current-ref', () => client.interactions.press({
+      ref: currentRef(candidateSnapshot, choice), settle: false }));
+    await waitText('LrcApi UI first recording');
     const attribution = await step('provider-attribution', () => client.interactions.get({
       selector: 'id="lyrics_provider_attribution"', format: 'text' }));
     assert(JSON.stringify(attribution).includes('LrcApi'));

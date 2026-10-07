@@ -109,6 +109,7 @@ jobs:
             -only-testing:EvanTubeTests/ChineseLyricsPlanRegressionTests \
             -only-testing:EvanTubeTests/LyricsDeviceLabelAndLatencyTests -only-testing:EvanTubeTests/LyricsSchedulingFixtureTests \
             -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testCompositionKeysIncludeUncertainTitleRoles \
+            -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testSharedPossiblePerformerDoesNotMakeDifferentSongsTheSameComposition \
             -only-testing:EvanTubeTests/LyricsLookupOutcomeTests \
             -only-testing:EvanTubeTests/AutomaticLyricsTests \
             -only-testing:EvanTubeTests/LyricsCandidateVisibilityTests \

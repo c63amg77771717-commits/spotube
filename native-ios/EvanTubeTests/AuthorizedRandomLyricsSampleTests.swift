@@ -6,7 +6,7 @@ import XCTest
 final class AuthorizedRandomLyricsSampleTests: XCTestCase {
     func testCompositionKeysIncludeUncertainTitleRoles() throws {
         func keys(_ title: String, artist: String = "") throws -> Set<String> {
-            try compositionKeys(.init(title: title, artist: artist, hasYouTubeOrigin: true))
+            LyricsCompositionIdentity.possibleTitleKeys(try XCTUnwrap(LyricsCanonicalMetadata(.init(title: title, artist: artist, hasYouTubeOrigin: true))))
         }
         let forward = try keys("Singer - Song")
         XCTAssertFalse(forward.isDisjoint(with: try keys("Song - Singer")))
@@ -32,6 +32,12 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         let first = try keys("戴佩妮  Penny Tai - 怎樣 What If We Still Stay Together? (官方完整版MV)")
         let second = try keys("戴佩妮 penny《單身潛逃》Official MV")
         XCTAssertTrue(first.isDisjoint(with: second), "A shared uncertain performer is not a shared composition")
+        let left = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "柯有綸 Alan Kuo - 哭笑不得", artist: "", hasYouTubeOrigin: true)))
+        let right = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "柯有纶 Alan Kuo - 不用擔心", artist: "", hasYouTubeOrigin: true)))
+        XCTAssertFalse(LyricsCompositionIdentity.possibleTitleKeys(left).isDisjoint(with: LyricsCompositionIdentity.possibleTitleKeys(right)))
+        XCTAssertTrue(LyricsCompositionIdentity.keys(left).isDisjoint(with: LyricsCompositionIdentity.keys(right)))
+        XCTAssertTrue(left.requiresManualIdentityConfirmation)
+        XCTAssertTrue(right.requiresManualIdentityConfirmation)
         // Preserve this sample's full title qualifier rather than inventing a shortened alias.
         XCTAssertFalse(first.isDisjoint(with: try keys("怎樣 What If We Still Stay Together? (官方完整版MV)", artist: "戴佩妮 Penny Tai")))
         XCTAssertFalse(try keys("Singer - Song").isDisjoint(with: try keys("Song - Singer")))
@@ -50,12 +56,22 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         XCTAssertTrue([1, 2].contains(batch))
         // Validate all identities before the first service query, without replacing failed samples.
         var seenCompositions = Set(document["priorCompositionKeys"] as? [String] ?? [])
+        var seenPossibleTitles = Set(document["priorPossibleTitleKeys"] as? [String] ?? [])
+        var possibleTitleOverlaps: [[String: Any]] = []
         for row in selected {
             let context = LyricsLookupContext(title: row["title"] as! String, artist: row["artist"] as! String, hasYouTubeOrigin: true)
             let keys = try compositionKeys(context)
             XCTAssertTrue(seenCompositions.isDisjoint(with: keys), "Composition projections overlap before any query: " + keys.intersection(seenCompositions).sorted().joined(separator: ", "))
             guard seenCompositions.isDisjoint(with: keys) else { throw SampleValidationError.duplicateComposition }
             seenCompositions.formUnion(keys)
+            let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
+            let possible = LyricsCompositionIdentity.possibleTitleKeys(metadata)
+            let overlap = possible.intersection(seenPossibleTitles)
+            if !overlap.isEmpty {
+                possibleTitleOverlaps.append(["title": context.title, "possibleTitleKeys": overlap.sorted(),
+                    "classification": "ambiguous shared possible title; human composition ground truth NOT_RUN"])
+            }
+            seenPossibleTitles.formUnion(possible)
         }
         let suite = "AuthorizedLyricsSample-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -110,6 +126,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                  "version": candidate.versionLabel, "reason": candidate.identityDecision?.reason?.rawValue ?? "confirmed"]
             }
             results.append(["index": index, "compositionKeys": Array(try compositionKeys(LyricsLookupContext(song: song))).sorted(), "title": title, "artist": artist, "stratum": row["stratum"] ?? "unknown",
+                "possibleTitleKeys": Array(LyricsCompositionIdentity.possibleTitleKeys(try XCTUnwrap(LyricsCanonicalMetadata(LyricsLookupContext(song: song))))).sorted(),
                 "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds,
                 "stageElapsedInterpretation": "monotonic elapsed, not CPU; overlapping intervals must not be summed",
                 "providers": providers, "candidates": candidates, "requests": requests,
@@ -122,6 +139,8 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         }
         let result: [String: Any] = ["seed": 20261006, "batch": batch, "previousManifestSHA256": document["previousManifestSHA256"] ?? NSNull(), "sampleCount": results.count, "nativeExecution": true,
             "realProviderQueries": true, "probeBothSources": true,
+            "compositionKeyDefinition": "role anchored metadata projections; all possible-title overlaps retained separately",
+            "compositionHumanGroundTruth": "NOT_RUN", "possibleTitleProjectionOverlaps": possibleTitleOverlaps,
             "realProviderResponses": results.contains { result in
                 (result["requests"] as? [[String: Any]] ?? []).contains { ($0["httpStatus"] as? Int ?? 0) > 0 }
             }, "physicalDevice": false, "audioAlignmentValidated": false,

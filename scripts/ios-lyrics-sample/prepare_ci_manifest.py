@@ -28,6 +28,7 @@ if data['batch']==2:
  assert first['batch']==1 and first['sampleCount']==20 and first['nativeExecution'] and first['realProviderQueries']
  assert first['manifestSHA256']==data['previousManifestSHA256']
  data['priorCompositionKeys']=sorted({key for row in first['results'] for key in row['compositionKeys']})
+ data['priorPossibleTitleKeys']=sorted({key for row in first['results'] for key in row.get('possibleTitleKeys',[])})
  (pathlib.Path(os.environ['RUNNER_TEMP'])/'evantube-first-sample.json').write_text(json.dumps(first,ensure_ascii=False,indent=2),encoding='utf-8')
 else:assert data['previousManifestSHA256'] is None
 dest=pathlib.Path('native-ios/EvanTubeTests/Fixtures/authorized_random_lyrics_sample.json')
