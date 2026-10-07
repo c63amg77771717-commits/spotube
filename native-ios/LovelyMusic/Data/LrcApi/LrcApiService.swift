@@ -38,6 +38,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
             return .metadataRejected(provider: .lrcapi)
         }
         timings.measure("hypothesisDiagnostics", { LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrcapi) })
+        let scoringSession = LyricsLookupScoringSession()
         var candidates: [LyricsCandidate] = []
         var evidence: [LyricsCandidateEvidence] = []
         let remembered = LyricsCandidateScorer.remembered(context, defaults: defaults)
@@ -66,7 +67,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped, reason: .missingMetadata))
                         evidence.append(.init(provider: .lrcapi, recordID: record.id, title: record.title, artist: record.artist,
                             album: record.album, duration: record.duration, metadata: metadata, discardedReason: .missingMetadata,
-                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
+                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist, scoringSession: scoringSession))
                         return nil
                     }
                     guard let lyrics = LyricsMatchingPolicy.lyrics(syncedLRC: record.lrc ?? record.lyrics ?? "",
@@ -75,17 +76,18 @@ final class LrcApiService: LyricsRepositoryProtocol {
                             reason: .emptyContent, title: title, artist: artist, recordID: record.id))
                         evidence.append(.init(provider: .lrcapi, recordID: record.id, title: title, artist: artist,
                             album: record.album, duration: record.duration, metadata: metadata, discardedReason: .emptyContent,
-                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
+                            queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist, scoringSession: scoringSession))
                         return nil
                     }
                     let candidate = LyricsCandidate(id: .init(providerID: .lrcapi, recordID: record.id),
                                            title: title, artist: artist, duration: record.duration, lyrics: lyrics, album: record.album)
                     evidence.append(.init(provider: .lrcapi, recordID: record.id, title: title, artist: artist,
                         album: record.album, duration: record.duration, metadata: metadata, candidate: candidate, remembered: remembered,
-                        queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist))
+                        queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist, scoringSession: scoringSession))
                     return candidate
                 } }
-                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) {
+                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) {
+                    try Task.checkCancellation()
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
             } catch {
@@ -95,7 +97,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                 break
             }
         }
-        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) { return report(result) }
+        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) { try Task.checkCancellation(); return report(result) }
         try Task.checkCancellation()
         return report(nil)
     }

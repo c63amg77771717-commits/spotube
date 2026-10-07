@@ -46,8 +46,10 @@ struct LyricsCandidateEvidence: Codable {
     init(provider: LyricsProviderID, recordID: String?, title: String?, artist: String?, album: String?,
          duration: Double?, metadata: LyricsCanonicalMetadata, candidate: LyricsCandidate? = nil,
          discardedReason: LyricsLookupDiagnostics.Reason? = nil, remembered: LyricsRecordID? = nil,
-         queryEndpoint: String? = nil, queryTitle: String? = nil, queryArtist: String? = nil) {
-        let decision = candidate.map { LyricsCandidateScorer.decision($0, metadata: metadata, remembered: remembered) }
+         queryEndpoint: String? = nil, queryTitle: String? = nil, queryArtist: String? = nil,
+          scoringSession: LyricsLookupScoringSession? = nil) {
+        let decision = candidate.map { scoringSession?.decision($0, metadata: metadata, remembered: remembered)
+            ?? LyricsCandidateScorer.decision($0, metadata: metadata, remembered: remembered) }
         let hypothesis = metadata.hypotheses.first { $0.id == decision?.hypothesisID }
         self.provider = provider.rawValue; self.recordID = recordID
         self.title = title; self.artist = artist; self.album = album

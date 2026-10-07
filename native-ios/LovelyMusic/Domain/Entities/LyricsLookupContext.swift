@@ -316,10 +316,15 @@ enum LyricsCandidateScorer {
     }
 
     static func choose(_ candidates: [LyricsCandidate], metadata: LyricsCanonicalMetadata,
-                       defaults: UserDefaults, failures: [LyricsSourceFailure] = []) -> SyncedLyrics? {
+                       defaults: UserDefaults, failures: [LyricsSourceFailure] = [],
+                       scoringSession: LyricsLookupScoringSession? = nil, groupEquivalentEvidence: Bool = true) -> SyncedLyrics? {
+        guard !Task.isCancelled else { return nil }
         var accepted: [LyricsRecordID: (LyricsCandidate, Int)] = [:]
         for rawCandidate in candidates {
-            let identity = decision(rawCandidate, metadata: metadata, remembered: remembered(metadata.context, defaults: defaults))
+            guard !Task.isCancelled else { return nil }
+            let selectedRecord = remembered(metadata.context, defaults: defaults)
+            let identity = scoringSession?.decision(rawCandidate, metadata: metadata, remembered: selectedRecord)
+                ?? decision(rawCandidate, metadata: metadata, remembered: selectedRecord)
             guard identity.kind != .rejected else {
                 LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: rawCandidate.providerID,
                     phase: .candidateDropped, reason: identity.reason ?? .identityMismatch,
@@ -354,11 +359,19 @@ enum LyricsCandidateScorer {
                 reason: candidates.isEmpty ? .noUsableCandidate : .allCandidatesRejected, count: 0))
             return nil
         }
+        guard !Task.isCancelled else { return nil }
         let saved = remembered(metadata.context, defaults: defaults).flatMap { id in ranked.first { $0.0.id == id }?.0 }
         if let saved, metadata.context.selectionKey != metadata.context.legacySelectionKey {
             LyricsSelectionStore.select(saved.id, for: metadata.context.selectionKey, defaults: defaults)
         }
-        let uniqueHigh = best.1 >= 85 && (ranked.count == 1 || best.1 - ranked[1].1 >= 10)
+        // Keep every provider-qualified ID available to the UI and remembered selection.
+        // Identical strong timed evidence should not compete against itself for the margin.
+        let bestEvidence = groupEquivalentEvidence ? LyricsRecordingEvidence.key(best.0) : nil
+        let competitor = ranked.dropFirst().first { record in
+            guard let bestEvidence else { return true }
+            return LyricsRecordingEvidence.key(record.0) != bestEvidence
+        }
+        let uniqueHigh = best.1 >= 85 && (competitor == nil || best.1 - competitor!.1 >= 10)
         let chosen = saved ?? (best.0.identityDecision?.allowsAutomaticSelection == true && uniqueHigh ? best.0 : nil)
         LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: chosen?.providerID,
             phase: .selection, reason: saved != nil ? .rememberedSelected : chosen != nil ? .autoSelected : .manualRequired,

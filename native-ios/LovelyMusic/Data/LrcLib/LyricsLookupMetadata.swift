@@ -134,6 +134,15 @@ enum LyricsLookupMetadata {
 
     static func quotedVideoPair(_ context: LyricsLookupContext) -> Pair? {
         guard context.hasYouTubeOrigin else { return nil }
+        let bounded = boundedQueryPresentation(context.title)
+        if bounded != context.title,
+           context.title.range(of: "(?:「[^」\\r\\n]{12,240}」|『[^』\\r\\n]{12,240}』)\\s*$", options: .regularExpression) != nil {
+            let parts = context.title.components(separatedBy: " - ")
+            if parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty {
+                return Pair(title: parts[1].trimmingCharacters(in: .whitespacesAndNewlines),
+                            artist: parts[0].trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
         var input = strippingChineseLyricPresentation(context.title, removePrecedingSnippet: false)
         guard input != context.title, input.contains("「") || input.contains("『") else { return nil }
         input = strippingSoundtrackPresentation(strippingPresentationSuffix(input))
@@ -292,17 +301,70 @@ enum LyricsLookupMetadata {
 
     /// Locate the first song span by source position, never by bracket type.
     /// Later work titles inside soundtrack notes cannot become performer credits.
+
+    /// Observed presentation boundaries only; not a song or performer alias database.
+    static func boundedQueryPresentation(_ input: String) -> String {
+        var value = input.replacingOccurrences(of: " [–—－─━] ", with: " - ", options: .regularExpression)
+        let bracketLabel = "(?:【([^】\\r\\n]{1,120})】|\\[([^\\]\\r\\n]{1,120})\\])\\s*$"
+        if let regex = try? NSRegularExpression(pattern: bracketLabel),
+           let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+           let whole = Range(match.range, in: value),
+           let body = (1..<match.numberOfRanges).compactMap({ Range(match.range(at: $0), in: value) }).first,
+           isPresentationOnlySpan(String(value[body])), strippingChineseLyricPresentation(value) == value {
+            let prefix = String(value[..<whole.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !prefix.isEmpty {
+                value = prefix
+                // A visually separated bar after an observed label is still an uncertain role.
+                value = value.replacingOccurrences(of: "^([\\p{Han}]{2,4}\\s+[A-Za-z][A-Za-z .'-]{0,40})\\s+[lI|]\\s+(.+)$",
+                    with: "$1 - $2", options: .regularExpression)
+            }
+        }
+        // An explicit phonetic label, bounded snippet, and Latin presentation footer.
+        // Unknown prose, versions and unmatched brackets do not meet this contract.
+        let phonetic = "(?i)\\s+(?:拼音歌詞|拼音歌词)\\s*【[^】\\r\\n]{1,240}】(?=[A-Za-z ]*(?:lyrics?|pin\\s*yin))[A-Za-z ]{1,120}\\s*$"
+        if let range = value.range(of: phonetic, options: .regularExpression),
+           LyricsCanonicalMetadata.versions(String(value[range])).isEmpty {
+            let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if prefix.contains(" - "), !prefix.isEmpty { value = prefix }
+        }
+        // Long sentence-like quotes after an unquoted song are lyric snippets.
+        // A quote-only title, short formal subtitle, unknown suffix and version stay literal.
+        let snippet = "(?:「[^」\\r\\n]{12,240}」|『[^』\\r\\n]{12,240}』)\\s*$"
+        if let range = value.range(of: snippet, options: .regularExpression),
+           String(value[range]).range(of: "[，,。！？!?]", options: .regularExpression) != nil,
+           LyricsCanonicalMetadata.versions(String(value[range])).isEmpty {
+            let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let pieces = prefix.components(separatedBy: " - ")
+            if pieces.count == 2, !pieces[1].isEmpty,
+               !prefix.contains("「"), !prefix.contains("『") { value = prefix }
+        }
+        // Only a bounded sentence about performance/presentation after a formal song span.
+        let narration = "[，,](?=[^\\r\\n]{1,120}(?:歌聲|歌声|動聽|动听|百聽|百听))[^\\r\\n]{1,160}[！!。]\\s*$"
+        if value.contains("》"), let range = value.range(of: narration, options: .regularExpression),
+           LyricsCanonicalMetadata.versions(String(value[range])).isEmpty {
+            let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if prefix.hasSuffix("》") { value = prefix }
+        }
+        return value
+    }
+
+    static func isPresentationOnlySpan(_ text: String) -> Bool {
+        let label = "(?i)^(?:(?:高音質|高音质|High\\s*Quality)\\s*)?(?:動態歌詞|动态歌词|有歌詞字幕|有歌词字幕|歌詞版|歌词版|lyrics?)(?:\\s*(?:Lyrics?|MV|Video|Pinyin\\s*Lyrics?|Vietsub|[/|]))*$"
+        return text.trimmingCharacters(in: .whitespacesAndNewlines).range(of: label, options: .regularExpression) != nil
+    }
+
     static func bracketedVideoCredit(_ input: String) -> Pair? {
         let brackets: [(Character, Character)] = [("《", "》"), ("〈", "〉"), ("【", "】"), ("[", "]")]
         let spans = brackets.compactMap { open, close in balancedBracket(open, close, in: input) }
         guard let (open, close) = spans.min(by: { $0.0 < $1.0 }),
               !input[..<open].contains(" - ") else { return nil }
         let credit = String(input[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "(?:神級|神级)?(?:對唱|对唱)$", with: "", options: .regularExpression)
             .replacingOccurrences(of: "\\s*[-–—－]\\s*$", with: "", options: .regularExpression)
         guard !credit.isEmpty, credit.count <= 128,
               !credit.contains(where: { "()（）《》〈〉【】[]".contains($0) }) else { return nil }
         let track = String(input[input.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !track.isEmpty, track.count <= 256 else { return nil }
+        guard !track.isEmpty, track.count <= 256, !isPresentationOnlySpan(track) else { return nil }
         // [Live] / [Official MV] on a bare title is not a song-credit span.
         if input[open] == "[" || input[open] == "〈" {
             guard track.range(of: "(?i)^(?:live|remix|acoustic|instrumental|karaoke|cover)(?:\\s+(?:live|remix|acoustic|instrumental|karaoke|cover))*$", options: .regularExpression) == nil,
@@ -375,7 +437,7 @@ enum LyricsLookupMetadata {
             let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !prefix.isEmpty { value = prefix }
         }
-        let bare = "(?:official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
+        let bare = "(?:歌詞版Lyrics\\s*MV|歌词版Lyrics\\s*MV|official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
         let bracketed = "(?:\(bare)|官方頻道|官方频道)"
         let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》〉】\\]]))\(bare))\\s*$"
         while let range = value.range(of: suffix, options: .regularExpression) {

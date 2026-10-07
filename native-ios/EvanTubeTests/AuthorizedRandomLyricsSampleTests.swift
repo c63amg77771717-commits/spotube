@@ -121,7 +121,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                  "discardedContentOrMetadataCount": max(0, outcome.receivedCount - outcome.contentCandidateCount)]
             }
             let candidates: [[String: Any]] = (report.lyrics?.candidates ?? []).map { candidate in
-                ["provider": candidate.providerID.rawValue, "title": candidate.title, "artist": candidate.artist,
+                ["provider": candidate.providerID.rawValue, "recordID": candidate.recordID, "title": candidate.title, "artist": candidate.artist,
                  "identity": candidate.identityDecision?.kind.rawValue ?? "unknown", "timing": candidate.lyrics.timingState.rawValue,
                  "version": candidate.versionLabel, "reason": candidate.identityDecision?.reason?.rawValue ?? "confirmed"]
             }
@@ -130,6 +130,9 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                 "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds,
                 "stageElapsedInterpretation": "monotonic elapsed, not CPU; overlapping intervals must not be summed",
                 "providers": providers, "candidates": candidates, "requests": requests,
+                 "identicalTimedEvidenceGroups": LyricsRecordingEvidence.groups(report.lyrics?.candidates ?? []).map { ids in
+                     ids.map { ["provider": $0.providerID.rawValue, "recordID": $0.recordID] }
+                 }, "groupEvidenceIsNotHumanRecordingOrVocalVerification": true,
                 "contentRetrieved": report.providers.contains { $0.contentCandidateCount > 0 },
                 "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain,
                 "selectionMode": report.state == .synchronized || report.state == .confirmedPlain ? "automatic"

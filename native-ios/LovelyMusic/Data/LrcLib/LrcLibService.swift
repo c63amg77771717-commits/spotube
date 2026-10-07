@@ -30,6 +30,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
             return .metadataRejected(provider: .lrclib)
         }
         timings.measure("hypothesisDiagnostics", { LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrclib) })
+        let scoringSession = LyricsLookupScoringSession()
         var candidates: [LyricsCandidate] = []
         var evidence: [LyricsCandidateEvidence] = []
         let remembered = LyricsCandidateScorer.remembered(context, defaults: defaults)
@@ -59,13 +60,15 @@ final class LrcLibService: LyricsRepositoryProtocol {
                         discardedReason: candidate == nil ? (record.instrumental == true ? .instrumental :
                             record.id.map { $0 > 0 } != true || record.trackName == nil || record.artistName == nil ? .missingMetadata : .emptyContent)
                             : candidate?.id != saved ? .identityMismatch : nil,
-                        remembered: remembered, queryEndpoint: "get/" + String(id)))
+                        remembered: remembered, queryEndpoint: "get/" + String(id), scoringSession: scoringSession))
                     if let candidate, candidate.id == saved {
                         candidates.append(candidate)
-                        let identity = LyricsCandidateScorer.decision(candidate, metadata: metadata, remembered: remembered)
+                        let identity = scoringSession.decision(candidate, metadata: metadata, remembered: remembered)
                         // Manual/weak/untimed remembered records remain available but never suppress fallback.
                         if candidate.id == saved, identity.kind == .confirmed, candidate.lyrics.isTimeSynced {
-                            return report(timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults) }))
+                            let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, scoringSession: scoringSession) })
+                            try Task.checkCancellation()
+                            return report(result)
                         }
                         let timingReason: LyricsLookupDiagnostics.Reason?
                         switch candidate.lyrics.timingState {
@@ -114,11 +117,12 @@ final class LrcLibService: LyricsRepositoryProtocol {
                         candidate: candidate, discardedReason: candidate == nil ? (record.instrumental == true ? .instrumental :
                             record.id.map { $0 > 0 } != true || record.trackName == nil || record.artistName == nil ? .missingMetadata : .emptyContent) : nil,
                         remembered: remembered, queryEndpoint: query.endpoint,
-                        queryTitle: query.pair.title, queryArtist: query.pair.artist))
+                        queryTitle: query.pair.title, queryArtist: query.pair.artist, scoringSession: scoringSession))
                     if let candidate { candidates.append(candidate) }
                 }
                 }
-                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) {
+                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) {
+                    try Task.checkCancellation()
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
             } catch {
@@ -129,7 +133,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
             }
         }
         try Task.checkCancellation()
-        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) { return report(result) }
+        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) { try Task.checkCancellation(); return report(result) }
         try Task.checkCancellation()
         return report(nil)
     }

@@ -13,7 +13,7 @@ enum ChineseLyricsMetadataCleaner {
     }
 
     static func preparedTitle(_ original: String, suppliedArtist: String = "") -> String {
-        var value = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        var value = LyricsLookupMetadata.boundedQueryPresentation(original).trimmingCharacters(in: .whitespacesAndNewlines)
         let promo = "(?:新歌|首播|完整版|完整發行版|完整发行版|MV|Official MV)"
         // A channel prefix needs an adjacent recognized promotion label. Unknown bracket titles survive.
         value = replacing("(?i)^\\[[A-Za-z][A-Za-z0-9 ._-]{1,40}\\]\\s*(?=\\[" + promo + "\\])", in: value)
@@ -21,7 +21,7 @@ enum ChineseLyricsMetadataCleaner {
             let next = replacing("(?i)^(?:\\[" + promo + "\\]|【" + promo + "】)\\s*", in: value)
             if next == value { break }; value = next
         }
-        value = replacing(" [–—－] ", in: value, with: " - ")
+        value = replacing(" [–—－─━] ", in: value, with: " - ")
         // Compact Han credits remain two uncertain role hypotheses; this is not a performer assertion.
         value = replacing("^([\\p{Han}]{2,4})\\s*[-–—－]\\s*(?=\\S)", in: value, with: "$1 - ")
         if !suppliedArtist.isEmpty {
@@ -32,7 +32,7 @@ enum ChineseLyricsMetadataCleaner {
     }
 
     private static func strippingLyricLabels(_ original: String) -> String {
-        let words = "(?:歌詞版|歌词版|官方歌詞版|官方歌词版|完整版|完整發行版|完整发行版|(?:動態歌詞|动态歌词|lyrics?(?:\\s*video)?)(?:\\s*/\\s*(?:Vietsub|Pinyin\\s*Lyrics?|PinyinLyrics))*|Visualizer|4K|HD)"
+        let words = "(?:(?:高音質|高音质)\\s*)?(?:歌詞版|歌词版|有歌詞字幕\\s*Lyrics|有歌词字幕\\s*Lyrics|官方歌詞版|官方歌词版|完整版|完整發行版|完整发行版|(?:動態歌詞|动态歌词|lyrics?(?:\\s*video)?)(?:\\s*/\\s*(?:Vietsub|Pinyin\\s*Lyrics?|PinyinLyrics))*|Visualizer|4K|HD)"
         let pattern = "(?i)\\s*(?:\\(" + words + "\\)|（" + words + "）|\\[" + words + "\\]|【" + words + "】)\\s*[♪♫]?\\s*$"
         // Preserve the lyric label as evidence before stripping a quoted snippet.
         var value = LyricsLookupMetadata.strippingChineseLyricPresentation(original)
