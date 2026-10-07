@@ -253,7 +253,7 @@ enum LyricsLookupMetadata {
     static func strippingChineseLyricPresentation(_ input: String, removePrecedingSnippet: Bool = true) -> String {
         let versions = "(?i)\\b(?:live|remix|cover|acoustic|instrumental|karaoke)\\b|翻唱|现场|現場|演唱会|演唱會|改编|改編|加速|慢速"
         guard input.range(of: versions, options: .regularExpression) == nil else { return input }
-        let words = "(?:(?:動態歌詞|动态歌词)(?:\\s*/\\s*PinyinLyrics)?|非官方歌詞|非官方歌词|lyrics?\\s*(?:video)?)"
+        let words = "(?:動態歌詞|动态歌词|非官方歌詞|非官方歌词|lyrics?\\s*(?:video)?)(?:\\s*[/|]\\s*(?:Vietsub|Pinyin\\s*Lyrics?|高音質|高音质|High\\s*Quality))*"
         let label = "(?:【\\s*\(words)\\s*】|『\\s*\(words)\\s*』|（\\s*\(words)\\s*）|\\(\\s*\(words)\\s*\\)|\\[\\s*\(words)\\s*\\]|官方動態歌詞版|官方动态歌词版)"
         let quote = "(?:『[^』]*』|「[^」]*」|◖[^◗]*◗)"
         // A paired = caption and recognized language/music footer is presentation,
@@ -267,6 +267,7 @@ enum LyricsLookupMetadata {
         if removePrecedingSnippet, value != input,
            let quoteRange = value.range(of: "(?:『[^』]*』|「[^」]*」)\\s*$", options: .regularExpression) {
             let prefix = String(value[..<quoteRange.lowerBound])
+                .replacingOccurrences(of: "[♫♪]+\\s*$", with: "", options: .regularExpression)
             let pieces = prefix.components(separatedBy: " - ")
             // A quote-only formal title is protected. Only a trailing snippet after
             // an unquoted nonempty track and an explicit lyric label can be removed.

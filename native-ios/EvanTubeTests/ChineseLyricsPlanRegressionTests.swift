@@ -74,6 +74,35 @@ final class ChineseLyricsPlanRegressionTests: XCTestCase {
                           LyricsCanonicalMetadata.artistIdentity(LyricsLookupMetadata.identityKey("陈思涵")))
     }
 
+    func testDeviceCompositeLyricLabelsDoNotRejectMatchingSongAndPerformer() throws {
+        let cases = [
+            ("王樾安 - 会开花的云♫『你说 翻越那座天空 会有谁在等着我。』『动态歌词 | 高音质 | pinyin Lyrics』", "会开花的云", "王樾安"),
+            ("覆予 - 周旋『你的世界人潮擁擠 我怎能是唯一，錯過也合理。』【動態歌詞/Vietsub/Pinyin Lyrics】", "周旋", "覆予")
+        ]
+        for (original, title, artist) in cases {
+            let context = LyricsLookupContext(title: original, artist: "", duration: 200, hasYouTubeOrigin: true)
+            let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
+            XCTAssertEqual(metadata.pair.title, title)
+            XCTAssertEqual(metadata.pair.artist, artist)
+            let matching = LyricsCandidateScorer.decision(candidate(title, artist), metadata: metadata)
+            XCTAssertEqual(matching.kind, .relatedManual)
+            XCTAssertEqual(LyricsCandidateScorer.decision(candidate(title, "Other Performer"), metadata: metadata).kind, .rejected)
+            XCTAssertEqual(context.title, original)
+            XCTAssertEqual(context.artist, "")
+        }
+    }
+
+    func testCompositeLyricLabelCleanupPreservesFormalQuotesUnknownLabelsAndVersions() {
+        XCTAssertEqual(ChineseLyricsMetadataCleaner.preparedTitle("覆予 - 『周旋』【動態歌詞/Vietsub/Pinyin Lyrics】"),
+                       "覆予 - 『周旋』")
+        let unknown = "覆予 - 周旋『正式副標』【Unknown Version】"
+        XCTAssertEqual(LyricsLookupMetadata.strippingChineseLyricPresentation(unknown), unknown)
+        let live = "覆予 - 周旋 (Live)『歌詞片段』【動態歌詞/Vietsub/Pinyin Lyrics】"
+        XCTAssertEqual(LyricsLookupMetadata.strippingChineseLyricPresentation(live), live)
+        XCTAssertEqual(LyricsLookupMetadata.strippingChineseLyricPresentation("覆予 - ♫『正式歌名』【動態歌詞/Vietsub/Pinyin Lyrics】"),
+                       "覆予 - ♫『正式歌名』")
+    }
+
     func testWrongPerformerCannotBeRescuedByDurationOrRememberedID() throws {
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "雨不停", artist: "陳思函", duration: 200)))
         let wrong = candidate("雨不停", "周杰倫")

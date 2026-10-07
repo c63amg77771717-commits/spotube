@@ -105,6 +105,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -only-testing:EvanTubeTests/ChineseLyricsPlanRegressionTests \
             -only-testing:EvanTubeTests/CommonLyricsLogicTests \
             -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testCompositionKeysIncludeUncertainTitleRoles \
             -only-testing:EvanTubeTests/LyricsLookupOutcomeTests \
