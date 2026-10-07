@@ -47,6 +47,8 @@ jobs:
           echo "EVANTUBE_AGENT_EVIDENCE=$EVANTUBE_AGENT_EVIDENCE" >> "$GITHUB_ENV"
           node --version > "$EVANTUBE_AGENT_EVIDENCE/node-version.txt"
           "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin/agent-device" --version > "$EVANTUBE_AGENT_EVIDENCE/agent-device-version.txt"
+      - name: Verify build metadata guard
+        run: node --test scripts/ios-agent-device/build-metadata.test.mjs
       - name: Prepare isolated simulator fixtures
         run: |
           python3 scripts/ios-agent-device/prepare_simulator_fixture.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_AGENT_EVIDENCE"
@@ -79,6 +81,7 @@ jobs:
           echo "EVANTUBE_SIMULATOR_UDID=$simulator_id" >> "$GITHUB_ENV"
           xcrun simctl bootstatus "$simulator_id" -b
           xcrun simctl install "$simulator_id" "$RUNNER_TEMP/evantube-agent-derived/Build/Products/Debug-iphonesimulator/LovelyMusic.app"
+          echo "EVANTUBE_EXPECTED_APP_PATH=$RUNNER_TEMP/evantube-agent-derived/Build/Products/Debug-iphonesimulator/LovelyMusic.app" >> "$GITHUB_ENV"
           agent-device doctor --platform ios --app com.c63amg77771717.evantube --json > "$EVANTUBE_AGENT_EVIDENCE/doctor.json"
           agent-device prepare ios-runner --platform ios --udid "$simulator_id" --timeout 420000 --json > "$EVANTUBE_AGENT_EVIDENCE/prepare.json"
       - name: Verify playback, candidates, source settings, cancellation and resume
@@ -87,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build20-agent-device-evidence
+          name: EvanTube-agent-device-evidence-${{ github.sha }}
           path: |
             ${{ runner.temp }}/evantube-agent-device-evidence
           if-no-files-found: error

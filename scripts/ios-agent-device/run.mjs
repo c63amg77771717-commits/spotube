@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { fullPlayerProgress, fullPlayerButton, currentRef } from './accessibility-selectors.mjs';
 import { retryUndispatchedRunnerBusy } from './runner-recovery.mjs';
 import { observePersistedPreferences } from './preferences-observer.mjs';
+import { verifyInstalledAppMetadata } from './build-metadata.mjs';
 
 const { createAgentDeviceClient } = await import(pathToFileURL(process.env.AGENT_DEVICE_ENTRY));
 const app = 'com.c63amg77771717.evantube';
@@ -46,19 +47,26 @@ function simctl(args, env = {}) {
   assert.equal(result.status, 0, `${args[0]}: ${result.stderr}`);
   return result.stdout.trim();
 }
-// Read the installed simulator product instead of inheriting an older report label.
+// Compare this commit's compiled product with the actual installed simulator app.
+const expectedAppPath = process.env.EVANTUBE_EXPECTED_APP_PATH;
+assert(expectedAppPath && fs.existsSync(path.join(expectedAppPath, 'Info.plist')),
+  "This suite requires this checkout's compiled simulator product");
 const installedAppPath = simctl(['get_app_container', udid, app, 'app']);
-const installedInfoResult = spawnSync('/usr/bin/plutil',
-  ['-convert', 'json', '-o', '-', path.join(installedAppPath, 'Info.plist')],
-  { encoding: 'utf8', timeout: 10000 });
-assert.equal(installedInfoResult.status, 0, `Installed app metadata: ${installedInfoResult.stderr}`);
-const installedInfo = JSON.parse(installedInfoResult.stdout);
-const installedBuild = Number(installedInfo.CFBundleVersion);
-assert.equal(installedInfo.CFBundleIdentifier, app, 'The selected simulator must contain EvanTube');
-assert.equal(installedBuild, 23, 'Build23 acceptance must test an installed Build23 app');
-save('installed-build.json', { sourceCommit: process.env.GITHUB_SHA, build: installedBuild,
-  bundleIdentifier: installedInfo.CFBundleIdentifier, marketingVersion: installedInfo.CFBundleShortVersionString,
-  target: 'iPhone 16 Pro Simulator', signedPhysicalIPhone: false });
+function appInfo(appPath) {
+  const result = spawnSync('/usr/bin/plutil',
+    ['-convert', 'json', '-o', '-', path.join(appPath, 'Info.plist')],
+    { encoding: 'utf8', timeout: 10000 });
+  assert.equal(result.status, 0, `App metadata: ${result.stderr}`);
+  return JSON.parse(result.stdout);
+}
+const expectedInfo = appInfo(expectedAppPath);
+const installedInfo = appInfo(installedAppPath);
+save('build-precondition.json', { sourceCommit: process.env.GITHUB_SHA,
+  expectedProductPath: expectedAppPath, installedAppPath, expectedInfo, installedInfo });
+const verifiedBuild = verifyInstalledAppMetadata(expectedInfo, installedInfo, app);
+const installedBuild = verifiedBuild.build;
+save('installed-build.json', { sourceCommit: process.env.GITHUB_SHA, ...verifiedBuild,
+  expectedProductPath: expectedAppPath, target: 'iPhone 16 Pro Simulator', signedPhysicalIPhone: false });
 
 async function launch(reset = true) {
   const env = { SIMCTL_CHILD_REVIEW_MODE: '1',
