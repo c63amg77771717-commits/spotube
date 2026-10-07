@@ -234,10 +234,17 @@ final class LyricsDeviceLabelAndLatencyTests: XCTestCase {
 
     private func repairResultSignature(_ result: SyncedLyrics?) -> [String] {
         guard let result else { return ["nil"] }
-        return [result.providerID?.rawValue ?? "", result.source, result.timingState.rawValue,
-                result.lines.map { String($0.time) + "|" + $0.text }.joined(separator: ";")] + result.candidates.map {
-            $0.providerID.rawValue + ":" + $0.recordID + "|" + repairDecisionSignature($0.identityDecision!)
+        let timeline: [String] = result.lines.map { line in
+            String(line.time) + "|" + line.text
         }
+        let header: [String] = [result.providerID?.rawValue ?? "", result.source,
+                                result.timingState.rawValue, timeline.joined(separator: ";")]
+        let candidates: [String] = result.candidates.map { candidate in
+            let record = candidate.providerID.rawValue + ":" + candidate.recordID
+            let identity = repairDecisionSignature(candidate.identityDecision!)
+            return record + "|" + identity
+        }
+        return header + candidates
     }
 
     func testLookupLocalReuseInvalidatesAllCandidateEvidenceAndContextChanges() throws {
