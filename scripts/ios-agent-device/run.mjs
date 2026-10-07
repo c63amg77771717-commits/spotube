@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { fullPlayerProgress, fullPlayerButton, currentRef, candidateButton } from './accessibility-selectors.mjs';
 import { retryUndispatchedRunnerBusy } from './runner-recovery.mjs';
+import { selectAcceptanceCases } from './case-selection.mjs';
 import { observePersistedPreferences } from './preferences-observer.mjs';
 import { verifyInstalledAppMetadata } from './build-metadata.mjs';
 
@@ -288,7 +289,13 @@ const cases = [
   }],
 ];
 
-for (const [name, config, action] of cases) {
+const selectedCases = selectAcceptanceCases(cases, process.env.EVANTUBE_AGENT_CASE);
+save('acceptance-scope.json', { sourceCommit: process.env.GITHUB_SHA,
+  suiteTotal: cases.length, selectedCases: selectedCases.map(([name]) => name),
+  priorFailedRunID: process.env.EVANTUBE_PRIOR_FAILED_RUN || null,
+  skippedCasesAreNotPasses: true });
+
+for (const [name, config, action] of selectedCases) {
   caseName = name; scenario = config;
   client = createAgentDeviceClient({ session: `evantube-${name}`, platform: 'ios', udid });
   const start = Date.now();
@@ -300,6 +307,19 @@ for (const [name, config, action] of cases) {
     results.push({ name, status: 'FAIL', durationMs: Date.now() - start,
       message: error.message, code: error.code, details: error.details });
     console.error(`FAIL ${name}: ${error.message}`);
+    // Preserve the failing SDK request if it belongs to this isolated test session.
+    // A diagnostic copy never changes the case result or its acceptance deadline.
+    const diagnostic = error.details?.logPath;
+    const stateRoot = process.env.AGENT_DEVICE_STATE_DIR;
+    if (typeof diagnostic === 'string' && stateRoot) {
+      const allowedRoot = path.resolve(stateRoot, 'sessions', `evantube-${name}`, 'requests');
+      const source = path.resolve(diagnostic);
+      const relative = path.relative(allowedRoot, source);
+      if (relative && !relative.startsWith('..') && !path.isAbsolute(relative) && source.endsWith('.ndjson')) {
+        try { fs.copyFileSync(source, path.join(root, `${name}-failed-sdk-request.ndjson`)); }
+        catch (diagnosticError) { save(`${name}-sdk-diagnostic-copy-failure.json`, { message: diagnosticError.message }); }
+      }
+    }
     try { await screenshot('failure'); await snapshot(); } catch (captureError) {
       save(`${name}-capture-failure.json`, { message: captureError.message });
     }
@@ -310,7 +330,7 @@ for (const [name, config, action] of cases) {
     save('results.json', { agentDeviceVersion: '0.21.20', sourceCommit: process.env.GITHUB_SHA,
       build: installedBuild, target: 'iPhone 16 Pro Simulator', instrumentedDebugFixtures: true,
       releaseIPAModified: false, physicalIPhoneSignedLockscreen: 'NOT RUN',
-      total: cases.length, passed: results.filter(r => r.status === 'PASS').length,
+      suiteTotal: cases.length, total: selectedCases.length, passed: results.filter(r => r.status === 'PASS').length,
       failed: results.filter(r => r.status === 'FAIL').length, cases: results });
   }
 }
