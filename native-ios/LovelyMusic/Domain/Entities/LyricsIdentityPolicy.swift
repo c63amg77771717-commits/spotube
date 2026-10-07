@@ -107,7 +107,7 @@ enum LyricsIdentityPolicy {
     }
 
     private static func hasOrderedCredit(_ artist: String) -> Bool {
-        artist.range(of: "(?i)\\b(?:feat(?:uring)?|ft|with)\\.?\\s+", options: .regularExpression) != nil
+        artist.range(of: LyricsCanonicalMetadata.orderedCreditSeparatorPattern, options: .regularExpression) != nil
     }
 
     private struct CandidateView { let title: String; let artist: String }
@@ -116,8 +116,8 @@ enum LyricsIdentityPolicy {
         // A complete trailing feat credit can supplement performer metadata.
         // The literal title remains available; arbitrary bracket subtitles survive.
         let patterns = [
-            "(?i)^(.+?)\\s*\\(\\s*(?:feat(?:uring)?|ft)\\.?\\s+([^\\[\\]()]+)\\)\\s*$",
-            "(?i)^(.+?)\\s*\\[\\s*(?:feat(?:uring)?|ft)\\.?\\s+([^\\[\\]()]+)\\]\\s*$"
+            "(?i)^(.+?)\\s*\\(\\s*(?:feat(?:uring)?|ft)(?:\\.\\s*|\\s+)([^\\[\\]()]+)\\)\\s*$",
+            "(?i)^(.+?)\\s*\\[\\s*(?:feat(?:uring)?|ft)(?:\\.\\s*|\\s+)([^\\[\\]()]+)\\]\\s*$"
         ]
         for pattern in patterns {
         if let regex = try? NSRegularExpression(pattern: pattern),
@@ -165,12 +165,14 @@ enum LyricsIdentityPolicy {
             ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(view.title)) : view.title
         for hypothesis in metadata.hypotheses {
             let identity: (String) -> String = { performerIdentity($0, hypothesis: hypothesis, video: metadata.context.hasYouTubeOrigin) }
-            let expectedTokens = LyricsCanonicalMetadata.tokens(hypothesis.pair.artist).map(identity)
+            let duetCredits = LyricsLookupMetadata.corroboratedDuetCredits(context: metadata.context, pair: hypothesis.pair, returnedArtist: view.artist)
+            let expectedTokens = duetCredits.map { $0.map(LyricsLookupMetadata.identityKey).map(identity) }
+                ?? LyricsCanonicalMetadata.tokens(hypothesis.pair.artist).map(identity)
             let actualTokens = LyricsCanonicalMetadata.tokens(view.artist).map(identity)
             guard !actualTokens.isEmpty else { rejection = rejection ?? .missingMetadata; continue }
             var expected = Set(expectedTokens)
             let actual = Set(actualTokens)
-            var manual = !hypothesis.allowsAutomaticSelection
+            var manual = !hypothesis.allowsAutomaticSelection || duetCredits != nil
             var manualReason: LyricsLookupDiagnostics.Reason? = manual ? .identityConfirmationRequired : nil
             let titleMatches = hypothesis.titleVariants.contains {
                 LyricsLookupMetadata.identityKey($0) == LyricsLookupMetadata.identityKey(title)

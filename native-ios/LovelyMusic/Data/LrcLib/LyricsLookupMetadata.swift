@@ -175,10 +175,12 @@ enum LyricsLookupMetadata {
     static func cleanedLegacy(title: String, artist: String, allowVideoCredits: Bool,
                               allowArtistReplacement: Bool = false) -> Pair? {
         var lookupInput = title
+        var boundedCredit: Pair?
         if allowVideoCredits {
             lookupInput = lookupInput.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
             lookupInput = strippingVideoPresentation(strippingChineseLyricPresentation(lookupInput))
             if let credit = bracketedVideoCredit(lookupInput) {
+                boundedCredit = credit
                 lookupInput = credit.artist + " - " + credit.title
             }
         }
@@ -196,7 +198,7 @@ enum LyricsLookupMetadata {
                 let suppliedPrimary = LyricsCanonicalMetadata.creditComponents(lookupArtist).first.map {
                     identityKey($0) == identityKey(credit)
                 } == true
-                guard allowVideoCredits, boundedX || (!hasGuestCredit(credit) && suppliedPrimary) else { return nil }
+                guard allowVideoCredits, boundedX || boundedCredit != nil || (!hasGuestCredit(credit) && suppliedPrimary) else { return nil }
             }
             let track = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
             if allowVideoCredits, !lookupArtist.isEmpty,
@@ -353,16 +355,42 @@ enum LyricsLookupMetadata {
         return text.trimmingCharacters(in: .whitespacesAndNewlines).range(of: label, options: .regularExpression) != nil
     }
 
+
+    /// A duet caption can corroborate two complete returned names against the exact
+    /// concatenated source credit. It never splits names by length or asserts a primary.
+    /// The scorer always keeps this interpretation manual, even with an official MV.
+    static func corroboratedDuetCredits(context: LyricsLookupContext, pair: Pair,
+                                       returnedArtist: String) -> [String]? {
+        guard context.hasYouTubeOrigin,
+              context.artistNameSource == .uploader || context.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              context.title.contains("對唱") || context.title.contains("对唱") else { return nil }
+        let prepared = boundedQueryPresentation(context.title)
+        guard let explicit = bracketedVideoCredit(prepared),
+              identityKey(explicit.title) == identityKey(pair.title),
+              identityKey(explicit.artist) == identityKey(pair.artist),
+              let opening = prepared.firstIndex(where: { "《〈『【[".contains($0) }) else { return nil }
+        let prefix = String(prepared[..<opening]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let cue = prefix.range(of: "(?:神級|神级)?(?:對唱|对唱)\\s*$", options: .regularExpression) else { return nil }
+        let sourceNames = identityKey(String(prefix[..<cue.lowerBound]))
+        guard sourceNames == identityKey(pair.artist) else { return nil }
+        let credits = LyricsCanonicalMetadata.creditComponents(returnedArtist)
+        let names = credits.map(identityKey)
+        guard names.count == 2, Set(names).count == 2,
+              names.allSatisfy({ (2...16).contains($0.count) && $0.unicodeScalars.allSatisfy { (0x3400...0x9FFF).contains($0.value) } }),
+              sourceNames == names.joined() || sourceNames == names.reversed().joined() else { return nil }
+        return credits
+    }
+
     static func bracketedVideoCredit(_ input: String) -> Pair? {
-        let brackets: [(Character, Character)] = [("《", "》"), ("〈", "〉"), ("【", "】"), ("[", "]")]
+        let brackets: [(Character, Character)] = [("《", "》"), ("〈", "〉"), ("『", "』"), ("【", "】"), ("[", "]")]
         let spans = brackets.compactMap { open, close in balancedBracket(open, close, in: input) }
         guard let (open, close) = spans.min(by: { $0.0 < $1.0 }),
               !input[..<open].contains(" - ") else { return nil }
         let credit = String(input[..<open]).trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "(?:神級|神级)?(?:對唱|对唱)$", with: "", options: .regularExpression)
-            .replacingOccurrences(of: "\\s*[-–—－]\\s*$", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "\\s*[-–—－/]\\s*$", with: "", options: .regularExpression)
         guard !credit.isEmpty, credit.count <= 128,
-              !credit.contains(where: { "()（）《》〈〉【】[]".contains($0) }) else { return nil }
+              !credit.contains(where: { "()（）《》〈〉『』【】[]".contains($0) }) else { return nil }
         let track = String(input[input.index(after: open)..<close]).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !track.isEmpty, track.count <= 256, !isPresentationOnlySpan(track) else { return nil }
         // [Live] / [Official MV] on a bare title is not a song-credit span.
@@ -437,9 +465,9 @@ enum LyricsLookupMetadata {
             let prefix = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             if !prefix.isEmpty { value = prefix }
         }
-        let bare = "(?:歌詞版Lyrics\\s*MV|歌词版Lyrics\\s*MV|official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
+        let bare = "(?:歌詞版Lyrics\\s*MV|歌词版Lyrics\\s*MV|official\\s+(?:music\\s+video|video|audio|mv|lyric\\s+video|lyrics\\s+video)|music\\s+video|ミュージックビデオ|lyrics?\\s+mv|lyric\\s+video|lyrics\\s+video|官方\\s*(?:mv|音樂錄影帶|音乐录影带|歌詞影片|歌词影片))"
         let bracketed = "(?:\(bare)|官方頻道|官方频道)"
-        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》〉】\\]]))\(bare))\\s*$"
+        let suffix = "(?i)(?:\\s*\\(\\s*\(bracketed)\\s*\\)|\\s*\\[\\s*\(bracketed)\\s*\\]|\\s*【\\s*\(bracketed)\\s*】|(?:\\s+|(?<=[》〉】』」\\]）)]))\(bare))\\s*$"
         while let range = value.range(of: suffix, options: .regularExpression) {
             let preceding = String(value[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !normalized(preceding).hasSuffix("unofficial") else { break }

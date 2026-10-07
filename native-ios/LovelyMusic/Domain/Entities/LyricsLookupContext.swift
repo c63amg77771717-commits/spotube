@@ -121,9 +121,13 @@ struct LyricsCanonicalMetadata {
         return value
     }
 
+    /// An explicit dot or whitespace bounds the marker; ftGuest and leading feat.
+    /// without a primary remain opaque. Main/guest order is preserved by the scorer.
+    static let orderedCreditSeparatorPattern = "(?i)(?<=\\S)\\s+(?:feat(?:uring)?|ft|with)(?:\\.\\s*|\\s+)(?=\\S)"
+
     static func creditComponents(_ artist: String) -> [String] {
         let separated = artist
-            .replacingOccurrences(of: "(?i)\\b(?:feat(?:uring)?|ft|with)\\.?\\s+", with: "|", options: .regularExpression)
+            .replacingOccurrences(of: orderedCreditSeparatorPattern, with: "|", options: .regularExpression)
             .replacingOccurrences(of: "\\s+x\\s+", with: "|", options: .regularExpression)
         return separated.components(separatedBy: CharacterSet(charactersIn: "&+×/,、|;；"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
