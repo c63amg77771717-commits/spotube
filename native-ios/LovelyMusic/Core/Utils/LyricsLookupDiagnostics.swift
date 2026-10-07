@@ -4,7 +4,7 @@ import Foundation
 /// Never record lyrics text, headers, response bodies, cookies, credentials or URLs.
 final class LyricsLookupDiagnostics: @unchecked Sendable {
     enum Phase: String, Codable, Sendable {
-        case lookup, hypothesis, query, transportAttempt, response, providerEmpty, candidateDropped, candidateAccepted, selection, failure, result
+        case lookup, hypothesis, query, transportAttempt, response, providerEmpty, candidateDropped, candidateAccepted, selection, failure, result, stageTiming
     }
     enum Reason: String, Codable, Sendable {
         case missingMetadata, emptyContent, titleMismatch, versionMismatch, primaryPerformerMismatch, guestMismatch
@@ -46,12 +46,15 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
         let attempt: Int?
         let transportErrorCode: Int?
         let latencyMilliseconds: Int?
+        let lookupLatencyMilliseconds: Int?
+        let stage: String?
+        let stageElapsedMilliseconds: Double?
         init(context: LyricsLookupContext, provider: LyricsProviderID? = nil, phase: Phase,
              reason: Reason? = nil, endpoint: String? = nil, title: String? = nil, artist: String? = nil,
              duration: Double? = nil, recordID: String? = nil, httpStatus: Int? = nil, count: Int? = nil, score: Int? = nil,
              outcome: String? = nil, hypothesisID: String? = nil, normalizationReason: String? = nil, normalizationBefore: String? = nil,
              cacheSource: String = "not-observed", attempt: Int? = nil, transportErrorCode: Int? = nil,
-             latencyMilliseconds: Int? = nil) {
+             latencyMilliseconds: Int? = nil, lookupLatencyMilliseconds: Int? = nil, stage: String? = nil, stageElapsedMilliseconds: Double? = nil) {
             timestamp = Date(); lookupID = context.diagnosticLookupID; songID = Self.bounded(context.songID)
             self.provider = provider; self.phase = phase; self.reason = reason
             album = Self.bounded(context.album); artistID = Self.bounded(context.artistID); albumID = Self.bounded(context.albumID)
@@ -71,6 +74,9 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
             self.attempt = attempt.flatMap { (1...2).contains($0) ? $0 : nil }
             self.transportErrorCode = transportErrorCode
             self.latencyMilliseconds = latencyMilliseconds.map { max(0, min(60000, $0)) }
+            self.lookupLatencyMilliseconds = lookupLatencyMilliseconds.map { max(0, min(600000, $0)) }
+            self.stage = Self.bounded(stage)
+            self.stageElapsedMilliseconds = stageElapsedMilliseconds.flatMap { $0.isFinite ? max(0, min(600000, $0)) : nil }
         }
         private static func bounded(_ value: String?) -> String? {
             guard let value, !value.contains("://") else { return nil }
@@ -132,5 +138,25 @@ final class LyricsLookupDiagnostics: @unchecked Sendable {
             }
         } else { reason = .providerUnavailable }
         record(.init(context: context, provider: provider, phase: .failure, reason: reason))
+    }
+}
+
+/// Per-invocation monotonic elapsed intervals, including any scheduling/preemption.
+/// These intervals are not CPU samples. No result cache or global mutable timing state.
+final class LyricsLookupStageTimings {
+    private let started = ProcessInfo.processInfo.systemUptime
+    private var totals: [String: Double] = [:]
+    func measure<T>(_ stage: String, _ body: () throws -> T) rethrows -> T {
+        let start = ProcessInfo.processInfo.systemUptime
+        defer { totals[stage, default: 0] += max(0, ProcessInfo.processInfo.systemUptime - start) * 1000 }
+        return try body()
+    }
+    func record(context: LyricsLookupContext, provider: LyricsProviderID?, wallStage: String = "providerWall") {
+        for stage in totals.keys.sorted() {
+            LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .stageTiming,
+                stage: stage, stageElapsedMilliseconds: totals[stage]))
+        }
+        LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .stageTiming,
+            stage: wallStage, stageElapsedMilliseconds: max(0, ProcessInfo.processInfo.systemUptime - started) * 1000))
     }
 }

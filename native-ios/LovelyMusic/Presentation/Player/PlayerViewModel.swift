@@ -353,10 +353,21 @@ final class PlayerViewModel {
         lyrics = nil
         let task = Task { [weak self] in
             guard let self else { return }
+            let started = ProcessInfo.processInfo.systemUptime
             do {
                 let report = try await self.getLyricsUseCase.executeReport(song: song)
                 guard !Task.isCancelled, self.lyricsGeneration == generation,
                       self.currentSong?.id == song.id else { return }
+                let applyStarted = ProcessInfo.processInfo.systemUptime
+                defer {
+                    if let context = report.diagnosticContext {
+                        let now = ProcessInfo.processInfo.systemUptime
+                        LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .stageTiming,
+                            stage: "playerStateApply", stageElapsedMilliseconds: max(0, now - applyStarted) * 1000))
+                        LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .stageTiming,
+                            stage: "playerLookupThroughStateApply", stageElapsedMilliseconds: max(0, now - started) * 1000))
+                    }
+                }
                 self.lyricsLookupReport = report
                 if report.state == .sourceUnavailable { self.lyricsError = report.state.message }
                 if let result = report.lyrics, !result.lines.isEmpty || !result.candidates.isEmpty {

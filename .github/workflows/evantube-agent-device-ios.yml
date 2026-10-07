@@ -48,7 +48,7 @@ jobs:
           node --version > "$EVANTUBE_AGENT_EVIDENCE/node-version.txt"
           "$RUNNER_TEMP/evantube-agent-device/node_modules/.bin/agent-device" --version > "$EVANTUBE_AGENT_EVIDENCE/agent-device-version.txt"
       - name: Verify build metadata guard
-        run: node --test scripts/ios-agent-device/build-metadata.test.mjs
+        run: node --test scripts/ios-agent-device/build-metadata.test.mjs scripts/ios-agent-device/runner-recovery.test.mjs
       - name: Prepare isolated simulator fixtures
         run: |
           python3 scripts/ios-agent-device/prepare_simulator_fixture.py --repo "$GITHUB_WORKSPACE" --evidence "$EVANTUBE_AGENT_EVIDENCE"
@@ -90,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-agent-device-evidence-${{ github.sha }}
+          name: EvanTube-build20-agent-device-evidence
           path: |
             ${{ runner.temp }}/evantube-agent-device-evidence
           if-no-files-found: error

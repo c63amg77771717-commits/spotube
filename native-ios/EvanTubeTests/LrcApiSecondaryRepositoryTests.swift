@@ -88,8 +88,12 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
             defer { f.close() }
             let result = try await f.lookup()
             XCTAssertEqual(result?.isTimeSynced, false)
-            XCTAssertEqual(result?.lines.map(\.text), ["Secondary fixture"])
-            XCTAssertTrue(result?.lines.allSatisfy { $0.time == 0 } ?? false)
+            XCTAssertTrue(result?.lines.isEmpty ?? false)
+            let candidate = try XCTUnwrap(result?.candidates.first)
+            XCTAssertEqual(candidate.identityDecision?.score, 75)
+            XCTAssertEqual(candidate.lyrics.lines.map(\.text), ["Secondary fixture"])
+            XCTAssertEqual(candidate.lyrics.timingState, duration == nil ? .timingUnknown : .durationMismatch)
+            XCTAssertTrue(candidate.lyrics.lines.allSatisfy { $0.time == 0 })
         }
     }
 
@@ -100,7 +104,12 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
             defer { f.close() }
             let result = try await f.lookup()
             XCTAssertEqual(result?.isTimeSynced, false)
-            XCTAssertFalse(result?.lines.first?.text.hasPrefix("[") ?? true)
+            XCTAssertTrue(result?.lines.isEmpty ?? false)
+            let candidate = try XCTUnwrap(result?.candidates.first)
+            XCTAssertEqual(candidate.identityDecision?.score, 75)
+            XCTAssertFalse(candidate.lyrics.lines.first?.text.hasPrefix("[") ?? true)
+            XCTAssertEqual(candidate.lyrics.lines.map(\.text), [body["lyrics"] != nil ? "Legacy fixture" : "Modern plain fixture"])
+            XCTAssertTrue(candidate.lyrics.lines.allSatisfy { $0.time == 0 })
         }
     }
 
@@ -121,7 +130,10 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
         let result = try XCTUnwrap(loaded)
         XCTAssertEqual(result.candidates.count, 2)
         XCTAssertEqual(Set(result.candidates.map(\.id)).count, 2, "Both providers' record 101 must survive")
-        XCTAssertTrue(result.lines.isEmpty, "Multiple recordings must not be silently selected or spliced")
+        XCTAssertEqual(result.providerID, .lrcapi)
+        XCTAssertEqual(result.lines.map(\.text), ["Secondary fixture"])
+        XCTAssertEqual(result.candidates.map { $0.identityDecision?.score }, [95, 75])
+        XCTAssertEqual(Set(result.candidates.flatMap { $0.lyrics.lines.map(\.text) }), ["Primary fixture", "Secondary fixture"])
         let chosen = LyricsRecordID(providerID: .lrcapi, recordID: "101")
         LyricsSelectionStore.select(chosen, for: try XCTUnwrap(result.selectionKey), defaults: f.defaults)
         let recreated = f.repository()
@@ -161,9 +173,16 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
         let f = try SecondaryContext(primary: .status(404), secondary: .json([secondary()]), artist: "")
         defer { f.close() }
         let result = try await f.lookup()
-        XCTAssertTrue(result?.lines.isEmpty ?? false)
-        XCTAssertEqual(result?.candidates.count, 1)
-        let requests = f.requests.filter { $0.url?.host == "api.lrc.cx" }
+        XCTAssertNil(result, "English40 + duration20 =60 is below the manual threshold")
+        var hanRecord = secondary(); hanRecord["title"] = "測試歌曲"
+        let han = try SecondaryContext(primary: .status(404), secondary: .json([hanRecord]), title: "測試歌曲", artist: "")
+        defer { han.close() }
+        let manual = try await han.lookup()
+        XCTAssertTrue(manual?.lines.isEmpty ?? false)
+        XCTAssertEqual(manual?.candidates.count, 1)
+        XCTAssertEqual(manual?.candidates.first?.identityDecision?.score, 65)
+        XCTAssertEqual(manual?.candidates.first?.lyrics.lines.map(\.text), ["Secondary fixture"])
+        let requests = (f.requests + han.requests).filter { $0.url?.host == "api.lrc.cx" }
         XCTAssertTrue(requests.allSatisfy {
             URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)!.queryItems!.allSatisfy { $0.name != "artist" }
         })
@@ -393,13 +412,13 @@ private struct SecondaryReply {
 }
 
 private final class SecondaryContext {
-    let title = "Fixture song"
+    let title: String
     let artist: String
     let session: URLSession
     let defaults: UserDefaults
     private let suite: String
-    init(primary: SecondaryReply, secondary: SecondaryReply, artist: String = "Fixture performer") throws {
-        self.artist = artist
+    init(primary: SecondaryReply, secondary: SecondaryReply, title: String = "Fixture song", artist: String = "Fixture performer") throws {
+        self.title = title; self.artist = artist
         let suiteName = "LrcApiSecondaryTests." + UUID().uuidString
         suite = suiteName
         defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

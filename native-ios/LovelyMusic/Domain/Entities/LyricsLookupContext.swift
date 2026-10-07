@@ -49,8 +49,13 @@ struct LyricsCanonicalMetadata {
     let versionTags: Set<String>
     let context: LyricsLookupContext
     let presentationContext: [String]
+    // Prepared once per immutable lookup, rather than once for every candidate evaluation.
+    private var preparedHypotheses: [LyricsIdentityHypothesis] = []
+    private let usePreparedHypotheses: Bool
 
-    init?(_ context: LyricsLookupContext) {
+    // The uncached route is an internal benchmark oracle using the exact same policy.
+    // Production call sites always use the default; no setting/result cache is added.
+    init?(_ context: LyricsLookupContext, cacheHypotheses: Bool = true) {
         let title = context.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let artist = context.artistNameSource == .uploader ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
@@ -64,6 +69,8 @@ struct LyricsCanonicalMetadata {
         self.context = context; originalTitle = title; originalArtist = artist; self.pair = pair
         presentationContext = cleaned.presentationContext
         artistTokens = Self.tokens(pair.artist); versionTags = Self.versions(pair.title)
+        usePreparedHypotheses = cacheHypotheses
+        if cacheHypotheses { preparedHypotheses = LyricsIdentityPolicy.hypotheses(self) }
     }
 
     /// Explicit bracket or dash credits can establish bounded bilingual title variants.
@@ -91,7 +98,7 @@ struct LyricsCanonicalMetadata {
         return quoted
     }
 
-    var hypotheses: [LyricsIdentityHypothesis] { LyricsIdentityPolicy.hypotheses(self) }
+    var hypotheses: [LyricsIdentityHypothesis] { usePreparedHypotheses ? preparedHypotheses : LyricsIdentityPolicy.hypotheses(self) }
 
     var requiresManualIdentityConfirmation: Bool {
         hypotheses.first?.allowsAutomaticSelection != true
@@ -157,9 +164,10 @@ struct LyricsCanonicalMetadata {
     // Explicit, curated equivalence only; no transliteration guesses or remote metadata service.
     static let aliasGroups = [["周杰倫", "周杰伦", "Jay Chou", "周杰倫 Jay Chou"],
                               ["五月天", "Mayday", "五月天 Mayday"]]
+    private static let aliasIdentityKeys = aliasGroups.map { $0.map(LyricsLookupMetadata.identityKey) }
     static func artistIdentity(_ token: String) -> String {
-        for group in aliasGroups {
-            if group.map(LyricsLookupMetadata.identityKey).contains(token) { return LyricsLookupMetadata.identityKey(group[0]) }
+        for group in aliasIdentityKeys {
+            if group.contains(token) { return group[0] }
         }
         return token
     }
@@ -272,7 +280,7 @@ enum LyricsCandidateScorer {
             let identity = decision(rawCandidate, metadata: metadata, remembered: remembered(metadata.context, defaults: defaults))
             guard identity.kind != .rejected else {
                 LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: rawCandidate.providerID,
-                    phase: .candidateDropped, reason: rejectionReason(rawCandidate, metadata: metadata),
+                    phase: .candidateDropped, reason: identity.reason ?? .identityMismatch,
                     title: rawCandidate.title, artist: rawCandidate.artist, duration: rawCandidate.duration, recordID: rawCandidate.recordID))
                 continue
             }

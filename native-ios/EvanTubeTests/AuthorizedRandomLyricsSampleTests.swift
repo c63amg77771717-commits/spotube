@@ -69,7 +69,9 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
             XCTAssertEqual(song.title, title.trimmingCharacters(in: .whitespacesAndNewlines))
             XCTAssertEqual(song.artistName, artist.trimmingCharacters(in: .whitespacesAndNewlines))
             AuthorizedSampleHTTPTransport.beginSample(index)
+            let started = ProcessInfo.processInfo.systemUptime
             let report = try await GetLyricsUseCase(repository: repository).executeReport(song: song, includeDurationInQuery: false)
+            let lookupMilliseconds = Int(max(0, (ProcessInfo.processInfo.systemUptime - started) * 1000))
             let requests = AuthorizedSampleHTTPTransport.requests
             XCTAssertTrue(requests.allSatisfy { ($0["onlyTitleAndArtist"] as? Bool) == true })
             XCTAssertLessThanOrEqual(requests.count, 24)
@@ -95,7 +97,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                  "version": candidate.versionLabel, "reason": candidate.identityDecision?.reason?.rawValue ?? "confirmed"]
             }
             results.append(["index": index, "compositionKeys": Array(try compositionKeys(LyricsLookupContext(song: song))).sorted(), "title": title, "artist": artist, "stratum": row["stratum"] ?? "unknown",
-                "state": report.state.rawValue, "providers": providers, "candidates": candidates, "requests": requests,
+                "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds, "providers": providers, "candidates": candidates, "requests": requests,
                 "contentRetrieved": report.providers.contains { $0.contentCandidateCount > 0 },
                 "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain,
                 "selectionMode": report.state == .synchronized || report.state == .confirmedPlain ? "automatic"

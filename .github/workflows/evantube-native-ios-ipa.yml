@@ -105,8 +105,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/evantube-tests-derived" \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-            -only-testing:EvanTubeTests/ChineseLyricsPlanRegressionTests \
             -only-testing:EvanTubeTests/CommonLyricsLogicTests \
+            -only-testing:EvanTubeTests/ChineseLyricsPlanRegressionTests \
+            -only-testing:EvanTubeTests/LyricsDeviceLabelAndLatencyTests -only-testing:EvanTubeTests/LyricsSchedulingFixtureTests \
             -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testCompositionKeysIncludeUncertainTitleRoles \
             -only-testing:EvanTubeTests/LyricsLookupOutcomeTests \
             -only-testing:EvanTubeTests/AutomaticLyricsTests \
@@ -377,22 +378,22 @@ jobs:
         run: |
           python3 native-ios/scripts/package_unverified_test_ipa.py \
             --app "$RUNNER_TEMP/evantube-test-ipa-derived/Build/Products/Release-iphoneos/LovelyMusic.app" \
-            --output "$GITHUB_WORKSPACE/EvanTube-native-iOS-build24-TEST-UNVERIFIED-unsigned.ipa" \
-            --receipt "$RUNNER_TEMP/test-ipa-manifest.json" --build 24 --source-sha "$GITHUB_SHA"
+            --output "$GITHUB_WORKSPACE/EvanTube-native-iOS-build25-TEST-UNVERIFIED-unsigned.ipa" \
+            --receipt "$RUNNER_TEMP/test-ipa-manifest.json" --build 25 --source-sha "$GITHUB_SHA"
           echo "TEST ONLY: device compilation passed; forty-song, UI, actual-vocal and physical-device acceptance NOT RUN." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-native-iOS-build24-TEST-UNVERIFIED-unsigned
+          name: EvanTube-native-iOS-build25-TEST-UNVERIFIED-unsigned
           path: |
-            EvanTube-native-iOS-build24-TEST-UNVERIFIED-unsigned.ipa
+            EvanTube-native-iOS-build25-TEST-UNVERIFIED-unsigned.ipa
             ${{ runner.temp }}/test-ipa-manifest.json
           if-no-files-found: error
       - name: Prepare bounded IPA transfer parts
         id: test_ipa_parts
-        run: python3 scripts/ios-picker-diagnostic/split_ipa.py --ipa EvanTube-native-iOS-build24-TEST-UNVERIFIED-unsigned.ipa --output "$RUNNER_TEMP/evantube-test-ipa-parts"
+        run: python3 scripts/ios-picker-diagnostic/split_ipa.py --ipa EvanTube-native-iOS-build25-TEST-UNVERIFIED-unsigned.ipa --output "$RUNNER_TEMP/evantube-test-ipa-parts"
       - uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-build24-test-ipa-part0
+          name: EvanTube-build25-test-ipa-part0
           path: |
             ${{ runner.temp }}/evantube-test-ipa-parts/*.part00
             ${{ runner.temp }}/evantube-test-ipa-parts/manifest.json
@@ -401,18 +402,18 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: steps.test_ipa_parts.outputs.has_part_1 == 'true'
         with:
-          name: EvanTube-build24-test-ipa-part1
+          name: EvanTube-build25-test-ipa-part1
           path: ${{ runner.temp }}/evantube-test-ipa-parts/*.part01
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: steps.test_ipa_parts.outputs.has_part_2 == 'true'
         with:
-          name: EvanTube-build24-test-ipa-part2
+          name: EvanTube-build25-test-ipa-part2
           path: ${{ runner.temp }}/evantube-test-ipa-parts/*.part02
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: steps.test_ipa_parts.outputs.has_part_3 == 'true'
         with:
-          name: EvanTube-build24-test-ipa-part3
+          name: EvanTube-build25-test-ipa-part3
           path: ${{ runner.temp }}/evantube-test-ipa-parts/*.part03
           if-no-files-found: error

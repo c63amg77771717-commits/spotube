@@ -75,9 +75,14 @@ final class Build20LyricsTests: XCTestCase {
         }
         defer { f.close() }
         let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: context())
-        XCTAssertEqual(result?.lines.map(\.text), ["Fixture lyric"])
+        XCTAssertEqual(result?.lines.map(\.text), [])
+        let candidate = try XCTUnwrap(result?.candidates.first)
+        XCTAssertEqual(candidate.identityDecision?.score, 75)
+        XCTAssertEqual(candidate.identityDecision?.kind, .relatedManual)
+        XCTAssertEqual(candidate.lyrics.lines.map(\.text), ["Fixture lyric"])
+        XCTAssertEqual(candidate.lyrics.timingState, .durationMismatch)
         XCTAssertEqual(result?.isTimeSynced, false)
-        XCTAssertTrue(result?.lines.allSatisfy { $0.time == 0 } ?? false)
+        XCTAssertTrue(candidate.lyrics.lines.allSatisfy { $0.time == 0 })
     }
 
     func testCloseScoresRequireManualChoiceAndAlbumCanIdentifyUniqueHighCandidate() throws {
@@ -90,7 +95,9 @@ final class Build20LyricsTests: XCTestCase {
         XCTAssertEqual(manual.candidates.count, 2)
         let album = candidate(id: "2", duration: 200, album: "Original Album")
         let unique = try XCTUnwrap(LyricsCandidateScorer.choose([first, album], metadata: metadata, defaults: defaults))
-        XCTAssertEqual(unique.lines.first?.text, "Record 2")
+        XCTAssertTrue(unique.lines.isEmpty, "Album contributes 5; unique automatic selection requires a gap >=10")
+        XCTAssertEqual(unique.candidates.map { $0.identityDecision?.score }, [100, 95])
+        XCTAssertEqual(Set(unique.candidates.flatMap { $0.lyrics.lines.map(\.text) }), ["Record 1", "Record 2"])
     }
 
     func testSelectionsBelongToSongIDAcrossMetadataChangesAndDoNotLeakToAnotherVideo() throws {
@@ -176,7 +183,12 @@ final class Build20LyricsTests: XCTestCase {
 
     func testMissingPerformerRequiresManualChoiceAndAmbiguousCreditsNeverGuess() throws {
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context(artist: "", video: true)))
-        let result = try XCTUnwrap(LyricsCandidateScorer.choose([candidate()], metadata: metadata, defaults: isolatedDefaults()))
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(), metadata: metadata).score, 60)
+        XCTAssertNil(LyricsCandidateScorer.choose([candidate()], metadata: metadata, defaults: isolatedDefaults()))
+        let han = try XCTUnwrap(LyricsCanonicalMetadata(context(title: "測試歌曲", artist: "", video: true)))
+        let result = try XCTUnwrap(LyricsCandidateScorer.choose([candidate(title: "測試歌曲")], metadata: han, defaults: isolatedDefaults()))
+        XCTAssertEqual(result.candidates.first?.identityDecision?.score, 65)
+        XCTAssertEqual(result.candidates.first?.lyrics.lines.first?.text, "Record 1")
         XCTAssertTrue(result.lines.isEmpty)
         XCTAssertEqual(result.candidates.count, 1)
         XCTAssertNil(LyricsCanonicalMetadata(context(artist: "", video: false)))
@@ -256,7 +268,12 @@ final class Build20LyricsTests: XCTestCase {
         }
         defer { f.close() }
         let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: context())
-        XCTAssertEqual(result?.lines.first?.text, "Fixture lyric")
+        XCTAssertTrue(result?.lines.isEmpty ?? false)
+        let candidate = try XCTUnwrap(result?.candidates.first)
+        XCTAssertEqual(candidate.identityDecision?.score, 75)
+        XCTAssertEqual(candidate.lyrics.lines.first?.text, "Fixture lyric")
+        XCTAssertEqual(candidate.lyrics.timingState, .durationMismatch)
+        XCTAssertTrue(candidate.lyrics.lines.allSatisfy { $0.time == 0 })
         XCTAssertEqual(result?.isTimeSynced, false)
         XCTAssertEqual(result?.sourceFailures.first?.providerID, .lrclib)
         XCTAssertEqual(f.requests.count, 4)
@@ -611,9 +628,11 @@ final class Build20LyricsTests: XCTestCase {
             title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: nil,
             lyrics: SyncedLyrics(lines: [.init(time: 0, text: "Plain fixture")], source: "LRCLib (plain)",
                                   isTimeSynced: false, providerID: .lrclib))
-        XCTAssertGreaterThanOrEqual(try XCTUnwrap(LyricsCandidateScorer.score(record, metadata: metadata)), 85)
+        XCTAssertEqual(try XCTUnwrap(LyricsCandidateScorer.score(record, metadata: metadata)), 75)
         let result = try XCTUnwrap(LyricsCandidateScorer.choose([record], metadata: metadata, defaults: isolatedDefaults()))
-        XCTAssertEqual(result.lines.first?.text, "Plain fixture")
+        XCTAssertTrue(result.lines.isEmpty)
+        XCTAssertEqual(result.candidates.first?.lyrics.lines.first?.text, "Plain fixture")
+        XCTAssertEqual(result.candidates.first?.identityDecision?.kind, .relatedManual)
         XCTAssertFalse(result.isTimeSynced)
     }
 
@@ -622,9 +641,12 @@ final class Build20LyricsTests: XCTestCase {
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
         let a = candidate(id: "1", title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: 185)
         let b = candidate(id: "2", title: "I'm Alive", artist: "李杰明 & 陳忻玥", duration: 240)
-        XCTAssertEqual(LyricsCandidateScorer.score(a, metadata: metadata), LyricsCandidateScorer.score(b, metadata: metadata))
+        XCTAssertEqual(LyricsCandidateScorer.score(a, metadata: metadata), 95)
+        XCTAssertEqual(LyricsCandidateScorer.score(b, metadata: metadata), 75)
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "I'm Alive (Live)", artist: a.artist, duration: 185), metadata: metadata))
+        XCTAssertNil(LyricsCandidateScorer.score(candidate(title: "I'm Alive", artist: "Wrong performer", duration: 185), metadata: metadata))
         let result = try XCTUnwrap(LyricsCandidateScorer.choose([a, b], metadata: metadata, defaults: isolatedDefaults()))
-        XCTAssertTrue(result.lines.isEmpty)
+        XCTAssertEqual(result.lines.map(\.text), ["Record 1"])
         XCTAssertEqual(result.candidates.count, 2)
     }
 

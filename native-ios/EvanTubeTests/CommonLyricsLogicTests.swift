@@ -20,9 +20,16 @@ final class CommonLyricsLogicTests: XCTestCase {
             XCTAssertTrue(metadata.hypotheses.contains { $0.evidence == .literal && $0.pair.title == title })
             let record = title == "Love [Chapter Two]" ? candidate(title, artist: "Actual Singer") : candidate("Title", artist: "Singer")
             let decision = LyricsCandidateScorer.decision(record, metadata: metadata)
-            XCTAssertEqual(decision.kind, .relatedManual)
+            XCTAssertEqual(decision.kind, title == "Love [Chapter Two]" ? .rejected : .relatedManual)
             XCTAssertLessThan(decision.score, 85)
-            let result = try XCTUnwrap(LyricsCandidateScorer.choose([record], metadata: metadata, defaults: defaults()))
+            let chosen = LyricsCandidateScorer.choose([record], metadata: metadata, defaults: try defaults())
+            if title == "Love [Chapter Two]" {
+                XCTAssertEqual(decision.score, 40)
+                XCTAssertNil(chosen)
+                XCTAssertEqual(record.lyrics.lines.first?.text, "Synthetic regression line")
+                continue
+            }
+            let result = try XCTUnwrap(chosen)
             XCTAssertTrue(result.lines.isEmpty, title)
             XCTAssertFalse(result.isTimeSynced)
             XCTAssertEqual(result.candidates.first?.identityDecision?.kind, .relatedManual)
@@ -40,7 +47,8 @@ final class CommonLyricsLogicTests: XCTestCase {
         let uploader = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Song", artist: "Upload Channel",
             hasYouTubeOrigin: true, artistNameSource: .uploader)))
         XCTAssertTrue(LyricsQueryPlanner.queries(uploader).allSatisfy { $0.endpoint == "search" && $0.pair.artist.isEmpty })
-        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "Someone"), metadata: uploader).kind, .relatedManual)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "Someone"), metadata: uploader).kind, .rejected)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "Someone"), metadata: uploader).score, 40)
     }
 
     func testLegacyVideoCreditReplacementIsExplicitAndNeverChangesTrustedContext() throws {
@@ -60,10 +68,12 @@ final class CommonLyricsLogicTests: XCTestCase {
 
     func testFullCoequalCreditSetsMatchWhileMainFeatOrderAndExtraGuestsDoNot() throws {
         let coequal = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Song", artist: "A & B")))
-        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "B & A"), metadata: coequal).kind, .confirmed)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "B & A"), metadata: coequal).kind, .relatedManual)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "B & A"), metadata: coequal).score, 75)
         XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "A & C"), metadata: coequal).kind, .rejected)
         XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "A & B & C"), metadata: coequal).kind, .rejected)
-        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "A"), metadata: coequal).kind, .relatedManual)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "A"), metadata: coequal).kind, .rejected)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "A"), metadata: coequal).score, 50)
         let featured = candidate("Song (feat. A)", artist: "B")
         XCTAssertEqual(LyricsCandidateScorer.decision(featured, metadata: coequal).kind, .relatedManual)
         let ordered = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Song", artist: "A feat. B")))
@@ -90,7 +100,8 @@ final class CommonLyricsLogicTests: XCTestCase {
             XCTAssertEqual(LyricsCandidateScorer.decision(candidate(actual), metadata: metadata).kind, .rejected)
         }
         let unknown = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Song", artist: "", hasYouTubeOrigin: true)))
-        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(), metadata: unknown).kind, .relatedManual)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(), metadata: unknown).kind, .rejected)
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate(), metadata: unknown).score, 40)
         let original = "Singer【倒流 Revert】三立華劇《Work》插曲 Official Lyric Video"
         let span = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: original, artist: "", hasYouTubeOrigin: true)))
         XCTAssertTrue(span.hypotheses.contains { $0.pair.title == original })

@@ -78,7 +78,7 @@
     "failureStatus": 429
   },
   {
-    "name": "unknown-performer-manual",
+    "name": "unknown-performer-english-below-threshold",
     "title": "Song",
     "artist": "",
     "primary": {
@@ -97,7 +97,7 @@
         }
       ]
     },
-    "expected": "manualSelection",
+    "expected": "candidatesRejected",
     "failureProviders": []
   },
   {
@@ -144,7 +144,7 @@
         }
       ]
     },
-    "expected": "confirmedPlain",
+    "expected": "manualSelection",
     "failureProviders": []
   },
   {
@@ -238,5 +238,28 @@
       "lrcapi"
     ],
     "failureStatus": 503
+  },
+  {
+    "name": "unknown-performer-han-manual",
+    "title": "測試歌曲",
+    "artist": "",
+    "primary": {
+      "status": 200,
+      "records": []
+    },
+    "secondary": {
+      "status": 200,
+      "records": [
+        {
+          "id": "fixture-1",
+          "title": "測試歌曲",
+          "artist": "Singer",
+          "duration": 200,
+          "lrc": "[00:01.00]Synthetic fixture content"
+        }
+      ]
+    },
+    "expected": "manualSelection",
+    "failureProviders": []
   }
 ]

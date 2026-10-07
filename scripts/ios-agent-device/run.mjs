@@ -153,8 +153,10 @@ async function settings() {
   await pressID('tab_library');
   await pressID('library_settings', true, 'button');
   await step('open-playback-settings', () => client.interactions.find({ locator: 'text', query: 'Playback & Audio', action: 'click' }));
-  await step('scroll-to-secondary-switch', () => client.interactions.scroll({ direction: 'down',
-    until: 'id="lyrics_lrcapi_enabled"', settle: false }));
+  await retryUndispatchedRunnerBusy(
+    attempt => step(`scroll-to-secondary-switch-attempt-${attempt}`, () => client.interactions.scroll({
+      direction: 'down', until: 'id="lyrics_lrcapi_enabled"', settle: false })),
+    sleep, evidence => save(`${caseName}-scroll-runner-busy-recovery-${sequence}.json`, evidence));
   await waitID('lyrics_lrcapi_enabled');
 }
 async function waitLocalResolution(id) {
@@ -205,10 +207,16 @@ const cases = [
     await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await screenshot('secondary-off');
     await step('agent-close-app', () => client.apps.close({ app }));
-    await launch(false); await fullPlayer(); await waitText('LRCLib UI recording');
-    await waitID('lyrics_plain_notice'); await screenshot('primary-with-secondary-off');
+    await launch(false); await fullPlayer();
+    // The primary fixture has mismatched duration: score75 requires confirmation.
+    // Inspect the available primary without replacing the remembered secondary choice.
+    await waitID('lyrics_candidate_prompt'); await absent('lyrics_plain_notice');
+    await pressID('lyrics_version_picker', false); await waitID('lyrics_candidate_101');
+    await absent('lyrics_candidate_lrcapi_101'); await absent('lyrics_candidate_lrcapi_102');
+    await screenshot('primary-candidate-with-secondary-off'); await pressLabel('Cancel', false);
     const disabled = await preferences(false); assert.equal(disabled['lyrics.secondary.lrcapi.enabled'], false);
     const saved = disabled['lyrics.selection.song:demo_song_morning_light']; assert(saved, 'The remembered recording must survive disabling its source');
+    assert.equal(saved.providerID, 'lrcapi'); assert.equal(saved.recordID, '101');
     await settings(); await pressID('lyrics_lrcapi_enabled', false); await sleep(1800);
     await step('agent-close-app', () => client.apps.close({ app }));
     await launch(false); await fullPlayer(); await waitText('LrcApi UI first recording');

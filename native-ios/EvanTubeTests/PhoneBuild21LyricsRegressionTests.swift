@@ -268,9 +268,10 @@ final class PhoneBuild21LyricsRegressionTests: XCTestCase {
         XCTAssertTrue(LyricsQueryPlanner.queries(metadata).allSatisfy { $0.endpoint == "search" && $0.pair.artist.isEmpty })
         let suite = "uploader-test-" + UUID().uuidString
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { defaults.removePersistentDomain(forName: suite) }
-        let result = try XCTUnwrap(LyricsCandidateScorer.choose([candidate(title: "Bare title", artist: "Another performer")], metadata: metadata, defaults: defaults))
-        XCTAssertEqual(result.candidates.count, 1)
-        XCTAssertTrue(result.lines.isEmpty, "Unknown artist must remain a manual choice")
+        let record = candidate(title: "Bare title", artist: "Another performer")
+        XCTAssertEqual(LyricsCandidateScorer.decision(record, metadata: metadata).score, 40)
+        XCTAssertNil(LyricsCandidateScorer.choose([record], metadata: metadata, defaults: defaults))
+        XCTAssertEqual(record.lyrics.lines.first?.text, "Synthetic line")
         song.artistNameSource = .artistMetadata
         XCTAssertEqual(LyricsCanonicalMetadata(LyricsLookupContext(song: song))?.pair.artist, "Real singer name")
         song.artistNameSource = nil

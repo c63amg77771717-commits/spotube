@@ -58,7 +58,8 @@ final class LyricsLookupOutcomeTests: XCTestCase {
 
     func testProductionProvidersPreserveAllSixOutcomesAndHTTPProvenance() async throws {
         let rows = try cases()
-        XCTAssertEqual(rows.count, 11)
+        XCTAssertEqual(rows.count, 12)
+        XCTAssertEqual(Set(rows.compactMap { $0["expected"] as? String }), Set(["providerEmpty", "candidatesRejected", "sourceUnavailable", "manualSelection", "confirmedPlain", "synchronized"]))
         for row in rows {
             OutcomeHTTPFixture.configure(row)
             let report = try await GetLyricsUseCase(repository: repository()).executeReport(song: song(row))
@@ -73,7 +74,19 @@ final class LyricsLookupOutcomeTests: XCTestCase {
                 XCTAssertTrue(report.providers.contains { $0.kind == .rejected && $0.receivedCount > 0 })
             }
             if report.state == .providerEmpty { XCTAssertTrue(report.providers.contains { $0.kind == .empty }) }
-            if report.state == .manualSelection { XCTAssertTrue(report.lyrics?.lines.isEmpty ?? false) }
+            if report.state == .manualSelection {
+                XCTAssertTrue(report.lyrics?.lines.isEmpty ?? false)
+                XCTAssertFalse(report.lyrics?.candidates.isEmpty ?? true)
+                XCTAssertTrue(report.lyrics?.candidates.allSatisfy { !$0.lyrics.lines.isEmpty } ?? false)
+            }
+            if row["name"] as? String == "secondary-unknown-timing" {
+                XCTAssertEqual(report.lyrics?.candidates.first?.identityDecision?.score, 75)
+                XCTAssertEqual(report.lyrics?.candidates.first?.lyrics.timingState, .timingUnknown)
+                XCTAssertTrue(report.lyrics?.candidates.first?.lyrics.lines.allSatisfy { $0.time == 0 } ?? false)
+            }
+            if row["name"] as? String == "unknown-performer-english-below-threshold" {
+                XCTAssertTrue(report.providers.flatMap(\.evaluatedCandidates).contains { $0.score == 60 && $0.contentLineCount == 1 && $0.identity == "rejected" })
+            }
             if report.state == .confirmedPlain { XCTAssertFalse(report.lyrics?.isTimeSynced ?? true) }
             if report.state == .synchronized { XCTAssertTrue(report.lyrics?.isTimeSynced ?? false) }
             XCTAssertTrue(OutcomeHTTPFixture.routesWereValid)

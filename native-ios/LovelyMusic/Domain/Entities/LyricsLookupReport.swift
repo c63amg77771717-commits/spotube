@@ -90,6 +90,7 @@ struct LyricsProviderOutcome {
 }
 
 struct LyricsLookupReport {
+    var diagnosticContext: LyricsLookupContext? = nil
     let lyrics: SyncedLyrics?
     let providers: [LyricsProviderOutcome]
     var failures: [LyricsSourceFailure] { providers.flatMap(\.failures) }
@@ -140,7 +141,7 @@ struct LyricsLookupReport {
             successfulResponses: 0, failures: combined)])
     }
 
-    func recordFinal(context: LyricsLookupContext) {
+    func recordFinal(context: LyricsLookupContext, lookupLatencyMilliseconds: Int? = nil) {
         let reason: LyricsLookupDiagnostics.Reason
         switch state {
         case .sourceUnavailable: reason = .providerUnavailable
@@ -152,6 +153,6 @@ struct LyricsLookupReport {
         case .metadataRejected: reason = .metadataRejected
         }
         LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .result, reason: reason,
-            count: lyrics?.candidates.count ?? 0, outcome: state.rawValue))
+            count: lyrics?.candidates.count ?? 0, outcome: state.rawValue, lookupLatencyMilliseconds: lookupLatencyMilliseconds))
     }
 }

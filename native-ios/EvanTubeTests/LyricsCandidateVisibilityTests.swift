@@ -60,12 +60,15 @@ final class LyricsCandidateVisibilityTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: name) }
         let engine = AudioEngine()
         defer { engine.stop() }
-        let song = selected(title: "Single fixture", artist: "")
+        let song = selected(title: "測試歌曲", artist: "")
         let vm = model(LrcLibService(session: session, defaults: defaults), engine: engine, song: song)
         await vm.loadLyrics(for: song)
         let result = try XCTUnwrap(vm.lyrics)
         XCTAssertTrue(result.lines.isEmpty, "The missing performer must not be silently inferred")
         XCTAssertEqual(result.candidates.map(\.recordID), ["101"])
+        XCTAssertEqual(result.candidates.first?.identityDecision?.score, 65)
+        XCTAssertEqual(result.candidates.first?.lyrics.lines.map(\.text), ["First fixture recording"])
+        XCTAssertFalse(result.candidates.first?.lyrics.isTimeSynced ?? true)
         XCTAssertNotNil(result.selectionKey)
     }
 
@@ -119,12 +122,12 @@ private final class CandidateVisibilityHTTPFixture: URLProtocol {
         let title = query.first { $0.name == "track_name" }!.value!
         let artist = query.first { $0.name == "artist_name" }?.value ?? "Fixture performer"
         let first: [String: Any] = ["id": 101, "trackName": title, "artistName": artist,
-            "duration": 300.0, "plainLyrics": "First fixture recording"]
+            "duration": title == "測試歌曲" ? 240.0 : 300.0, "plainLyrics": "First fixture recording"]
         let second: [String: Any] = ["id": 102, "trackName": title, "artistName": artist,
             "duration": 360.0, "plainLyrics": "Second fixture recording"]
         let payload: Any
         if request.url!.lastPathComponent == "search" {
-            payload = title == "Single fixture" ? [first] : [first, second]
+            payload = ["Single fixture", "測試歌曲"].contains(title) ? [first] : [first, second]
         } else {
             payload = first
         }

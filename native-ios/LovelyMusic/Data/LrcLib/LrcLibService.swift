@@ -20,14 +20,16 @@ final class LrcLibService: LyricsRepositoryProtocol {
     }
 
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
+        let timings = LyricsLookupStageTimings()
+        defer { timings.record(context: context, provider: .lrclib) }
         try Task.checkCancellation()
         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrclib, phase: .lookup, reason: .originalMetadata,
             title: context.title, artist: context.artist, duration: context.duration.map { Double($0) }))
-        guard let metadata = LyricsCanonicalMetadata(context) else {
+        guard let metadata = timings.measure("metadataAndHypotheses", { LyricsCanonicalMetadata(context) }) else {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrclib, phase: .result, reason: .metadataRejected))
             return .metadataRejected(provider: .lrclib)
         }
-        LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrclib)
+        timings.measure("hypothesisDiagnostics", { LyricsLookupDiagnostics.shared.recordHypotheses(metadata, provider: .lrclib) })
         var candidates: [LyricsCandidate] = []
         var evidence: [LyricsCandidateEvidence] = []
         let remembered = LyricsCandidateScorer.remembered(context, defaults: defaults)
@@ -48,7 +50,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
                 let response = try await request(endpoint: "get/" + String(id), items: [], diagnosticContext: context)
                 if response.status == 404 { successfulResponses += 1 }
                 if response.status == 200 {
-                    let record = try decoder.decode(LrcLibResponse.self, from: response.data)
+                    let record = try timings.measure("decoding", { try decoder.decode(LrcLibResponse.self, from: response.data) })
                     received += 1; successfulResponses += 1
                     let candidate = contextCandidate(record, context: context)
                     evidence.append(.init(provider: .lrclib, recordID: record.id.map { String($0) }, title: record.trackName,
@@ -63,7 +65,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
                         let identity = LyricsCandidateScorer.decision(candidate, metadata: metadata, remembered: remembered)
                         // Manual/weak/untimed remembered records remain available but never suppress fallback.
                         if candidate.id == saved, identity.kind == .confirmed, candidate.lyrics.isTimeSynced {
-                            return report(LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults))
+                            return report(timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults) }))
                         }
                         let timingReason: LyricsLookupDiagnostics.Reason?
                         switch candidate.lyrics.timingState {
@@ -87,7 +89,8 @@ final class LrcLibService: LyricsRepositoryProtocol {
                 failures += LyricsSourceFailure.from(error, providerID: .lrclib)
             }
         }
-        for query in LyricsQueryPlanner.queries(metadata) {
+        let queries = timings.measure("queryPlanning", { LyricsQueryPlanner.queries(metadata) })
+        for query in queries {
             try Task.checkCancellation()
             do {
                 let records: [LrcLibResponse]
@@ -95,14 +98,15 @@ final class LrcLibService: LyricsRepositoryProtocol {
                     let response = try await get(pair: query.pair, duration: query.duration, diagnosticContext: context)
                     if response.status == 404 { successfulResponses += 1; continue }
                     guard response.status == 200 else { throw PublicSourceError.http("LRCLib", response.status) }
-                    records = [try decoder.decode(LrcLibResponse.self, from: response.data)]
+                    records = [try timings.measure("decoding", { try decoder.decode(LrcLibResponse.self, from: response.data) })]
                 } else {
-                    records = try await search(pair: query.pair, diagnosticContext: context)
+                    records = try await search(pair: query.pair, diagnosticContext: context, timings: timings)
                 }
                 LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrclib,
                     phase: .response, count: records.count))
                 successfulResponses += 1; received += min(records.count, 30)
                 // Invalid identities are rejected by the common scorer, never before search fallback.
+                timings.measure("candidateContentAndEvidence") {
                 for record in records.prefix(30) {
                     let candidate = contextCandidate(record, context: context)
                     evidence.append(.init(provider: .lrclib, recordID: record.id.map { String($0) }, title: record.trackName,
@@ -113,7 +117,8 @@ final class LrcLibService: LyricsRepositoryProtocol {
                         queryTitle: query.pair.title, queryArtist: query.pair.artist))
                     if let candidate { candidates.append(candidate) }
                 }
-                if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) {
+                }
+                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) {
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
             } catch {
@@ -124,7 +129,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
             }
         }
         try Task.checkCancellation()
-        if let result = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) { return report(result) }
+        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) }) { return report(result) }
         try Task.checkCancellation()
         return report(nil)
     }
@@ -231,13 +236,15 @@ final class LrcLibService: LyricsRepositoryProtocol {
         return try await request(endpoint: "get", items: items, diagnosticContext: diagnosticContext)
     }
 
-    private func search(pair: LyricsLookupMetadata.Pair, diagnosticContext: LyricsLookupContext? = nil) async throws -> [LrcLibResponse] {
+    private func search(pair: LyricsLookupMetadata.Pair, diagnosticContext: LyricsLookupContext? = nil, timings: LyricsLookupStageTimings? = nil) async throws -> [LrcLibResponse] {
         var items = [URLQueryItem(name: "track_name", value: pair.title)]
         if !pair.artist.isEmpty { items.append(URLQueryItem(name: "artist_name", value: pair.artist)) }
         let result = try await request(endpoint: "search", items: items, diagnosticContext: diagnosticContext)
         if result.status == 404 { return [] }
         guard result.status == 200 else { throw PublicSourceError.http("LRCLib", result.status) }
-        let records = try decoder.decode([LrcLibResponse].self, from: result.data)
+        let records: [LrcLibResponse]
+        if let timings { records = try timings.measure("decoding", { try decoder.decode([LrcLibResponse].self, from: result.data) }) }
+        else { records = try decoder.decode([LrcLibResponse].self, from: result.data) }
         if records.isEmpty, let context = diagnosticContext {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrclib,
                 phase: .providerEmpty, reason: .providerEmpty, endpoint: "search", httpStatus: 200, count: 0))

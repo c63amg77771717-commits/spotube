@@ -22,12 +22,20 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
     }
 
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
+        let timings = LyricsLookupStageTimings()
+        defer { timings.record(context: context, provider: nil, wallStage: "compositeWall") }
         try Task.checkCancellation()
         LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .lookup, reason: .originalMetadata,
             title: context.title, artist: context.artist, duration: context.duration.map { Double($0) }))
-        guard let metadata = LyricsCanonicalMetadata(context) else { return .metadataRejected() }
+        guard let metadata = timings.measure("compositeMetadataAndHypotheses", { LyricsCanonicalMetadata(context) }) else { return .metadataRejected() }
         let saved = LyricsCandidateScorer.remembered(context, defaults: defaults)
         func source(_ repository: LyricsRepositoryProtocol, provider: LyricsProviderID) async throws -> LyricsLookupReport {
+            let started = ProcessInfo.processInfo.systemUptime
+            defer {
+                LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .stageTiming,
+                    stage: provider == .lrclib ? "primarySourceAwait" : "secondarySourceAwait",
+                    stageElapsedMilliseconds: max(0, ProcessInfo.processInfo.systemUptime - started) * 1000))
+            }
             do {
                 let report = try await repository.lookup(context: context)
                 try Task.checkCancellation()
@@ -58,7 +66,7 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         let failures = first.failures + second.failures
         let candidates = (first.lyrics?.candidates ?? []) + (second.lyrics?.candidates ?? [])
         if !candidates.isEmpty {
-            let lyrics = LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures)
+            let lyrics = timings.measure("compositeSelectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) })
             let evaluatedProviders = lyrics == nil ? providers.map { outcome in
                 LyricsProviderOutcome(providerID: outcome.providerID, kind: outcome.kind == .usable ? .rejected : outcome.kind,
                     receivedCount: outcome.receivedCount, acceptedCount: 0, successfulResponses: outcome.successfulResponses,

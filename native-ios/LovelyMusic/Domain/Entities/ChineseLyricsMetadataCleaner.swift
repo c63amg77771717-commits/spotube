@@ -87,7 +87,12 @@ enum ChineseLyricsMetadataCleaner {
         let credit = feature(prepared)
         let title = credit?.title ?? prepared
         let input = LyricsLookupContext(title: title, artist: supplied, hasYouTubeOrigin: true)
-        return LyricsLookupMetadata.videoCreditPairsLegacy(input).map { adding(credit?.guest, to: $0) }
+        let preparedRoles = LyricsLookupMetadata.videoCreditPairsLegacy(input)
+        // Retain the observed official/publisher suffix before preparedTitle removes it.
+        // Bare whitespace titles still fail this guard and never become credits.
+        let originalRoles = preparedRoles.isEmpty && LyricsLookupMetadata.isWhitespaceVideoCredit(context.title)
+            ? LyricsLookupMetadata.videoCreditPairsLegacy(.init(title: context.title, artist: supplied, hasYouTubeOrigin: true)) : []
+        return (preparedRoles.isEmpty ? originalRoles : preparedRoles).map { adding(credit?.guest, to: $0) }
     }
 
     static func analyze(_ context: LyricsLookupContext) -> Analysis {
@@ -99,8 +104,10 @@ enum ChineseLyricsMetadataCleaner {
         let prepared = preparedTitle(context.title, suppliedArtist: supplied)
         let credit = feature(prepared)
         let title = credit?.title ?? prepared
+        let whitespaceAlternative = supplied.isEmpty && LyricsLookupMetadata.isWhitespaceVideoCredit(context.title)
+            ? roles(context).first : nil
         let pair = LyricsLookupMetadata.cleanedLegacy(title: title, artist: supplied, allowVideoCredits: true)
-            ?? .init(title: title, artist: supplied)
+            ?? whitespaceAlternative ?? .init(title: title, artist: supplied)
         let result = adding(credit?.guest, to: .init(title: strippingLyricLabels(pair.title), artist: pair.artist))
         // Named works are weak context only; never a required title or performer identity.
         let pattern = "《([^《》]{1,80})》[^《》]{0,40}(?:插曲|主題曲|主题曲|片尾曲|片頭曲|片头曲)"
