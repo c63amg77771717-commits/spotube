@@ -143,8 +143,11 @@ final class LrcLibService: LyricsRepositoryProtocol {
         if response.status == 404, validDuration != nil {
             response = try await get(pair: pair, duration: nil)
         }
+        // Legacy video calls supply uploader text without performer provenance.
+        // Context-based lookup keeps the default verified-performer constraint.
         if response.status == 404,
-           let clean = LyricsLookupMetadata.cleaned(title: pair.title, artist: pair.artist, allowVideoCredits: allowVideoCredits) {
+           let clean = LyricsLookupMetadata.cleaned(title: pair.title, artist: pair.artist,
+               allowVideoCredits: allowVideoCredits, allowArtistReplacement: allowVideoCredits) {
             pair = clean
             hasExplicitPair = true
             response = try await get(pair: pair, duration: nil)

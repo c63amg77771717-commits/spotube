@@ -145,7 +145,8 @@ enum LyricsLookupMetadata {
         return Pair(title: title, artist: artist)
     }
 
-    static func cleaned(title: String, artist: String, allowVideoCredits: Bool) -> Pair? {
+    static func cleaned(title: String, artist: String, allowVideoCredits: Bool,
+                        allowArtistReplacement: Bool = false) -> Pair? {
         var lookupInput = title
         if allowVideoCredits {
             lookupInput = lookupInput.replacingOccurrences(of: " [–—－] ", with: " - ", options: .regularExpression)
@@ -177,7 +178,7 @@ enum LyricsLookupMetadata {
                 lookupTitle = track
                 // A supplied performer remains a constraint. A weak video title
                 // can propose a track, but cannot turn another name into fact.
-                if lookupArtist.isEmpty { lookupArtist = credit }
+                if lookupArtist.isEmpty || allowArtistReplacement { lookupArtist = credit }
             } else { return nil }
         }
         if parts.count == 1, allowVideoCredits {

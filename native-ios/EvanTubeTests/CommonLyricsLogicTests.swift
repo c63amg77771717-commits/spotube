@@ -43,6 +43,21 @@ final class CommonLyricsLogicTests: XCTestCase {
         XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "Someone"), metadata: uploader).kind, .relatedManual)
     }
 
+    func testLegacyVideoCreditReplacementIsExplicitAndNeverChangesTrustedContext() throws {
+        let title = "Rick Astley - Never Gonna Give You Up Official MV (官方頻道)"
+        let legacy = try XCTUnwrap(LyricsLookupMetadata.cleaned(title: title, artist: "Uploader",
+            allowVideoCredits: true, allowArtistReplacement: true))
+        XCTAssertEqual(legacy.artist, "Rick Astley")
+        XCTAssertEqual(legacy.title, "Never Gonna Give You Up")
+        let trusted = try XCTUnwrap(LyricsLookupMetadata.cleaned(title: title, artist: "Trusted Singer",
+            allowVideoCredits: true))
+        XCTAssertEqual(trusted.artist, "Trusted Singer")
+        let metadata = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: title, artist: "Trusted Singer",
+            hasYouTubeOrigin: true, artistNameSource: .artistMetadata)))
+        XCTAssertEqual(LyricsCandidateScorer.decision(candidate("Never Gonna Give You Up", artist: "Rick Astley"),
+            metadata: metadata).kind, .rejected)
+    }
+
     func testFullCoequalCreditSetsMatchWhileMainFeatOrderAndExtraGuestsDoNot() throws {
         let coequal = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: "Song", artist: "A & B")))
         XCTAssertEqual(LyricsCandidateScorer.decision(candidate(artist: "B & A"), metadata: coequal).kind, .confirmed)
