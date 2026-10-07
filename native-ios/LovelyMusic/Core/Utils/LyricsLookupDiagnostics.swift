@@ -151,6 +151,11 @@ final class LyricsLookupStageTimings {
         defer { totals[stage, default: 0] += max(0, ProcessInfo.processInfo.systemUptime - start) * 1000 }
         return try body()
     }
+    func snapshot() -> [String: Double] {
+        var values = totals
+        values["providerWallAtReport"] = max(0, ProcessInfo.processInfo.systemUptime - started) * 1000
+        return values
+    }
     func record(context: LyricsLookupContext, provider: LyricsProviderID?, wallStage: String = "providerWall") {
         for stage in totals.keys.sorted() {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .stageTiming,

@@ -49,7 +49,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                       successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
                       rejectionReasons: evidence.reduce(into: [String: Int]()) { counts, record in
                           if record.identity == "rejected" { counts[record.reason ?? "identityMismatch", default: 0] += 1 }
-                      }, evaluatedCandidates: evidence)
+                      }, evaluatedCandidates: evidence, stageTimings: timings.snapshot())
         }
         // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
         let pairs = timings.measure("queryPlanning", { LyricsQueryPlanner.secondaryPairs(metadata) })

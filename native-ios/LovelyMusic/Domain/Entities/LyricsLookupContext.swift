@@ -253,6 +253,39 @@ enum LyricsQueryPlanner {
 
 }
 
+/// Composition deduplication preserves reverse-credit uncertainty without
+/// treating a shared possible performer alone as a shared song title.
+enum LyricsCompositionIdentity {
+    static func keys(_ metadata: LyricsCanonicalMetadata) -> Set<String> {
+        let versions = "(?i)\\s*[\\[(][^\\])]*(?:live|remix|acoustic|cover|instrumental|karaoke|demo|remaster|sped\\s*up|slowed|nightcore|現場|演唱會|翻唱)[^\\])]*[\\])]\\s*$"
+        func titleKey(_ title: String) -> String {
+            LyricsLookupMetadata.identityKey(title.replacingOccurrences(of: versions, with: "", options: .regularExpression))
+        }
+        var keys = Set<String>()
+        for hypothesis in metadata.hypotheses {
+            if hypothesis.evidence != .reverseCredit {
+                for title in hypothesis.titleVariants {
+                    let key = titleKey(title)
+                    if !key.isEmpty { keys.insert("title:" + key) }
+                }
+            }
+            if hypothesis.evidence == .reverseCredit || hypothesis.evidence == .uncertainCredit {
+                let artist = LyricsLookupMetadata.identityKey(hypothesis.pair.artist)
+                guard !artist.isEmpty else { continue }
+                for title in hypothesis.titleVariants {
+                    let title = titleKey(title)
+                    guard !title.isEmpty else { continue }
+                    // The unordered bounded pair catches A-B and B-A without
+                    // claiming which component is the actual performer.
+                    let pair = [title, artist].sorted()
+                    keys.insert("uncertain-pair:" + pair[0] + "|" + pair[1])
+                }
+            }
+        }
+        return keys
+    }
+}
+
 enum LyricsCandidateScorer {
     static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata,
                          remembered: LyricsRecordID? = nil) -> LyricsIdentityDecision {

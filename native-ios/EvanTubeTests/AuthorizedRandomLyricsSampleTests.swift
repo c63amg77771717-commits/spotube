@@ -25,6 +25,19 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         XCTAssertTrue(try keys("愛你", artist: "Singer").isDisjoint(with: try keys("不愛你", artist: "Singer")))
     }
 
+    func testSharedPossiblePerformerDoesNotMakeDifferentSongsTheSameComposition() throws {
+        func keys(_ title: String, artist: String = "") throws -> Set<String> {
+            try compositionKeys(.init(title: title, artist: artist, hasYouTubeOrigin: true))
+        }
+        let first = try keys("戴佩妮  Penny Tai - 怎樣 What If We Still Stay Together? (官方完整版MV)")
+        let second = try keys("戴佩妮 penny《單身潛逃》Official MV")
+        XCTAssertTrue(first.isDisjoint(with: second), "A shared uncertain performer is not a shared composition")
+        // Preserve this sample's full title qualifier rather than inventing a shortened alias.
+        XCTAssertFalse(first.isDisjoint(with: try keys("怎樣 What If We Still Stay Together? (官方完整版MV)", artist: "戴佩妮 Penny Tai")))
+        XCTAssertFalse(try keys("Singer - Song").isDisjoint(with: try keys("Song - Singer")))
+        XCTAssertFalse(try keys("Singer - Song").isDisjoint(with: try keys("Other Singer - Song (Cover)")))
+    }
+
     func testAuthorizedFixedTwentySongSampleThroughProductionAdapters() async throws {
         guard let url = Bundle(for: Self.self).url(forResource: "authorized_random_lyrics_sample", withExtension: "json") else {
             throw XCTSkip("No explicitly authorized fixed twenty-row sample resource was prepared")
@@ -88,7 +101,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                  "acceptedCount": outcome.acceptedCount, "successfulResponses": outcome.successfulResponses,
                  "httpFailures": outcome.failures.compactMap(\.httpStatus), "failureCount": outcome.failures.count,
                  "failures": outcome.failures.map { ["reason": $0.reason.rawValue, "httpStatus": $0.httpStatus.map { $0 as Any } ?? NSNull()] },
-                 "rejectionReasons": outcome.rejectionReasons, "evaluatedCandidates": evaluated,
+                 "rejectionReasons": outcome.rejectionReasons, "evaluatedCandidates": evaluated, "stageElapsedMilliseconds": outcome.stageTimings,
                  "discardedContentOrMetadataCount": max(0, outcome.receivedCount - outcome.contentCandidateCount)]
             }
             let candidates: [[String: Any]] = (report.lyrics?.candidates ?? []).map { candidate in
@@ -97,7 +110,9 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
                  "version": candidate.versionLabel, "reason": candidate.identityDecision?.reason?.rawValue ?? "confirmed"]
             }
             results.append(["index": index, "compositionKeys": Array(try compositionKeys(LyricsLookupContext(song: song))).sorted(), "title": title, "artist": artist, "stratum": row["stratum"] ?? "unknown",
-                "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds, "providers": providers, "candidates": candidates, "requests": requests,
+                "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds,
+                "stageElapsedInterpretation": "monotonic elapsed, not CPU; overlapping intervals must not be summed",
+                "providers": providers, "candidates": candidates, "requests": requests,
                 "contentRetrieved": report.providers.contains { $0.contentCandidateCount > 0 },
                 "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain,
                 "selectionMode": report.state == .synchronized || report.state == .confirmedPlain ? "automatic"
@@ -123,10 +138,7 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
     private enum SampleValidationError: Error { case duplicateComposition }
     private func compositionKeys(_ context: LyricsLookupContext) throws -> Set<String> {
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
-        let versions = "(?i)\\s*[\\[(][^\\])]*(?:live|remix|acoustic|cover|instrumental|karaoke|demo|remaster|sped\\s*up|slowed|nightcore|現場|演唱會|翻唱)[^\\])]*[\\])]\\s*$"
-        return Set(metadata.hypotheses.flatMap(\.titleVariants).map {
-            LyricsLookupMetadata.identityKey($0.replacingOccurrences(of: versions, with: "", options: .regularExpression))
-        }.filter { !$0.isEmpty })
+        return LyricsCompositionIdentity.keys(metadata)
     }
 }
 

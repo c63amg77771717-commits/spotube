@@ -28,10 +28,7 @@ final class ChineseLyricsPlanRegressionTests: XCTestCase {
             for row in samples {
                 let title = try XCTUnwrap(row["title"] as? String), artist = try XCTUnwrap(row["artist"] as? String)
                 let metadata = try XCTUnwrap(LyricsCanonicalMetadata(.init(title: title, artist: artist, hasYouTubeOrigin: true)))
-                let versions = "(?i)\\s*[\\[(][^\\])]*(?:live|remix|acoustic|cover|instrumental|karaoke|demo|remaster|sped\\s*up|slowed|nightcore|現場|演唱會|翻唱)[^\\])]*[\\])]\\s*$"
-                let keys = Set(metadata.hypotheses.flatMap(\.titleVariants).map {
-                    LyricsLookupMetadata.identityKey($0.replacingOccurrences(of: versions, with: "", options: .regularExpression))
-                }.filter { !$0.isEmpty })
+                let keys = LyricsCompositionIdentity.keys(metadata)
                 XCTAssertFalse(keys.isEmpty)
                 XCTAssertTrue(keys.isDisjoint(with: seen), "Fixed sample overlaps after integrated metadata projections: " + title)
                 seen.formUnion(keys)

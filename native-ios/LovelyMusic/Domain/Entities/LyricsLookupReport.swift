@@ -80,12 +80,16 @@ struct LyricsProviderOutcome {
     let acceptedCount: Int
     let successfulResponses: Int
     let failures: [LyricsSourceFailure]
+    /// Retained per-result timing evidence survives the bounded diagnostics ring.
+    /// Intervals overlap; wall time is not a CPU sample or sum of these stages.
+    let stageTimings: [String: Double]
     init(providerID: LyricsProviderID?, kind: Kind, receivedCount: Int, acceptedCount: Int,
-         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidateCount: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = []) {
+         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidateCount: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = [], stageTimings: [String: Double] = [:]) {
         self.providerID = providerID; self.kind = kind; self.receivedCount = receivedCount
         self.acceptedCount = acceptedCount; self.successfulResponses = successfulResponses
         self.failures = failures; self.contentCandidateCount = contentCandidateCount; self.rejectionReasons = rejectionReasons
         self.evaluatedCandidates = evaluatedCandidates
+        self.stageTimings = stageTimings
     }
 }
 
@@ -116,14 +120,14 @@ struct LyricsLookupReport {
     }
 
     static func provider(_ id: LyricsProviderID, lyrics: SyncedLyrics?, received: Int,
-                         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidates: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = []) -> LyricsLookupReport {
+                         successfulResponses: Int, failures: [LyricsSourceFailure], contentCandidates: Int = 0, rejectionReasons: [String: Int] = [:], evaluatedCandidates: [LyricsCandidateEvidence] = [], stageTimings: [String: Double] = [:]) -> LyricsLookupReport {
         let accepted = lyrics?.candidates.count ?? 0
         let usable = lyrics.map { !$0.lines.isEmpty || !$0.candidates.isEmpty } ?? false
         let kind: LyricsProviderOutcome.Kind = usable ? .usable : received > 0 ? .rejected
             : successfulResponses > 0 ? .empty : !failures.isEmpty ? .unavailable : .empty
         return .init(lyrics: lyrics, providers: [.init(providerID: id, kind: kind,
             receivedCount: received, acceptedCount: accepted, successfulResponses: successfulResponses, failures: failures,
-            contentCandidateCount: max(contentCandidates, accepted), rejectionReasons: rejectionReasons, evaluatedCandidates: evaluatedCandidates)])
+            contentCandidateCount: max(contentCandidates, accepted), rejectionReasons: rejectionReasons, evaluatedCandidates: evaluatedCandidates, stageTimings: stageTimings)])
     }
 
     static func metadataRejected(provider: LyricsProviderID? = nil) -> LyricsLookupReport {

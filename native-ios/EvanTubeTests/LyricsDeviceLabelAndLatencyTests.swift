@@ -3,6 +3,30 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsDeviceLabelAndLatencyTests: XCTestCase {
+    func testProviderStageEvidenceSurvivesCompositeRejectionAndRingEviction() async throws {
+        let lyrics = SyncedLyrics(lines: [.init(time: 0, text: "Synthetic wrong performer content")], source: "LRCLib", isTimeSynced: false, providerID: .lrclib)
+        let candidate = LyricsCandidate(id: .init(providerID: .lrclib, recordID: "wrong"), title: "Song", artist: "Wrong singer", duration: 200, lyrics: lyrics)
+        let offered = SyncedLyrics(lines: [], source: "", isTimeSynced: false, candidates: [candidate])
+        let primary = LyricsLookupReport.provider(.lrclib, lyrics: offered, received: 1,
+            successfulResponses: 1, failures: [], stageTimings: ["candidateContentAndEvidence": 12.5])
+        let secondary = LyricsLookupReport.provider(.lrcapi, lyrics: nil, received: 0, successfulResponses: 1, failures: [])
+        let suite = "timing-retention-" + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let repository = CompositeLyricsRepository(primary: TimingReportFixture(report: primary),
+            secondary: TimingReportFixture(report: secondary), defaults: defaults, secondaryEnabled: { true })
+        let context = LyricsLookupContext(title: "Song", artist: "Singer", duration: 200)
+        let result = try await repository.lookup(context: context)
+        XCTAssertEqual(result.state, .candidatesRejected)
+        XCTAssertNil(result.lyrics)
+        XCTAssertEqual(result.providers.first?.kind, .rejected)
+        XCTAssertEqual(result.providers.first?.stageTimings["candidateContentAndEvidence"], 12.5)
+        let ring = LyricsLookupDiagnostics(capacity: 8)
+        for _ in 0..<20 { ring.record(.init(context: context, phase: .response)) }
+        XCTAssertEqual(ring.events.count, 8)
+        XCTAssertEqual(result.providers.first?.stageTimings["candidateContentAndEvidence"], 12.5)
+    }
+
     func testSameFixtureScoringBeforeAndAfterHypothesisPreparation() throws {
         let context = LyricsLookupContext(title: "範例歌手 - 測試歌曲『一句示範短句』【動態歌詞/Vietsub/Pinyin Lyrics】",
             artist: "", duration: 214, hasYouTubeOrigin: true)
@@ -142,4 +166,10 @@ final class LyricsDeviceLabelAndLatencyTests: XCTestCase {
         attachment.name = "EvanTube-identity-hypotheses-latency"; attachment.lifetime = .keepAlways; add(attachment)
         print("LYRICS_HYPOTHESES_LATENCY " + String(decoding: encoded, as: UTF8.self))
     }
+}
+
+private struct TimingReportFixture: LyricsRepositoryProtocol {
+    let report: LyricsLookupReport
+    func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport { report }
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? { report.lyrics }
 }

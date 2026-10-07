@@ -41,7 +41,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
                       successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
                       rejectionReasons: evidence.reduce(into: [String: Int]()) { counts, record in
                           if record.identity == "rejected" { counts[record.reason ?? "identityMismatch", default: 0] += 1 }
-                      }, evaluatedCandidates: evidence)
+                      }, evaluatedCandidates: evidence, stageTimings: timings.snapshot())
         }
         // The official GET /api/get/:track_id endpoint revalidates identity and content.
         if let saved = LyricsCandidateScorer.remembered(context, defaults: defaults), saved.providerID == .lrclib,

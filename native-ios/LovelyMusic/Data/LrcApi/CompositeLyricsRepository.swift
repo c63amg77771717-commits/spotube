@@ -71,7 +71,7 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
                 LyricsProviderOutcome(providerID: outcome.providerID, kind: outcome.kind == .usable ? .rejected : outcome.kind,
                     receivedCount: outcome.receivedCount, acceptedCount: 0, successfulResponses: outcome.successfulResponses,
                     failures: outcome.failures, contentCandidateCount: outcome.contentCandidateCount,
-                    rejectionReasons: outcome.rejectionReasons, evaluatedCandidates: outcome.evaluatedCandidates)
+                    rejectionReasons: outcome.rejectionReasons, evaluatedCandidates: outcome.evaluatedCandidates, stageTimings: outcome.stageTimings)
             } : providers
             return .init(lyrics: lyrics, providers: evaluatedProviders)
         }
