@@ -468,6 +468,9 @@ final class LyricsDeviceLabelAndLatencyTests: XCTestCase {
     }
 
     func testDottedFeatCreditKeepsPrimaryOrderAndCompleteGuests() throws {
+        for ambiguous in ["Singer & Guest《Song》", "Singer & Guest『Song』Official MV", "Singer & Guest [Song]"] {
+            XCTAssertNil(LyricsLookupMetadata.cleaned(title: ambiguous, artist: "", allowVideoCredits: true))
+        }
         for credit in ["Singer feat.Guest", "Singer ft.Guest", "Singer featuring.Guest", "Singer feat. Guest"] {
             XCTAssertEqual(LyricsCanonicalMetadata.creditComponents(credit), ["Singer", "Guest"])
         }

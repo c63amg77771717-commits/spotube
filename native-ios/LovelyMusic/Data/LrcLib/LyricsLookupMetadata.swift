@@ -198,7 +198,10 @@ enum LyricsLookupMetadata {
                 let suppliedPrimary = LyricsCanonicalMetadata.creditComponents(lookupArtist).first.map {
                     identityKey($0) == identityKey(credit)
                 } == true
-                guard allowVideoCredits, boundedX || boundedCredit != nil || (!hasGuestCredit(credit) && suppliedPrimary) else { return nil }
+                let boundedOrderedGuest = boundedCredit.map {
+                    $0.artist.range(of: LyricsCanonicalMetadata.orderedCreditSeparatorPattern, options: .regularExpression) != nil
+                } == true
+                guard allowVideoCredits, boundedX || boundedOrderedGuest || (!hasGuestCredit(credit) && suppliedPrimary) else { return nil }
             }
             let track = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
             if allowVideoCredits, !lookupArtist.isEmpty,
