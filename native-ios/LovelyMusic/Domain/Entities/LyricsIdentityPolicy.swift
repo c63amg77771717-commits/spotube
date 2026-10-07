@@ -128,7 +128,8 @@ enum LyricsIdentityPolicy {
             return .init(kind: .rejected, score: 0, reason: .emptyContent, hypothesisID: nil)
         }
         var best: LyricsIdentityDecision?
-        var rejection: LyricsLookupDiagnostics.Reason = .primaryPerformerMismatch
+        // Later literal/role probes must not overwrite the derived identity's rejection.
+        var rejection: LyricsLookupDiagnostics.Reason?
         for view in candidateViews(candidate) {
         let title = metadata.context.hasYouTubeOrigin
             ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(view.title)) : view.title
@@ -136,20 +137,24 @@ enum LyricsIdentityPolicy {
             let identity: (String) -> String = { performerIdentity($0, hypothesis: hypothesis, video: metadata.context.hasYouTubeOrigin) }
             let expectedTokens = LyricsCanonicalMetadata.tokens(hypothesis.pair.artist).map(identity)
             let actualTokens = LyricsCanonicalMetadata.tokens(view.artist).map(identity)
-            guard !actualTokens.isEmpty else { rejection = .missingMetadata; continue }
+            guard !actualTokens.isEmpty else { rejection = rejection ?? .missingMetadata; continue }
             let expected = Set(expectedTokens), actual = Set(actualTokens)
             var manual = !hypothesis.allowsAutomaticSelection
             var manualReason: LyricsLookupDiagnostics.Reason? = manual ? .identityConfirmationRequired : nil
             if !expected.isEmpty {
                 // Co-equal credits use complete sets. Ordered main/feat credits
                 // still require the supplied primary; overlap is never full identity.
-                if hasOrderedCredit(hypothesis.pair.artist), expectedTokens.first != actualTokens.first { continue }
+                if hasOrderedCredit(hypothesis.pair.artist), expectedTokens.first != actualTokens.first {
+                    rejection = rejection ?? .primaryPerformerMismatch; continue
+                }
                 guard actual.isSubset(of: expected) else {
-                    rejection = actualTokens.first.map { expected.contains($0) } == true ? .guestMismatch : .primaryPerformerMismatch
+                    rejection = rejection ?? (actualTokens.first.map { expected.contains($0) } == true ? .guestMismatch : .primaryPerformerMismatch)
                     continue
                 }
                 if expected != actual {
-                    guard expectedTokens.first == actualTokens.first else { continue }
+                    guard expectedTokens.first == actualTokens.first else {
+                        rejection = rejection ?? .primaryPerformerMismatch; continue
+                    }
                     manual = true; manualReason = .guestMismatch
                 } else if !hasOrderedCredit(hypothesis.pair.artist), hasOrderedCredit(view.artist) {
                     manual = true; manualReason = .identityConfirmationRequired
@@ -159,17 +164,17 @@ enum LyricsIdentityPolicy {
             }
             let titleTags = LyricsCanonicalMetadata.versions(title)
             let expectedTags = LyricsCanonicalMetadata.versions(hypothesis.pair.title)
-            guard titleTags == expectedTags else { rejection = .versionMismatch; continue }
+            guard titleTags == expectedTags else { rejection = rejection ?? .versionMismatch; continue }
             guard hypothesis.titleVariants.contains(where: {
                 LyricsLookupMetadata.identityKey($0) == LyricsLookupMetadata.identityKey(title)
-            }) else { rejection = .titleMismatch; continue }
+            }) else { rejection = rejection ?? .titleMismatch; continue }
             let albumTags = candidate.album.map(LyricsCanonicalMetadata.versions) ?? []
             let sourceAlbumTags = metadata.context.album.map(LyricsCanonicalMetadata.versions) ?? []
             let sourceVersions = expectedTags.union(sourceAlbumTags)
             if !albumTags.isSubset(of: sourceVersions) {
                 // Untagged metadata is not proof of studio. Expose album-only
                 // evidence as a related choice, never silently auto-pair it.
-                if !sourceVersions.isEmpty { rejection = .versionMismatch; continue }
+                if !sourceVersions.isEmpty { rejection = rejection ?? .versionMismatch; continue }
                 manual = true; manualReason = .versionMismatch
             } else if !sourceAlbumTags.isEmpty && albumTags.isEmpty && titleTags.isEmpty {
                 manual = true; manualReason = .identityConfirmationRequired
@@ -185,6 +190,6 @@ enum LyricsIdentityPolicy {
             if best == nil || result.score > best!.score { best = result }
         }
         }
-        return best ?? .init(kind: .rejected, score: 0, reason: rejection, hypothesisID: nil)
+        return best ?? .init(kind: .rejected, score: 0, reason: rejection ?? .identityMismatch, hypothesisID: nil)
     }
 }

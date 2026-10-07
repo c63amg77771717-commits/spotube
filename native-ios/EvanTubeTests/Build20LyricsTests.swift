@@ -437,8 +437,10 @@ final class Build20LyricsTests: XCTestCase {
                 request.url!.lastPathComponent == "search" ? .json([self.importedPrimary(c)]) : .status(404)
             }
             defer { f.close() }
+            // Retain display credits without treating the synthetic uploader as a verified performer.
             let song = Song(id: c.songID!, title: c.title, artistName: "原始匯入藝人", artistId: "original-artist-id",
-                albumName: "原始專輯", albumId: "original-album-id", duration: c.duration!, thumbnailURL: nil)
+                albumName: "原始專輯", albumId: "original-album-id", duration: c.duration!, thumbnailURL: nil,
+                artistNameSource: .uploader)
             let repository = LrcLibService(session: f.session, defaults: f.defaults)
             let result = try await GetLyricsUseCase(repository: repository).execute(song: song)
             XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
@@ -448,6 +450,15 @@ final class Build20LyricsTests: XCTestCase {
             XCTAssertEqual(song.albumName, "原始專輯")
             XCTAssertEqual(song.albumId, "original-album-id")
             XCTAssertEqual(song.duration, c.duration)
+            XCTAssertEqual(song.artistNameSource, .uploader)
+            if c.songID == "dtVR0oi_N4U" {
+                var verified = song
+                verified.artistNameSource = .artistMetadata
+                let conflicting = try await GetLyricsUseCase(repository: repository).execute(song: verified)
+                XCTAssertNil(conflicting, "A conflicting verified performer must never be replaced by parsed video credits")
+                XCTAssertEqual(verified.artistName, song.artistName)
+                XCTAssertEqual(verified.title, song.title)
+            }
         }
     }
 
