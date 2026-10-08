@@ -3,6 +3,10 @@ name: EvanTube native iOS IPA
 on:
   workflow_dispatch:
     inputs:
+      recover_f8_launch_failures:
+        description: 'Run only three launch-failed f8 UI cases with simulator service preflight and process samples; no already-passed tests'
+        type: boolean
+        default: false
       complete_f8_validation:
         description: 'Run only six unfinished UI cases at f8dba4c and three actual-adapter mock closure cases; no IPA or live queries'
         type: boolean
@@ -44,7 +48,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.unverified_test_ipa || inputs.complete_f8_validation)) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.unverified_test_ipa || inputs.complete_f8_validation || inputs.recover_f8_launch_failures)) }}
     runs-on: macos-14
     timeout-minutes: 90
     steps:
@@ -344,7 +348,7 @@ jobs:
           if-no-files-found: error
 
   unverified_test_ipa:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.unverified_test_ipa && !inputs.complete_f8_validation }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.unverified_test_ipa && !inputs.complete_f8_validation && !inputs.recover_f8_launch_failures }}
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -425,7 +429,7 @@ jobs:
           if-no-files-found: error
 
   unfinished_ui:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.complete_f8_validation }}
+    if: ${{ github.event_name == 'workflow_dispatch' && (inputs.complete_f8_validation || inputs.recover_f8_launch_failures) }}
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -437,6 +441,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVANTUBE_WORKFLOW_SHA: ${{ github.sha }}
+          EVANTUBE_LAUNCH_RECOVERY: ${{ inputs.recover_f8_launch_failures }}
         run: |
           python3 - <<'PY'
           import json, os, pathlib, subprocess, urllib.request
@@ -451,7 +456,8 @@ jobs:
           assert original['path'] == '.github/workflows/evantube-native-ios-ipa.yml'
           evidence = {'testedSourceSHA': expected, 'workflowDefinitionSHA': os.environ['EVANTUBE_WORKFLOW_SHA'],
               'retainedFailedRunID': original['id'], 'originalConclusion': original['conclusion'],
-              'scope': 'six previously unexecuted UI cases; original assertions', 'physicalDevice': 'NOT_RUN'}
+              'scope': 'three launch-failed original UI cases' if os.environ['EVANTUBE_LAUNCH_RECOVERY'] == 'true' else 'six previously unexecuted UI cases',
+              'priorLaunchFailureRunID': 37730044831, 'originalAssertionsChanged': False, 'physicalDevice': 'NOT_RUN'}
           pathlib.Path(os.environ['RUNNER_TEMP'], 'ui-continuation-source.json').write_text(json.dumps(evidence, indent=2))
           print(json.dumps(evidence))
           PY
@@ -471,29 +477,60 @@ jobs:
               'application-identifier': 'com.c63amg77771717.evantube',
               'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
           PY
-      - name: Run only the six unfinished original UI cases
+      - name: Run only unfinished original UI cases
         working-directory: native-ios
+        env:
+          EVANTUBE_LAUNCH_RECOVERY: ${{ inputs.recover_f8_launch_failures }}
         run: |
           # One fresh runner installation and invocation avoids the original loop's
           # repeated install/uninstall launch transitions. XCTest assertions are unchanged.
           xcrun simctl shutdown all
           simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"] == "iPhone 16 Pro" and d.get("isAvailable", False)))')
           xcrun simctl bootstatus "$simulator_id" -b
+          if [ "$EVANTUBE_LAUNCH_RECOVERY" = "true" ]; then
+            # Exercise foreground/system launch services without modifying app fixtures,
+            # assertions or test timeouts. Record failures rather than sleeping/retrying.
+            open -a Simulator --args -CurrentDeviceUDID "$simulator_id"
+            xcrun simctl launch "$simulator_id" com.apple.Preferences | tee "$RUNNER_TEMP/ui-service-preflight.log"
+            xcrun simctl io "$simulator_id" screenshot "$RUNNER_TEMP/ui-service-preflight.png"
+            xcrun simctl terminate "$simulator_id" com.apple.Preferences
+          fi
           set -o pipefail
           xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -derivedDataPath "$RUNNER_TEMP/evantube-ui-continuation-derived" -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" build-for-testing
+          ui_cases=(
+            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testAppearanceChoicesApplyAndPersist
+            -only-testing:LovelyMusicUITests/EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory
+            -only-testing:LovelyMusicUITests/EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch
+          )
+          if [ "$EVANTUBE_LAUNCH_RECOVERY" != "true" ]; then
+            ui_cases+=(
+              -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testLibrarySearchAndSongRowTap
+              -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying
+              -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported
+            )
+          fi
+          mkdir -p "$RUNNER_TEMP/ui-launch-diagnostics"
+          (
+            while sleep 5; do
+              date -u >> "$RUNNER_TEMP/ui-launch-diagnostics/process-state.txt"
+              ps -Ao pid,ppid,pcpu,pmem,etime,comm | awk '/LovelyMusic|testmanagerd|SpringBoard|runningboardd/ {print}' >> "$RUNNER_TEMP/ui-launch-diagnostics/process-state.txt"
+              app_pid=$(pgrep -x LovelyMusic | head -n 1 || true)
+              if [ -n "$app_pid" ]; then
+                sample "$app_pid" 1 -file "$RUNNER_TEMP/ui-launch-diagnostics/sample-$(date +%s).txt" >/dev/null 2>&1 || true
+              fi
+            done
+          ) &
+          sampler_pid=$!
+          trap 'kill "$sampler_pid" 2>/dev/null || true' EXIT
+          printf 'Selected original UI cases: %s\n' "${ui_cases[*]}"
           xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
             -destination "platform=iOS Simulator,id=$simulator_id" \
             -derivedDataPath "$RUNNER_TEMP/evantube-ui-continuation-derived" -parallel-testing-enabled NO \
-            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testLibrarySearchAndSongRowTap \
-            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testAppearanceChoicesApplyAndPersist \
-            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
-            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
-            -only-testing:LovelyMusicUITests/EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
-            -only-testing:LovelyMusicUITests/EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch \
+            "${ui_cases[@]}" \
             -resultBundlePath "$RUNNER_TEMP/evantube-ui-continuation.xcresult" \
             -retry-tests-on-failure -test-iterations 2 \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
@@ -506,6 +543,9 @@ jobs:
           path: |
             ${{ runner.temp }}/ui-continuation-source.json
             ${{ runner.temp }}/ui-continuation.log
+            ${{ runner.temp }}/ui-launch-diagnostics
+            ${{ runner.temp }}/ui-service-preflight.log
+            ${{ runner.temp }}/ui-service-preflight.png
             ${{ runner.temp }}/evantube-ui-continuation.xcresult
           if-no-files-found: error
 
