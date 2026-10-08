@@ -185,6 +185,30 @@ final class LyricsNativeReceiptTests: XCTestCase {
             XCTAssertEqual(phase["upstreamMilliseconds"] as? Double, 0)
             XCTAssertLessThan(phase["throttleMilliseconds"] as? Double ?? 1000, 500)
         }
+        // Inspect the actual transport dictionary, then its JSON boundary. JSON
+        // has a numeric value, not a promise to preserve the Swift storage type.
+        let jsonPhase = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONSerialization.data(withJSONObject: phase)) as? [String: Any])
+        var numberTypes: [String: Any] = [:]
+        var fields = ["scheduledThrottleMilliseconds", "throttleMilliseconds", "upstreamMilliseconds"]
+        if phase["networkStartMonotonicMilliseconds"] is NSNull {
+            XCTAssertTrue(jsonPhase["networkStartMonotonicMilliseconds"] is NSNull)
+        } else { fields.append("networkStartMonotonicMilliseconds") }
+        for field in fields {
+            let nativeValue = try XCTUnwrap(phase[field])
+            let nativeDouble = try XCTUnwrap(nativeValue as? Double, "Native phase timing must retain Double: " + field)
+            XCTAssertEqual(String(reflecting: type(of: nativeValue)), "Swift.Double")
+            let jsonNumber = try XCTUnwrap(jsonPhase[field] as? NSNumber)
+            XCTAssertEqual(jsonNumber.doubleValue, nativeDouble)
+            numberTypes[field] = ["nativeType": String(reflecting: type(of: nativeValue)),
+                "nativeValue": nativeDouble, "jsonNumberType": String(cString: jsonNumber.objCType),
+                "jsonValue": jsonNumber.doubleValue]
+        }
+        let evidence: [String: Any] = ["duringNetwork": duringNetwork, "cancelled": true,
+            "networkStarted": !(phase["networkStartMonotonicMilliseconds"] is NSNull), "numberTypes": numberTypes]
+        let attachment = XCTAttachment(data: try JSONSerialization.data(withJSONObject: evidence, options: [.sortedKeys]), uniformTypeIdentifier: "public.json")
+        attachment.name = "EvanTube-receipt-number-types-" + (duringNetwork ? "during-network" : "before-network")
+        attachment.lifetime = .keepAlways; add(attachment)
+        print("RECEIPT_NUMBER_TYPES " + String(decoding: try JSONSerialization.data(withJSONObject: evidence, options: [.sortedKeys]), as: UTF8.self))
         XCTAssertTrue(receipt.queries.filter { $0.outcome == "notAttempted" }.allSatisfy { $0.attempts.isEmpty })
     }
 

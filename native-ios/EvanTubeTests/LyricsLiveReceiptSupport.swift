@@ -52,14 +52,17 @@ final class AuthorizedSampleHTTPTransport: URLProtocol {
             var networkEnd: Double?
             func record(_ response: URLResponse?, error: Error? = nil) {
                 let end = ProcessInfo.processInfo.systemUptime * 1000
+                // Keep Optional.map out of the Any dictionary context: the no-network
+                // branch must retain a Double before JSON bridges numeric values.
+                let upstreamMilliseconds: Double = networkStart.map { max(0.0, (networkEnd ?? end) - $0) } ?? 0.0
                 let row: [String: Any] = ["provider": provider, "queryID": queryID, "attempt": logicalAttempt,
                     "requestNumber": number, "onlyTitleAndArtist": true, "payloadKeys": items.map(\.name).sorted(),
                     "endpoint": components.path, "httpStatus": (response as? HTTPURLResponse)?.statusCode as Any? ?? NSNull(),
                     "transportErrorCode": error.map { ($0 as NSError).code } as Any? ?? NSNull(),
                     "cancelled": error is CancellationError || (error as? URLError)?.code == .cancelled,
-                    "scheduledThrottleMilliseconds": 500, "throttleMilliseconds": max(0, (throttleEnd ?? end) - throttleStart),
+                    "scheduledThrottleMilliseconds": 500.0, "throttleMilliseconds": max(0, (throttleEnd ?? end) - throttleStart),
                     "networkStartMonotonicMilliseconds": networkStart as Any? ?? NSNull(),
-                    "upstreamMilliseconds": networkStart.map { max(0, (networkEnd ?? end) - $0) } ?? 0,
+                    "upstreamMilliseconds": upstreamMilliseconds,
                     "transportMode": mock == nil ? "live" : "mock"]
                 Self.lock.withLock { Self.evidence.append(row) }
             }
