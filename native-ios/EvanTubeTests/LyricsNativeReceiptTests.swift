@@ -130,7 +130,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualPlannerReportsRequiredPairsOmittedBySixQueryBudget() async throws {
         try await withSources("budget") { primary, _, _ in
-            let context = LyricsLookupContext(title: "藝人 Artist - 歌曲 Track【官方繁體中文字幕與完整歌詞示範片段，請勿把演唱者與歌曲名稱交換】", artist: "", duration: 200, hasYouTubeOrigin: true)
+            let context = LyricsLookupContext(title: "甲乙 Artist - 甲歌 Track『這是一段足夠長的歌詞示例片段，不能擅自認成歌曲別名』【動態歌詞】", artist: "", duration: 200, hasYouTubeOrigin: true)
             let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
             XCTAssertGreaterThan(LyricsDirectionPolicy.requiredPairs(metadata).count, LyricsQueryPlanner.queries(metadata).count)
             let report = try await primary.lookup(context: context)
@@ -152,13 +152,22 @@ final class LyricsNativeReceiptTests: XCTestCase {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [AuthorizedSampleHTTPTransport.self]
         let session = URLSession(configuration: config); defer { session.invalidateAndCancel() }
         let box = ReceiptBox()
-        let service = LrcLibService(session: session, captureReceipts: true, receiptObserver: { box.set($0) })
+        let suite = "LyricsReceiptCancellation." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let service = LrcLibService(session: session, defaults: defaults, captureReceipts: true, receiptObserver: { box.set($0) })
         let task = Task { try await service.lookup(context: .init(title: credit, artist: "", hasYouTubeOrigin: true)) }
         if duringNetwork {
             for _ in 0..<200 where !ReceiptUpstreamMock.started { try await Task.sleep(for: .milliseconds(10)) }
             XCTAssertTrue(ReceiptUpstreamMock.started)
             try await Task.sleep(for: .milliseconds(50))
-        } else { try await Task.sleep(for: .milliseconds(100)) }
+        } else {
+            // Cancel only after the transport has entered its actual throttle;
+            // cancelling during metadata/planning tests a different lifecycle.
+            for _ in 0..<200 where !AuthorizedSampleHTTPTransport.throttleStarted { try await Task.sleep(for: .milliseconds(10)) }
+            XCTAssertTrue(AuthorizedSampleHTTPTransport.throttleStarted)
+            XCTAssertFalse(ReceiptUpstreamMock.started)
+        }
         task.cancel()
         do { _ = try await task.value; XCTFail("Expected propagated cancellation") } catch { XCTAssertTrue(error is CancellationError || (error as? URLError)?.code == .cancelled) }
         for _ in 0..<100 where AuthorizedSampleHTTPTransport.requests.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
@@ -253,8 +262,8 @@ private final class ReceiptUpstreamMock: URLProtocol {
             if parts.path == "/api/get" { send(url, status: 404, bytes: Data()); return }
             let lrc = "[00:01.00]Synthetic private-like line\n[00:02.00]Second synthetic line"
             var record: [String: Any] = primary
-                ? ["id": 1, "trackName": "Track", "artistName": "Performer feat. Guest", "duration": 200, "syncedLyrics": lrc]
-                : ["id": "one", "title": "Track", "artist": "Performer feat. Guest", "duration": 200, "lrc": lrc]
+                ? ["id": 1, "trackName": "Track", "artistName": "Performer feat. Guest", "albumName": "Synthetic Album", "duration": 200, "syncedLyrics": lrc]
+                : ["id": "one", "title": "Track", "artist": "Performer feat. Guest", "album": "Synthetic Album", "duration": 200, "lrc": lrc]
             var records: [[String: Any]] = mode == "empty" || mode == "budget" || title != "Track" ? [] : [record]
             if mode == "truncated", !primary, title == "Performer" {
                 records = (1...31).map { ["id": "other-\($0)", "title": "Other", "artist": "Unknown", "lrc": lrc] }

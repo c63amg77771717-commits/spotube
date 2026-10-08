@@ -8,10 +8,12 @@ final class AuthorizedSampleHTTPTransport: URLProtocol {
     private static let lock = NSLock()
     private static var evidence: [[String: Any]] = [], counts: [String: Int] = [:]
     private static var mockProtocol: AnyClass?
+    private static var didStartThrottle = false
+    static var throttleStarted: Bool { lock.withLock { didStartThrottle } }
     private let taskLock = NSLock()
     private var forwarding: Task<Void, Never>?
-    static func configureMock(_ type: AnyClass?) { lock.withLock { mockProtocol = type; evidence = []; counts = [:] } }
-    static func beginSample(_ index: Int) { lock.withLock { evidence = []; counts = [:] } }
+    static func configureMock(_ type: AnyClass?) { lock.withLock { mockProtocol = type; evidence = []; counts = [:]; didStartThrottle = false } }
+    static func beginSample(_ index: Int) { lock.withLock { evidence = []; counts = [:]; didStartThrottle = false } }
     static var requests: [[String: Any]] { lock.withLock { evidence } }
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -44,6 +46,7 @@ final class AuthorizedSampleHTTPTransport: URLProtocol {
             let upstream = URLSession(configuration: configuration, delegate: AuthorizedSampleNoRedirect(), delegateQueue: nil)
             defer { upstream.invalidateAndCancel() }
             let throttleStart = ProcessInfo.processInfo.systemUptime * 1000
+            Self.lock.withLock { Self.didStartThrottle = true }
             var throttleEnd: Double?
             var networkStart: Double?
             var networkEnd: Double?
