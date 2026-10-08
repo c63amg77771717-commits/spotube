@@ -82,6 +82,20 @@ class PublicBoundaryTests(unittest.TestCase):
         with patch.object(pathlib.Path, 'read_bytes', changed):
             self.blocked_without_canary(lambda: preflight(REPO, environ={}))
 
+    def test_context_resource_is_independent_of_working_directory(self):
+        import os, runpy
+        captured = []
+        def write(path, value, **options):
+            captured.append((path, json.loads(value)))
+            return len(value)
+        env = {'GITHUB_REPOSITORY':'c63amg77771717-commits/spotube','GITHUB_SHA':'0' * 40,'GITHUB_RUN_ID':'12345'}
+        with patch.dict(os.environ, env, clear=True), patch.object(subprocess, 'check_output', return_value='0' * 40), \
+             patch.object(pathlib.Path, 'write_text', write), contextlib.redirect_stdout(io.StringIO()):
+            runpy.run_path(str(REPO/'scripts/ios-lyrics-sample/write_receipt_context.py'))
+        self.assertEqual(len(captured),1)
+        self.assertEqual(captured[0][0],REPO/'native-ios/EvanTubeTests/Fixtures/lyrics_receipt_run_context.json')
+        self.assertEqual(set(captured[0][1]),{'nativeCheckoutSHA','nativeRunID'})
+
     def test_no_diagnostic_artifact_upload(self):
         workflow = (REPO / '.github/workflows/evantube-native-ios-ipa.yml').read_text()
         for value in ('upload-artifact', 'toJSON(', '${{ inputs.', 'random_sample_json'):
