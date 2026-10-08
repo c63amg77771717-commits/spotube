@@ -96,6 +96,15 @@ class PublicBoundaryTests(unittest.TestCase):
         self.assertEqual(captured[0][0],REPO/'native-ios/EvanTubeTests/Fixtures/lyrics_receipt_run_context.json')
         self.assertEqual(set(captured[0][1]),{'nativeCheckoutSHA','nativeRunID'})
 
+    def test_bundle_anchors_are_defined_in_the_public_target(self):
+        import re
+        from boundary import TEST_SOURCES
+        text = '\n'.join((REPO/'native-ios'/name).read_text(encoding='utf8') for name in TEST_SOURCES)
+        anchors = set(re.findall(r'Bundle\(for: (\w+)\.self\)', text)) - {'Self'}
+        defined = set(re.findall(r'(?:class|enum|struct)\s+(\w+)', text))
+        self.assertTrue(anchors)
+        self.assertTrue(anchors <= defined, 'A bundle anchor must not depend on an excluded private test class')
+
     def test_no_diagnostic_artifact_upload(self):
         workflow = (REPO / '.github/workflows/evantube-native-ios-ipa.yml').read_text()
         for value in ('upload-artifact', 'toJSON(', '${{ inputs.', 'random_sample_json'):

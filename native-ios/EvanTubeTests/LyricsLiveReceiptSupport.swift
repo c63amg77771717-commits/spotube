@@ -103,6 +103,8 @@ private final class AuthorizedSampleNoRedirect: NSObject, URLSessionTaskDelegate
     }
 }
 
+private final class LyricsReceiptResourceAnchor: NSObject {}
+
 enum LyricsLiveReceiptBuilder {
     enum ReceiptError: Error { case missingProviderReceipt, missingPhase, missingSelectedEvidence }
     static func object<T: Encodable>(_ value: T) throws -> [String: Any] {
@@ -171,7 +173,7 @@ enum LyricsLiveReceiptBuilder {
             "humanRecordingIdentity": "NOT_RUN", "humanVocalAlignment": "NOT_RUN"]
     }
     static func context() throws -> [String: Any] {
-        let url = try XCTUnwrap(Bundle(for: AuthorizedRandomLyricsSampleTests.self).url(forResource: "lyrics_receipt_run_context", withExtension: "json"))
+        let url = try XCTUnwrap(Bundle(for: LyricsReceiptResourceAnchor.self).url(forResource: "lyrics_receipt_run_context", withExtension: "json"))
         return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
     }
 }
