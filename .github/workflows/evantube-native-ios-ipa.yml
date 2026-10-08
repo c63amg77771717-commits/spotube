@@ -3,6 +3,10 @@ name: EvanTube native iOS IPA
 on:
   workflow_dispatch:
     inputs:
+      complete_f8_validation:
+        description: 'Run only six unfinished UI cases at f8dba4c and three actual-adapter mock closure cases; no IPA or live queries'
+        type: boolean
+        default: false
       unverified_test_ipa:
         description: 'TEST ONLY: compile and package unsigned IPA; forty-song, UI and vocal acceptance remain NOT VALIDATED'
         type: boolean
@@ -40,7 +44,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.unverified_test_ipa) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.unverified_test_ipa || inputs.complete_f8_validation)) }}
     runs-on: macos-14
     timeout-minutes: 90
     steps:
@@ -340,7 +344,7 @@ jobs:
           if-no-files-found: error
 
   unverified_test_ipa:
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.unverified_test_ipa }}
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.unverified_test_ipa && !inputs.complete_f8_validation }}
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -418,4 +422,158 @@ jobs:
         with:
           name: EvanTube-build25-test-ipa-part3
           path: ${{ runner.temp }}/evantube-test-ipa-parts/*.part03
+          if-no-files-found: error
+
+  unfinished_ui:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.complete_f8_validation }}
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f8dba4ccf34dbbc3d912a1a70cfb42d21bf8b16e
+          persist-credentials: false
+      - name: Verify the original failed run and exact tested source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVANTUBE_WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request
+          expected = 'f8dba4ccf34dbbc3d912a1a70cfb42d21bf8b16e'
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == expected
+          request = urllib.request.Request(
+              'https://api.github.com/repos/c63amg77771717-commits/spotube/actions/runs/37726300958',
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(request, timeout=20) as response:
+              original = json.load(response)
+          assert original['head_sha'] == expected and original['conclusion'] == 'failure'
+          assert original['path'] == '.github/workflows/evantube-native-ios-ipa.yml'
+          evidence = {'testedSourceSHA': expected, 'workflowDefinitionSHA': os.environ['EVANTUBE_WORKFLOW_SHA'],
+              'retainedFailedRunID': original['id'], 'originalConclusion': original['conclusion'],
+              'scope': 'six previously unexecuted UI cases; original assertions', 'physicalDevice': 'NOT_RUN'}
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'ui-continuation-source.json').write_text(json.dumps(evidence, indent=2))
+          print(json.dumps(evidence))
+          PY
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate original simulator project without production credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          xcodegen generate
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
+          PY
+      - name: Run only the six unfinished original UI cases
+        working-directory: native-ios
+        run: |
+          # One fresh runner installation and invocation avoids the original loop's
+          # repeated install/uninstall launch transitions. XCTest assertions are unchanged.
+          xcrun simctl shutdown all
+          simulator_id=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for group in json.load(sys.stdin)["devices"].values() for d in group if d["name"] == "iPhone 16 Pro" and d.get("isAvailable", False)))')
+          xcrun simctl bootstatus "$simulator_id" -b
+          set -o pipefail
+          xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/evantube-ui-continuation-derived" -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" build-for-testing
+          xcodebuild -project LovelyMusic.xcodeproj -scheme LovelyMusicUITests -configuration Debug \
+            -destination "platform=iOS Simulator,id=$simulator_id" \
+            -derivedDataPath "$RUNNER_TEMP/evantube-ui-continuation-derived" -parallel-testing-enabled NO \
+            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testLibrarySearchAndSongRowTap \
+            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testAppearanceChoicesApplyAndPersist \
+            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testSearchKeyboardHidesAndRestoresNowPlaying \
+            -only-testing:LovelyMusicUITests/EvanTubeSettingsPreviewTests/testPlaybackDiagnosticsCanBeOpenedAndExported \
+            -only-testing:LovelyMusicUITests/EvanTubePlaybackHistoryUITests/testLibraryOpensReadOnlyPlaybackHistory \
+            -only-testing:LovelyMusicUITests/EvanTubePlaylistRemovalUITests/testSingleSongRemovalCancelAndPersistenceAfterRelaunch \
+            -resultBundlePath "$RUNNER_TEMP/evantube-ui-continuation.xcresult" \
+            -retry-tests-on-failure -test-iterations 2 \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test-without-building 2>&1 | tee "$RUNNER_TEMP/ui-continuation.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-f8-six-ui-continuation
+          path: |
+            ${{ runner.temp }}/ui-continuation-source.json
+            ${{ runner.temp }}/ui-continuation.log
+            ${{ runner.temp }}/evantube-ui-continuation.xcresult
+          if-no-files-found: error
+
+  direction_repository_closure:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.complete_f8_validation }}
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify unchanged production and original assertions
+        env:
+          EVANTUBE_WORKFLOW_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess
+          base = 'f8dba4ccf34dbbc3d912a1a70cfb42d21bf8b16e'
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == os.environ['EVANTUBE_WORKFLOW_SHA']
+          assert git('rev-parse', base + ':native-ios/LovelyMusic') == git('rev-parse', 'HEAD:native-ios/LovelyMusic')
+          assert git('rev-parse', base + ':native-ios/LovelyMusicUITests') == git('rev-parse', 'HEAD:native-ios/LovelyMusicUITests')
+          paths = set(git('diff', '--name-only', base, 'HEAD').splitlines())
+          assert paths == {'.github/workflows/evantube-native-ios-ipa.yml',
+              'native-ios/EvanTubeTests/LyricsDirectionRepositoryClosureTests.swift'}, paths
+          test = pathlib.Path('native-ios/EvanTubeTests/LyricsDirectionRepositoryClosureTests.swift')
+          evidence = {'productionSourceSHA': base, 'testDefinitionsSHA': git('rev-parse', 'HEAD'),
+              'testFileSHA256': hashlib.sha256(test.read_bytes()).hexdigest(), 'productionUnchanged': True,
+              'originalAssertionsUnchanged': True, 'scope': 'three actual-adapter HTTP mock cases',
+              'providerQueries': 0, 'original384UnitCasesRerun': False}
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'direction-closure-source.json').write_text(json.dumps(evidence, indent=2))
+          print(json.dumps(evidence))
+          PY
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate simulator project without production credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          xcodegen generate
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
+          PY
+      - name: Run only actual repository and composite closure regressions
+        working-directory: native-ios
+        run: |
+          set -o pipefail
+          xcodebuild -project LovelyMusic.xcodeproj -scheme EvanTubeTests -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-direction-closure-derived" -parallel-testing-enabled NO \
+            -only-testing:EvanTubeTests/LyricsDirectionRepositoryClosureTests \
+            -resultBundlePath "$RUNNER_TEMP/evantube-direction-closure.xcresult" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test 2>&1 | tee "$RUNNER_TEMP/direction-closure.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-f8-direction-repository-closure
+          path: |
+            ${{ runner.temp }}/direction-closure-source.json
+            ${{ runner.temp }}/direction-closure.log
+            ${{ runner.temp }}/evantube-direction-closure.xcresult
           if-no-files-found: error
