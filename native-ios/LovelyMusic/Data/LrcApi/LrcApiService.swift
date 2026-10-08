@@ -45,12 +45,17 @@ final class LrcApiService: LyricsRepositoryProtocol {
         var failures: [LyricsSourceFailure] = []
         var received = 0
         var successfulResponses = 0
+        var directionCoverage = LyricsDirectionCoverage()
         func report(_ lyrics: SyncedLyrics?) -> LyricsLookupReport {
-            .provider(.lrcapi, lyrics: lyrics, received: received,
+            var value = LyricsLookupReport.provider(.lrcapi, lyrics: lyrics, received: received,
                       successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
                       rejectionReasons: evidence.reduce(into: [String: Int]()) { counts, record in
                           if record.identity == "rejected" { counts[record.reason ?? "identityMismatch", default: 0] += 1 }
                       }, evaluatedCandidates: evidence, stageTimings: timings.snapshot())
+            if LyricsDirectionPolicy.requiresEvidence(metadata) {
+                value.directionEvidence = .init(candidates: candidates, coverage: [directionCoverage])
+            }
+            return value
         }
         // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
         let pairs = timings.measure("queryPlanning", { LyricsQueryPlanner.secondaryPairs(metadata) })
@@ -62,6 +67,11 @@ final class LrcApiService: LyricsRepositoryProtocol {
                 LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi,
                     phase: .response, count: records.count))
                 successfulResponses += 1; received += min(records.count, 30)
+                directionCoverage.recordSuccess(pair, recordCount: records.count, metadataComplete: records.allSatisfy {
+                    !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.id.count <= 256
+                        && $0.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                        && $0.artist?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                })
                 candidates += timings.measure("candidateContentAndEvidence") { records.prefix(30).compactMap { record -> LyricsCandidate? in
                     guard !record.id.isEmpty, record.id.count <= 256, let title = record.title, let artist = record.artist else {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped, reason: .missingMetadata))
@@ -86,7 +96,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                         queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist, scoringSession: scoringSession))
                     return candidate
                 } }
-                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) {
+                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession, directionCoverage: [directionCoverage]) }) {
                     try Task.checkCancellation()
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
@@ -94,10 +104,11 @@ final class LrcApiService: LyricsRepositoryProtocol {
                 LyricsLookupDiagnostics.shared.recordFailure(context: context, provider: .lrcapi, error: error)
                 try LyricsMatchingPolicy.checkCancellation(error)
                 failures += LyricsSourceFailure.from(error, providerID: .lrcapi)
+                directionCoverage.recordFailure()
                 break
             }
         }
-        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) { try Task.checkCancellation(); return report(result) }
+        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession, directionCoverage: [directionCoverage]) }) { try Task.checkCancellation(); return report(result) }
         try Task.checkCancellation()
         return report(nil)
     }

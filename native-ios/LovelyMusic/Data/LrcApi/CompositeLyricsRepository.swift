@@ -49,7 +49,8 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         let first = try await source(primary, provider: .lrclib)
         try Task.checkCancellation()
         let enabled = secondaryEnabled()
-        if !probeBothSources, let content = first.lyrics, !content.lines.isEmpty, content.isTimeSynced,
+        let needsDirectionEvidence = LyricsDirectionPolicy.requiresEvidence(metadata)
+        if !probeBothSources, !needsDirectionEvidence, let content = first.lyrics, !content.lines.isEmpty, content.isTimeSynced,
            !enabled || saved?.providerID != .lrcapi { return first }
         guard enabled else {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .result, reason: .secondaryDisabled))
@@ -64,18 +65,25 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
         }
         let providers = first.providers + second.providers
         let failures = first.failures + second.failures
-        let candidates = (first.lyrics?.candidates ?? []) + (second.lyrics?.candidates ?? [])
+        let directionEvidence = needsDirectionEvidence ? LyricsDirectionEvidence(
+            candidates: (first.directionEvidence?.candidates ?? first.lyrics?.candidates ?? [])
+                + (second.directionEvidence?.candidates ?? second.lyrics?.candidates ?? []),
+            coverage: (first.directionEvidence?.coverage ?? [.unavailable])
+                + (second.directionEvidence?.coverage ?? [.unavailable])) : nil
+        let candidates = directionEvidence?.candidates
+            ?? ((first.lyrics?.candidates ?? []) + (second.lyrics?.candidates ?? []))
         if !candidates.isEmpty {
-            let lyrics = timings.measure("compositeSelectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures) })
+            let lyrics = timings.measure("compositeSelectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures,
+                    directionCoverage: directionEvidence?.coverage ?? []) })
             let evaluatedProviders = lyrics == nil ? providers.map { outcome in
                 LyricsProviderOutcome(providerID: outcome.providerID, kind: outcome.kind == .usable ? .rejected : outcome.kind,
                     receivedCount: outcome.receivedCount, acceptedCount: 0, successfulResponses: outcome.successfulResponses,
                     failures: outcome.failures, contentCandidateCount: outcome.contentCandidateCount,
                     rejectionReasons: outcome.rejectionReasons, evaluatedCandidates: outcome.evaluatedCandidates, stageTimings: outcome.stageTimings)
             } : providers
-            return .init(lyrics: lyrics, providers: evaluatedProviders)
+            return .init(lyrics: lyrics, providers: evaluatedProviders, directionEvidence: directionEvidence)
         }
-        if let content = second.lyrics ?? first.lyrics, !content.lines.isEmpty {
+        if !needsDirectionEvidence, let content = second.lyrics ?? first.lyrics, !content.lines.isEmpty {
             let lyrics = SyncedLyrics(lines: content.lines, source: content.source, isTimeSynced: content.isTimeSynced,
                 selectionKey: context.selectionKey, providerID: content.providerID, sourceFailures: failures, timingState: content.timingState)
             return .init(lyrics: lyrics, providers: providers)

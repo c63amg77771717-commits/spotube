@@ -57,7 +57,7 @@ struct LyricsCanonicalMetadata {
     // Production call sites always use the default; no setting/result cache is added.
     init?(_ context: LyricsLookupContext, cacheHypotheses: Bool = true) {
         let title = context.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let artist = context.artistNameSource == .uploader ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = context.artistNameSource?.isDisplayOnly == true ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return nil }
         let cleaned = ChineseLyricsMetadataCleaner.analyze(context)
         var pair = cleaned.pair
@@ -205,7 +205,9 @@ enum LyricsQueryPlanner {
     /// At most six metadata requests per provider, excluding one remembered-record read.
     static func queries(_ metadata: LyricsCanonicalMetadata) -> [Query] {
         let original = LyricsLookupMetadata.Pair(title: metadata.originalTitle, artist: metadata.originalArtist)
-        var queries: [Query] = []
+        var queries: [Query] = LyricsDirectionPolicy.requiredPairs(metadata).map {
+            .init(endpoint: "search", pair: $0, duration: nil)
+        }
         if !original.artist.isEmpty {
             if metadata.context.includeDurationInQuery, let duration = metadata.context.duration { queries.append(.init(endpoint: "get", pair: original, duration: duration)) }
             queries.append(.init(endpoint: "get", pair: original, duration: nil))
@@ -301,8 +303,8 @@ enum LyricsCompositionIdentity {
 
 enum LyricsCandidateScorer {
     static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata,
-                         remembered: LyricsRecordID? = nil) -> LyricsIdentityDecision {
-        LyricsIdentityPolicy.decision(candidate, metadata: metadata, remembered: remembered)
+                         remembered: LyricsRecordID? = nil, confirmedDirectionIDs: Set<String> = []) -> LyricsIdentityDecision {
+        LyricsIdentityPolicy.decision(candidate, metadata: metadata, remembered: remembered, confirmedDirectionIDs: confirmedDirectionIDs)
     }
 
     static func score(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata) -> Int? {
@@ -321,14 +323,20 @@ enum LyricsCandidateScorer {
 
     static func choose(_ candidates: [LyricsCandidate], metadata: LyricsCanonicalMetadata,
                        defaults: UserDefaults, failures: [LyricsSourceFailure] = [],
-                       scoringSession: LyricsLookupScoringSession? = nil, groupEquivalentEvidence: Bool = true) -> SyncedLyrics? {
+                       scoringSession: LyricsLookupScoringSession? = nil, groupEquivalentEvidence: Bool = true,
+                       directionCoverage: [LyricsDirectionCoverage] = []) -> SyncedLyrics? {
         guard !Task.isCancelled else { return nil }
+        let confirmedDirections = LyricsDirectionPolicy.confirmedHypothesisIDs(candidates, metadata: metadata, coverage: directionCoverage)
         var accepted: [LyricsRecordID: (LyricsCandidate, Int)] = [:]
         for rawCandidate in candidates {
             guard !Task.isCancelled else { return nil }
             let selectedRecord = remembered(metadata.context, defaults: defaults)
-            let identity = scoringSession?.decision(rawCandidate, metadata: metadata, remembered: selectedRecord)
-                ?? decision(rawCandidate, metadata: metadata, remembered: selectedRecord)
+            // Coverage-derived decisions bypass the baseline cache: incomplete and complete
+            // probes must never borrow an identity decision from each other.
+            let identity = confirmedDirections.isEmpty
+                ? (scoringSession?.decision(rawCandidate, metadata: metadata, remembered: selectedRecord)
+                    ?? decision(rawCandidate, metadata: metadata, remembered: selectedRecord))
+                : decision(rawCandidate, metadata: metadata, remembered: selectedRecord, confirmedDirectionIDs: confirmedDirections)
             guard identity.kind != .rejected else {
                 LyricsLookupDiagnostics.shared.record(.init(context: metadata.context, provider: rawCandidate.providerID,
                     phase: .candidateDropped, reason: identity.reason ?? .identityMismatch,

@@ -289,12 +289,13 @@ enum BrowseResponseMapper {
             let song = Song(
                 id: videoId,
                 title: title,
-                artistName: subtitle,
-                artistId: nil,
+                artistName: MusicArtistCreditMapper.map(renderer.subtitle?.runs).name,
+                artistId: MusicArtistCreditMapper.map(renderer.subtitle?.runs).id,
                 albumName: nil,
                 albumId: nil,
                 duration: nil,
                 thumbnailURL: thumbnailURL,
+                artistNameSource: MusicArtistCreditMapper.map(renderer.subtitle?.runs).source,
                 musicVideoType: musicVideoType
             )
             return .song(song)
@@ -327,7 +328,8 @@ enum BrowseResponseMapper {
         // (` • `, ` & `). Per AGENTS.md §Runs Text Parsing oddElements
         // pattern, the artist lives at index 0; joining all runs leaks the
         // separator into artistName.
-        let subtitle = joinSameFieldRuns(row.subtitle?.runs)
+        let credit = MusicArtistCreditMapper.map(row.subtitle?.runs)
+        let subtitle = credit.name
         let thumbnailURL = row.thumbnail?.resolvedThumbnails.last?.url
 
         if let videoId = row.onTap?.watchEndpoint?.videoId, !videoId.isEmpty {
@@ -337,11 +339,12 @@ enum BrowseResponseMapper {
                 id: videoId,
                 title: title,
                 artistName: subtitle,
-                artistId: nil,
+                artistId: credit.id,
                 albumName: nil,
                 albumId: nil,
                 duration: nil,
                 thumbnailURL: thumbnailURL,
+                artistNameSource: credit.source,
                 musicVideoType: musicVideoType
             )
             return .song(song)
@@ -556,8 +559,9 @@ enum BrowseResponseMapper {
             columns.count >= 2
             ? (columns[1].musicResponsiveListItemFlexColumnRenderer?.text?.runs ?? [])
             : []
-        let artistName = runs.first?.text ?? ""
-        let artistId = runs.first?.navigationEndpoint?.browseEndpoint?.browseId
+        let credit = MusicArtistCreditMapper.map(runs)
+        let artistName = credit.name
+        let artistId = credit.id
 
         // Album info (optional)
         let albumRun = runs.first(where: {
@@ -597,6 +601,7 @@ enum BrowseResponseMapper {
             albumId: albumId,
             duration: duration,
             thumbnailURL: thumbnailURL,
+            artistNameSource: credit.source,
             musicVideoType: musicVideoType
         )
     }

@@ -1,7 +1,10 @@
 import Foundation
 
 /// Search channel names are display metadata, not verified performers.
-enum SongArtistNameSource: String, Codable, Sendable { case artistMetadata, uploader }
+enum SongArtistNameSource: String, Codable, Sendable {
+    case artistMetadata, uploader, unknown
+    var isDisplayOnly: Bool { self == .uploader || self == .unknown }
+}
 
 struct Song: Identifiable, Hashable, Codable {
     let id: String

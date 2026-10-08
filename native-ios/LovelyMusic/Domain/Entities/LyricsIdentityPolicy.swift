@@ -130,6 +130,32 @@ enum LyricsIdentityPolicy {
         return values
     }
 
+    /// Complete source/candidate field agreement before any score can remove a
+    /// direction cap. Provider metadata does not invent missing source credits.
+    static func hasCompleteDirectionIdentity(_ candidate: LyricsCandidate, hypothesis: LyricsIdentityHypothesis,
+                                             metadata: LyricsCanonicalMetadata) -> Bool {
+        guard !candidate.lyrics.lines.isEmpty else { return false }
+        let identity: (String) -> String = { performerIdentity($0, hypothesis: hypothesis, video: metadata.context.hasYouTubeOrigin) }
+        let expectedTokens = LyricsCanonicalMetadata.tokens(hypothesis.pair.artist).map(identity)
+        let expected = Set(expectedTokens)
+        guard !expected.isEmpty, expected.count == expectedTokens.count else { return false }
+        for view in candidateViews(candidate) {
+            let title = metadata.context.hasYouTubeOrigin
+                ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(view.title)) : view.title
+            let actualTokens = LyricsCanonicalMetadata.tokens(view.artist).map(identity)
+            guard expected == Set(actualTokens), actualTokens.count == expected.count,
+                  hasOrderedCredit(hypothesis.pair.artist) == hasOrderedCredit(view.artist),
+                  !hasOrderedCredit(hypothesis.pair.artist) || expectedTokens.first == actualTokens.first,
+                  hypothesis.titleVariants.contains(where: { LyricsLookupMetadata.identityKey($0) == LyricsLookupMetadata.identityKey(title) }),
+                  LyricsCanonicalMetadata.versions(title) == LyricsCanonicalMetadata.versions(hypothesis.pair.title) else { continue }
+            let sourceVersions = LyricsCanonicalMetadata.versions(hypothesis.pair.title)
+                .union(metadata.context.album.map(LyricsCanonicalMetadata.versions) ?? [])
+            guard (candidate.album.map(LyricsCanonicalMetadata.versions) ?? []).isSubset(of: sourceVersions) else { continue }
+            return true
+        }
+        return false
+    }
+
     static func durationPoints(recording: Double?, video: Int?) -> Int {
         guard let recording, recording.isFinite, recording > 0, recording <= 86400,
               let video, video > 0 else { return 0 }
@@ -148,7 +174,7 @@ enum LyricsIdentityPolicy {
     }
 
     static func decision(_ candidate: LyricsCandidate, metadata: LyricsCanonicalMetadata,
-                         remembered: LyricsRecordID? = nil) -> LyricsIdentityDecision {
+                         remembered: LyricsRecordID? = nil, confirmedDirectionIDs: Set<String> = []) -> LyricsIdentityDecision {
         guard !candidate.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !candidate.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .init(kind: .rejected, score: 0, reason: .missingMetadata, hypothesisID: nil)
@@ -172,7 +198,9 @@ enum LyricsIdentityPolicy {
             guard !actualTokens.isEmpty else { rejection = rejection ?? .missingMetadata; continue }
             var expected = Set(expectedTokens)
             let actual = Set(actualTokens)
-            var manual = !hypothesis.allowsAutomaticSelection || duetCredits != nil
+            let directionConfirmed = confirmedDirectionIDs.contains(hypothesis.id)
+                && hasCompleteDirectionIdentity(candidate, hypothesis: hypothesis, metadata: metadata)
+            var manual = (!hypothesis.allowsAutomaticSelection && !directionConfirmed) || duetCredits != nil
             var manualReason: LyricsLookupDiagnostics.Reason? = manual ? .identityConfirmationRequired : nil
             let titleMatches = hypothesis.titleVariants.contains {
                 LyricsLookupMetadata.identityKey($0) == LyricsLookupMetadata.identityKey(title)

@@ -43,6 +43,7 @@ enum EvanTubeOnlineSongResolver {
                     artistName: item.artist.isEmpty ? song.artistName : item.artist,
                     artistId: song.artistId, albumName: song.albumName, albumId: song.albumId,
                     duration: song.duration, thumbnailURL: song.thumbnailURL ?? item.artworkURL,
+                    artistNameSource: item.artist.isEmpty ? song.artistNameSource : .artistMetadata,
                     isExplicit: song.isExplicit, musicVideoType: song.musicVideoType,
                     isEpisode: song.isEpisode, episodeOf: song.episodeOf,
                     streamURL: song.streamURL, streamContentLength: song.streamContentLength)

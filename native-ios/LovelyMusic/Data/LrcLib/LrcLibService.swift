@@ -37,12 +37,17 @@ final class LrcLibService: LyricsRepositoryProtocol {
         var failures: [LyricsSourceFailure] = []
         var received = 0
         var successfulResponses = 0
+        var directionCoverage = LyricsDirectionCoverage()
         func report(_ lyrics: SyncedLyrics?) -> LyricsLookupReport {
-            .provider(.lrclib, lyrics: lyrics, received: received,
+            var value = LyricsLookupReport.provider(.lrclib, lyrics: lyrics, received: received,
                       successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
                       rejectionReasons: evidence.reduce(into: [String: Int]()) { counts, record in
                           if record.identity == "rejected" { counts[record.reason ?? "identityMismatch", default: 0] += 1 }
                       }, evaluatedCandidates: evidence, stageTimings: timings.snapshot())
+            if LyricsDirectionPolicy.requiresEvidence(metadata) {
+                value.directionEvidence = .init(candidates: candidates, coverage: [directionCoverage])
+            }
+            return value
         }
         // The official GET /api/get/:track_id endpoint revalidates identity and content.
         if let saved = LyricsCandidateScorer.remembered(context, defaults: defaults), saved.providerID == .lrclib,
@@ -66,7 +71,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
                         let identity = scoringSession.decision(candidate, metadata: metadata, remembered: remembered)
                         // Manual/weak/untimed remembered records remain available but never suppress fallback.
                         if candidate.id == saved, identity.kind == .confirmed, candidate.lyrics.isTimeSynced {
-                            let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, scoringSession: scoringSession) })
+                            let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, scoringSession: scoringSession, directionCoverage: [directionCoverage]) })
                             try Task.checkCancellation()
                             return report(result)
                         }
@@ -108,6 +113,13 @@ final class LrcLibService: LyricsRepositoryProtocol {
                 LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrclib,
                     phase: .response, count: records.count))
                 successfulResponses += 1; received += min(records.count, 30)
+                if query.endpoint == "search" {
+                    directionCoverage.recordSuccess(query.pair, recordCount: records.count, metadataComplete: records.allSatisfy {
+                        $0.id.map { $0 > 0 } == true
+                            && $0.trackName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                            && $0.artistName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+                    })
+                }
                 // Invalid identities are rejected by the common scorer, never before search fallback.
                 timings.measure("candidateContentAndEvidence") {
                 for record in records.prefix(30) {
@@ -121,7 +133,7 @@ final class LrcLibService: LyricsRepositoryProtocol {
                     if let candidate { candidates.append(candidate) }
                 }
                 }
-                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) {
+                if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession, directionCoverage: [directionCoverage]) }) {
                     try Task.checkCancellation()
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
@@ -129,11 +141,12 @@ final class LrcLibService: LyricsRepositoryProtocol {
                 LyricsLookupDiagnostics.shared.recordFailure(context: context, provider: .lrclib, error: error)
                 try LyricsMatchingPolicy.checkCancellation(error)
                 failures += LyricsSourceFailure.from(error, providerID: .lrclib)
+                directionCoverage.recordFailure()
                 break // Availability errors are not corrected by spelling variants.
             }
         }
         try Task.checkCancellation()
-        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession) }) { try Task.checkCancellation(); return report(result) }
+        if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession, directionCoverage: [directionCoverage]) }) { try Task.checkCancellation(); return report(result) }
         try Task.checkCancellation()
         return report(nil)
     }

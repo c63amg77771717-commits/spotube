@@ -23,10 +23,10 @@ enum NextResponseMapper {
             let title = renderer.title?.text ?? ""
             guard let videoId = renderer.videoId, !title.isEmpty else { return nil }
 
-            let artistName = renderer.shortBylineText?.text
-                ?? renderer.longBylineText?.text ?? ""
-            let artistId = renderer.longBylineText?.runs?.first?
-                .navigationEndpoint?.browseEndpoint?.browseId
+            let longRuns = renderer.longBylineText?.runs
+            let credit = MusicArtistCreditMapper.map(longRuns?.isEmpty == false ? longRuns : renderer.shortBylineText?.runs)
+            let artistName = credit.name
+            let artistId = credit.id
 
             let thumbnailURL = renderer.thumbnail?.thumbnails?.last?.url
 
@@ -45,6 +45,7 @@ enum NextResponseMapper {
                 albumId: nil,
                 duration: duration,
                 thumbnailURL: thumbnailURL,
+                artistNameSource: credit.source,
                 musicVideoType: musicVideoType
             )
         }

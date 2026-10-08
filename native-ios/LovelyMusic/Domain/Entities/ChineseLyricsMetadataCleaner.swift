@@ -82,7 +82,7 @@ enum ChineseLyricsMetadataCleaner {
 
     static func roles(_ context: LyricsLookupContext) -> [LyricsLookupMetadata.Pair] {
         guard context.hasYouTubeOrigin else { return [] }
-        let supplied = context.artistNameSource == .uploader ? "" : context.artist
+        let supplied = context.artistNameSource?.isDisplayOnly == true ? "" : context.artist
         let prepared = preparedTitle(context.title, suppliedArtist: supplied)
         let credit = feature(prepared)
         let title = credit?.title ?? prepared
@@ -96,7 +96,7 @@ enum ChineseLyricsMetadataCleaner {
     }
 
     static func analyze(_ context: LyricsLookupContext) -> Analysis {
-        let supplied = context.artistNameSource == .uploader ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+        let supplied = context.artistNameSource?.isDisplayOnly == true ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard context.hasYouTubeOrigin else {
             return .init(pair: LyricsLookupMetadata.cleanedLegacy(title: context.title, artist: supplied, allowVideoCredits: false)
                 ?? .init(title: context.title, artist: supplied), presentationContext: [])

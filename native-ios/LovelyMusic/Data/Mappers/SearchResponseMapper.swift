@@ -103,9 +103,9 @@ enum SearchResponseMapper {
         let title = columns[0].musicResponsiveListItemFlexColumnRenderer?.text?.text ?? ""
         let runs = columns[1].musicResponsiveListItemFlexColumnRenderer?.text?.runs ?? []
 
-        let artistRun = runs.first
-        let artistName = artistRun?.text ?? ""
-        let artistId = artistRun?.navigationEndpoint?.browseEndpoint?.browseId
+        let credit = MusicArtistCreditMapper.map(runs)
+        let artistName = credit.name
+        let artistId = credit.id
 
         let albumRun = runs.first(where: {
             $0.navigationEndpoint?.browseEndpoint?.browseEndpointContextSupportedConfigs?
@@ -172,6 +172,7 @@ enum SearchResponseMapper {
             albumId: albumId,
             duration: duration,
             thumbnailURL: thumbnailURL,
+            artistNameSource: credit.source,
             isExplicit: isExplicit,
             musicVideoType: musicVideoType,
             isEpisode: isEpisode,

@@ -365,7 +365,7 @@ enum LyricsLookupMetadata {
     static func corroboratedDuetCredits(context: LyricsLookupContext, pair: Pair,
                                        returnedArtist: String) -> [String]? {
         guard context.hasYouTubeOrigin,
-              context.artistNameSource == .uploader || context.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              context.artistNameSource?.isDisplayOnly == true || context.artist.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               context.title.contains("對唱") || context.title.contains("对唱") else { return nil }
         let prepared = boundedQueryPresentation(context.title)
         guard let explicit = bracketedVideoCredit(prepared),
