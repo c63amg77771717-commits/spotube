@@ -231,7 +231,11 @@ final class Build20LyricsTests: XCTestCase {
     }
 
     func testUncertainDashCreditUsesSecondaryRequestButRequiresManualIdentity() async throws {
-        let f = Build20Transport { _ in .json([
+        // A missing reverse lookup is not evidence that the forward direction is unique.
+        let f = Build20Transport { request in
+            let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            if items.first(where: { $0.name == "title" })?.value == "Fixture performer" { return .failure(.timedOut) }
+            return .json([
             ["id": "1", "title": "Fixture song", "artist": "Fixture performer", "duration": 200,
              "lrc": "[00:01.00]Extracted credit lyric"]
         ]) }
@@ -240,6 +244,10 @@ final class Build20LyricsTests: XCTestCase {
         let result = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c)
         XCTAssertTrue(result?.lines.isEmpty ?? false)
         XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Extracted credit lyric")
+        XCTAssertFalse(result?.sourceFailures.isEmpty ?? true)
+        XCTAssertTrue(f.requests.contains { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "title" }?.value == "Fixture performer"
+        })
         XCTAssertLessThanOrEqual(f.requests.count, 6)
         let query = try XCTUnwrap(URLComponents(url: XCTUnwrap(f.requests.first?.url), resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(query.first { $0.name == "title" }?.value, "Fixture song")
@@ -295,7 +303,9 @@ final class Build20LyricsTests: XCTestCase {
     // Full imported title/duration/YouTube context, through the production entry point.
     // Fixture content validates dispatch/identity only; it does not prove public lyrics availability.
     func testEightImportedSongsUseCanonicalQueriesThroughFormalPrimaryContext() async throws {
-        for c in importedContexts() {
+        // Only the unbounded whitespace/publisher caption remains manual after complete fixture searches.
+        let expectedAutomatic = [true, true, true, false, true, true, true, true]
+        for (c, automaticallyConfirmed) in zip(importedContexts(), expectedAutomatic) {
             let f = Build20Transport { request in
                 let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 let title = items.first { $0.name == "track_name" }?.value
@@ -306,10 +316,10 @@ final class Build20LyricsTests: XCTestCase {
             }
             defer { f.close() }
             let result = try await LrcLibService(session: f.session, defaults: f.defaults).getLyrics(context: c)
-            if LyricsCanonicalMetadata(c)?.requiresManualIdentityConfirmation == true {
-                XCTAssertTrue(result?.lines.isEmpty ?? false)
-                XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
-            } else { XCTAssertEqual(result?.lines.first?.text, "Context fixture") }
+            XCTAssertEqual(result?.lines.map(\.text), automaticallyConfirmed ? ["Context fixture"] : [], c.songID ?? "")
+            XCTAssertEqual(result?.candidates.first?.identityDecision?.kind,
+                           automaticallyConfirmed ? .confirmed : .relatedManual, c.songID ?? "")
+            XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
             XCTAssertEqual(result?.selectionKey, "song:" + c.songID!)
             XCTAssertEqual(result?.candidates.first?.lyrics.isTimeSynced, true)
             XCTAssertLessThanOrEqual(f.requests.count, 6)
@@ -319,7 +329,9 @@ final class Build20LyricsTests: XCTestCase {
     }
 
     func testEightImportedSongsUseFormalSecondaryContextAndExplicitBilingualCredits() async throws {
-        for c in importedContexts() {
+        // Only the unbounded whitespace/publisher caption remains manual after complete fixture searches.
+        let expectedAutomatic = [true, true, true, false, true, true, true, true]
+        for (c, automaticallyConfirmed) in zip(importedContexts(), expectedAutomatic) {
             let f = Build20Transport { request in
                 let items = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
                 guard items.first(where: { $0.name == "title" })?.value == self.expectedTitle(c),
@@ -329,13 +341,26 @@ final class Build20LyricsTests: XCTestCase {
             }
             defer { f.close() }
             let result = try await LrcApiService(session: f.session, defaults: f.defaults).getLyrics(context: c)
-            if LyricsCanonicalMetadata(c)?.requiresManualIdentityConfirmation == true {
-                XCTAssertTrue(result?.lines.isEmpty ?? false)
-                XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
-            } else { XCTAssertEqual(result?.lines.first?.text, "Context fixture") }
+            XCTAssertEqual(result?.lines.map(\.text), automaticallyConfirmed ? ["Context fixture"] : [], c.songID ?? "")
+            XCTAssertEqual(result?.candidates.first?.identityDecision?.kind,
+                           automaticallyConfirmed ? .confirmed : .relatedManual, c.songID ?? "")
+            XCTAssertEqual(result?.candidates.first?.lyrics.lines.first?.text, "Context fixture")
             XCTAssertTrue(result?.candidates.allSatisfy { $0.providerID == .lrcapi } ?? false)
             XCTAssertEqual(result?.selectionKey, c.selectionKey)
             XCTAssertLessThanOrEqual(f.requests.count, 6)
+        }
+    }
+
+    func testImportedCaptionCandidatesWithoutCompletedCoverageStayManual() throws {
+        for c in importedContexts() {
+            let metadata = try XCTUnwrap(LyricsCanonicalMetadata(c))
+            guard metadata.requiresManualIdentityConfirmation else { continue }
+            let record = candidate(id: "7", title: expectedTitle(c), artist: expectedArtist(c), duration: Double(c.duration!))
+            let selected = try XCTUnwrap(LyricsCandidateScorer.choose([record], metadata: metadata,
+                defaults: isolatedDefaults(), directionCoverage: []))
+            XCTAssertTrue(selected.lines.isEmpty, c.songID ?? "")
+            XCTAssertEqual(selected.candidates.count, 1)
+            XCTAssertEqual(selected.candidates.first?.identityDecision?.kind, .relatedManual)
         }
     }
 
