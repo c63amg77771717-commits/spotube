@@ -3,6 +3,7 @@ import XCTest
 @testable import LovelyMusic
 
 final class LyricsNativeReceiptTests: XCTestCase {
+    private var measuredWalls: [String: Double] = [:]
     private let credit = "Performer - Track (Lyrics) ft. Guest"
     private func withSources(_ mode: String, body: (LrcLibService, CompositeLyricsRepository, LyricsLookupContext) async throws -> Void) async throws {
         ReceiptUpstreamMock.configure(mode)
@@ -22,15 +23,21 @@ final class LyricsNativeReceiptTests: XCTestCase {
             secondaryEnabled: { true }, probeBothSources: true)
         try await body(primary, composite, .init(title: credit, artist: "", duration: 200, hasYouTubeOrigin: true))
     }
+    private func measuredLookup(_ repository: CompositeLyricsRepository, context: LyricsLookupContext) async throws -> LyricsLookupReport {
+        let start = ProcessInfo.processInfo.systemUptime
+        let report = try await repository.lookup(context: context)
+        if let id = report.queryReceipts.first?.lookupID { measuredWalls[id] = max(0, ProcessInfo.processInfo.systemUptime - start) * 1000 }
+        return report
+    }
     private func serialized(_ report: LyricsLookupReport) throws -> [String: Any] {
         try LyricsLiveReceiptBuilder.row(report,
             sample: ["title": credit, "artist": "", "duration": 200, "stratum": "latin-title", "sampleKey": "sample-01"],
-            batch: 1, wallMilliseconds: 1, phases: AuthorizedSampleHTTPTransport.requests)
+            batch: 1, wallMilliseconds: try XCTUnwrap(measuredWalls[report.queryReceipts.first?.lookupID ?? ""]), phases: AuthorizedSampleHTTPTransport.requests)
     }
 
     func testActualBothProvidersAndFinalSelectedContentDigest() async throws {
         try await withSources("complete") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             XCTAssertEqual(report.state, .synchronized)
             XCTAssertEqual(report.queryReceipts.count, 2)
             XCTAssertTrue(report.queryReceipts.allSatisfy(\.coversRequiredPairs))
@@ -56,7 +63,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualEmptySearchIsCompleteAbsenceEvidence() async throws {
         try await withSources("empty") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             XCTAssertEqual(report.state, .providerEmpty)
             XCTAssertTrue(report.queryReceipts.allSatisfy(\.coversRequiredPairs))
             XCTAssertTrue(report.queryReceipts.flatMap(\.queries).allSatisfy { $0.returnedCount == 0 && $0.metadataComplete == true && $0.coverageMutation == "recordSuccess" })
@@ -66,7 +73,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualTruncationRetainsFullCountAndCannotProveAbsence() async throws {
         try await withSources("truncated") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             XCTAssertEqual(report.state, .manualSelection)
             let second = try XCTUnwrap(report.queryReceipts.first { $0.provider == "lrcapi" })
             XCTAssertFalse(second.coversRequiredPairs)
@@ -81,7 +88,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualMalformedIdentityDoesNotCountAsCompletedPair() async throws {
         try await withSources("metadata") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             XCTAssertEqual(report.state, .manualSelection)
             let second = try XCTUnwrap(report.queryReceipts.first { $0.provider == "lrcapi" })
             let query = try XCTUnwrap(second.queries.first { $0.outcome == "malformed" })
@@ -95,7 +102,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualDecodeFailureLeavesOtherQueriesExplicitlyUnattempted() async throws {
         try await withSources("decode") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             let second = try XCTUnwrap(report.queryReceipts.first { $0.provider == "lrcapi" })
             let failed = try XCTUnwrap(second.queries.first { $0.outcome == "malformed" })
             XCTAssertNil(failed.returnedCount, "Decode failure must not fabricate an empty result")
@@ -110,7 +117,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
 
     func testActualRetrySeparatesThrottleNetworkAndMeasuredBackoff() async throws {
         try await withSources("retry") { _, composite, context in
-            let report = try await composite.lookup(context: context)
+            let report = try await measuredLookup(composite, context: context)
             XCTAssertEqual(report.state, .synchronized)
             let retried = try XCTUnwrap(report.queryReceipts.flatMap(\.queries).first { $0.attempts.count == 2 })
             XCTAssertEqual(retried.attempts.compactMap(\.httpStatus), [503, 200])
@@ -225,7 +232,7 @@ private final class ReceiptBox: @unchecked Sendable {
 
 private final class ReceiptUpstreamMock: URLProtocol {
     private static let lock = NSLock(); private static var mode = "empty", calls: [String: Int] = [:], didStart = false
-    private var task: Task<Void, Never>?
+    private var forwardingTask: Task<Void, Never>?
     static var started: Bool { lock.withLock { didStart } }
     static func configure(_ value: String) { lock.withLock { mode = value; calls = [:]; didStart = false } }
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -239,7 +246,7 @@ private final class ReceiptUpstreamMock: URLProtocol {
         let title = parts.queryItems?.first { $0.name == (primary ? "track_name" : "title") }?.value ?? ""
         let key = (parts.host ?? "") + title
         let (mode, number) = Self.lock.withLock { Self.didStart = true; Self.calls[key, default: 0] += 1; return (Self.mode, Self.calls[key]!) }
-        task = Task { [self] in
+        forwardingTask = Task { [self] in
             do { try await Task.sleep(for: .milliseconds(mode == "slow" ? 2000 : 20)) } catch { client?.urlProtocol(self, didFailWithError: error); return }
             if mode == "decode", !primary { send(url, status: 200, bytes: Data("{invalid-json".utf8)); return }
             if mode == "retry", !primary, title == "Track", number == 1 { send(url, status: 503, bytes: Data(), headers: ["Retry-After": "0.05"]); return }
@@ -260,5 +267,5 @@ private final class ReceiptUpstreamMock: URLProtocol {
         client?.urlProtocol(self, didReceive: HTTPURLResponse(url: url, statusCode: status, httpVersion: nil, headerFields: headers)!, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: bytes); client?.urlProtocolDidFinishLoading(self)
     }
-    override func stopLoading() { task?.cancel() }
+    override func stopLoading() { forwardingTask?.cancel() }
 }

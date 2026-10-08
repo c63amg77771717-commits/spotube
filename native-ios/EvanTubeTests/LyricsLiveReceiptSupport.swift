@@ -99,6 +99,9 @@ enum LyricsLiveReceiptBuilder {
     static func row(_ report: LyricsLookupReport, sample: [String: Any], batch: Int,
                     wallMilliseconds: Double, phases: [[String: Any]]) throws -> [String: Any] {
         guard report.queryReceipts.count == 2 else { throw ReceiptError.missingProviderReceipt }
+        let expected = report.queryReceipts.flatMap(\.queries).flatMap { query in query.attempts.map { query.queryID + "|" + String($0.attempt) } }.sorted()
+        let observed = phases.map { ($0["queryID"] as? String ?? "missing") + "|" + String($0["attempt"] as? Int ?? -1) }.sorted()
+        guard expected == observed && Set(observed).count == observed.count else { throw ReceiptError.missingPhase }
         var queries: [[String: Any]] = []
         for provider in report.queryReceipts {
             for query in provider.queries {
