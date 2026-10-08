@@ -391,6 +391,8 @@ enum LyricsCandidateScorer {
         return SyncedLyrics(lines: chosen?.lyrics.lines ?? [], source: chosen?.lyrics.source ?? "",
                             isTimeSynced: chosen?.lyrics.isTimeSynced ?? false, candidates: ranked.map { $0.0 },
                             selectionKey: metadata.context.selectionKey, providerID: chosen?.providerID, sourceFailures: failures,
-                            timingState: chosen?.lyrics.timingState)
+                            timingState: chosen?.lyrics.timingState, selectedRecordID: chosen?.id,
+                            selectionMargin: competitor.map { best.1 - $0.1 },
+                            selectionMethod: saved != nil ? "remembered" : chosen != nil ? "automatic" : "manual")
     }
 }

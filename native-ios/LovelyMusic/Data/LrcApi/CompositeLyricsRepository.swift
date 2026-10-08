@@ -81,14 +81,14 @@ final class CompositeLyricsRepository: LyricsRepositoryProtocol {
                     failures: outcome.failures, contentCandidateCount: outcome.contentCandidateCount,
                     rejectionReasons: outcome.rejectionReasons, evaluatedCandidates: outcome.evaluatedCandidates, stageTimings: outcome.stageTimings)
             } : providers
-            return .init(lyrics: lyrics, providers: evaluatedProviders, directionEvidence: directionEvidence)
+            return .init(lyrics: lyrics, providers: evaluatedProviders, directionEvidence: directionEvidence, queryReceipts: first.queryReceipts + second.queryReceipts)
         }
         if !needsDirectionEvidence, let content = second.lyrics ?? first.lyrics, !content.lines.isEmpty {
             let lyrics = SyncedLyrics(lines: content.lines, source: content.source, isTimeSynced: content.isTimeSynced,
                 selectionKey: context.selectionKey, providerID: content.providerID, sourceFailures: failures, timingState: content.timingState)
-            return .init(lyrics: lyrics, providers: providers)
+            return .init(lyrics: lyrics, providers: providers, queryReceipts: first.queryReceipts + second.queryReceipts)
         }
-        return .init(lyrics: nil, providers: providers)
+        return .init(lyrics: nil, providers: providers, directionEvidence: directionEvidence, queryReceipts: first.queryReceipts + second.queryReceipts)
     }
 
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {

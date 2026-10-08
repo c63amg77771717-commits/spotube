@@ -3,6 +3,18 @@ name: EvanTube native iOS IPA
 on:
   workflow_dispatch:
     inputs:
+      lyrics_receipt_validation:
+        description: 'Native recorder compilation and offline mocks including original fixed40; no UI, IPA or live queries'
+        type: boolean
+        default: false
+      lyrics_live_sample_only:
+        description: 'Explicitly authorized original fixed20 only after same-source recorder mocks; no UI or IPA'
+        type: boolean
+        default: false
+      receipt_validation_run_id:
+        description: 'Successful same-source native receipt/mock validation run, required for lyrics-only live execution'
+        type: string
+        default: ''
       recover_f8_launch_failures:
         description: 'Run only three launch-failed f8 UI cases with simulator service preflight and process samples; no already-passed tests'
         type: boolean
@@ -48,7 +60,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.unverified_test_ipa || inputs.complete_f8_validation || inputs.recover_f8_launch_failures)) }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.unverified_test_ipa || inputs.complete_f8_validation || inputs.recover_f8_launch_failures || inputs.lyrics_receipt_validation || inputs.lyrics_live_sample_only)) }}
     runs-on: macos-14
     timeout-minutes: 90
     steps:
@@ -70,6 +82,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVANTUBE_EXPECTED_SHA: ${{ github.sha }}
         run: python3 scripts/ios-lyrics-sample/prepare_ci_manifest.py
+      - name: Prepare native receipt source context
+        run: python3 scripts/ios-lyrics-sample/write_receipt_context.py
       - name: Generate project
         working-directory: native-ios
         env:
@@ -616,4 +630,149 @@ jobs:
             ${{ runner.temp }}/direction-closure-source.json
             ${{ runner.temp }}/direction-closure.log
             ${{ runner.temp }}/evantube-direction-closure.xcresult
+          if-no-files-found: error
+
+  lyrics_receipt_validation:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.lyrics_receipt_validation }}
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify offline scope and exact source
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib
+          value = json.loads(os.environ['INPUTS_JSON'])
+          assert value['lyrics_receipt_validation']
+          assert not any(value.get(key) for key in ['lyrics_live_sample_only', 'source_queries_authorized', 'package_ipa', 'unverified_test_ipa', 'complete_f8_validation', 'recover_f8_launch_failures', 'random_sample_json'])
+          assert not pathlib.Path('native-ios/EvanTubeTests/Fixtures/authorized_random_lyrics_sample.json').exists()
+          print('RECEIPT_SCOPE native mocks only; no authorized live resource, UI or package')
+          PY
+          python3 scripts/ios-lyrics-sample/write_receipt_context.py
+          python3 scripts/ios-lyrics-sample/validate_fixed40_live_receipt.py --manifest-directory native-ios/EvanTubeTests/Fixtures --self-test --output "$RUNNER_TEMP/receipt-verifier-self-tests.json"
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate simulator project without production credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          xcodegen generate
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
+          PY
+      - name: Compile and run native unit regressions including actual receipt mocks
+        working-directory: native-ios
+        run: |
+          set -o pipefail
+          xcodebuild -project LovelyMusic.xcodeproj -scheme EvanTubeTests -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-receipt-derived" -parallel-testing-enabled NO \
+            -only-testing:EvanTubeTests \
+            -skip-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testAuthorizedFixedTwentySongSampleThroughProductionAdapters \
+            -resultBundlePath "$RUNNER_TEMP/evantube-native-receipts.xcresult" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test 2>&1 | tee "$RUNNER_TEMP/native-receipt-tests.log"
+      - name: Verify the actual original40 native mock receipt
+        run: |
+          python3 scripts/ios-lyrics-sample/export_native_mock_receipt.py --bundle "$RUNNER_TEMP/evantube-native-receipts.xcresult" --source "$GITHUB_SHA" --output "$RUNNER_TEMP/native-fixed40-mock-receipt.json"
+          python3 scripts/ios-lyrics-sample/validate_fixed40_live_receipt.py --manifest-directory native-ios/EvanTubeTests/Fixtures --native-mock --receipt "$RUNNER_TEMP/native-fixed40-mock-receipt.json" --output "$RUNNER_TEMP/native-mock-validation.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-native-lyrics-receipt
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/native-receipt-tests.log
+            ${{ runner.temp }}/receipt-verifier-self-tests.json
+            ${{ runner.temp }}/native-fixed40-mock-receipt.json
+            ${{ runner.temp }}/native-mock-validation.json
+            ${{ runner.temp }}/evantube-native-receipts.xcresult
+          if-no-files-found: error
+
+  lyrics_live_sample_only:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.lyrics_live_sample_only }}
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify explicit fixed-sample scope
+        env:
+          INPUTS_JSON: ${{ toJSON(inputs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          value = json.loads(os.environ['INPUTS_JSON'])
+          assert value['source_queries_authorized'] and value['random_sample_json']
+          assert not any(value.get(key) for key in ['lyrics_receipt_validation', 'package_ipa', 'unverified_test_ipa', 'complete_f8_validation', 'recover_f8_launch_failures'])
+          print('LYRICS_SCOPE original fixed20 only; no UI or packaging')
+          PY
+      - name: Require completed same-source native recorder mocks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVANTUBE_RECEIPT_MOCK_RUN: ${{ inputs.receipt_validation_run_id }}
+        run: python3 scripts/ios-lyrics-sample/verify_receipt_mock_run.py
+      - name: Prepare exact original twenty-row manifest
+        env:
+          EVANTUBE_SAMPLE_JSON: ${{ inputs.random_sample_json }}
+          EVANTUBE_FIRST_SAMPLE_RUN: ${{ inputs.first_sample_run_id }}
+          GH_TOKEN: ${{ github.token }}
+          EVANTUBE_EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          python3 scripts/ios-lyrics-sample/prepare_ci_manifest.py
+          python3 scripts/ios-lyrics-sample/write_receipt_context.py
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate simulator project without production credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          xcodegen generate
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
+          PY
+      - name: Execute original fixed20 through actual adapters and authorized transport
+        working-directory: native-ios
+        run: |
+          set -o pipefail
+          xcodebuild -project LovelyMusic.xcodeproj -scheme EvanTubeTests -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' -parallel-testing-enabled NO \
+            -only-testing:EvanTubeTests/AuthorizedRandomLyricsSampleTests/testAuthorizedFixedTwentySongSampleThroughProductionAdapters \
+            -resultBundlePath "$RUNNER_TEMP/evantube-random-sample.xcresult" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" test
+          python3 ../scripts/ios-lyrics-sample/export_sample_result.py --bundle "$RUNNER_TEMP/evantube-random-sample.xcresult" --output "$RUNNER_TEMP/evantube-random-sample.json"
+      - name: Validate completed dual20 receipt
+        if: success() && inputs.first_sample_run_id != ''
+        run: |
+          python3 scripts/ios-lyrics-sample/merge_fixed20_receipts.py --first "$RUNNER_TEMP/evantube-first-sample.json" --second "$RUNNER_TEMP/evantube-random-sample.json" --output "$RUNNER_TEMP/native-fixed40-live-receipt.json"
+          python3 scripts/ios-lyrics-sample/validate_fixed40_live_receipt.py --manifest-directory native-ios/EvanTubeTests/Fixtures --receipt "$RUNNER_TEMP/native-fixed40-live-receipt.json" --output "$RUNNER_TEMP/native-live-validation.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-random-lyrics-sample
+          retention-days: 7
+          path: |
+            ${{ runner.temp }}/evantube-random-sample.json
+            ${{ runner.temp }}/evantube-first-sample.json
+            ${{ runner.temp }}/native-fixed40-live-receipt.json
+            ${{ runner.temp }}/native-live-validation.json
           if-no-files-found: error

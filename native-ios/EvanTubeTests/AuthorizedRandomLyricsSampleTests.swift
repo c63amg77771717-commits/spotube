@@ -48,6 +48,8 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         guard let url = Bundle(for: Self.self).url(forResource: "authorized_random_lyrics_sample", withExtension: "json") else {
             throw XCTSkip("No explicitly authorized fixed twenty-row sample resource was prepared")
         }
+        AuthorizedSampleHTTPTransport.configureMock(nil)
+        let runContext = try LyricsLiveReceiptBuilder.context()
         let document = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         let selected = try XCTUnwrap(document["samples"] as? [[String: Any]])
         XCTAssertEqual(selected.count, 20)
@@ -60,15 +62,15 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         var possibleTitleOverlaps: [[String: Any]] = []
         for row in selected {
             let context = LyricsLookupContext(title: row["title"] as! String, artist: row["artist"] as! String, hasYouTubeOrigin: true)
-            let keys = try compositionKeys(context)
-            XCTAssertTrue(seenCompositions.isDisjoint(with: keys), "Composition projections overlap before any query: " + keys.intersection(seenCompositions).sorted().joined(separator: ", "))
+            let keys = Set(try compositionKeys(context).map(LyricsReceiptDigest.text))
+            XCTAssertTrue(seenCompositions.isDisjoint(with: keys), "Composition projections overlap before any query; do not replace the original sample")
             guard seenCompositions.isDisjoint(with: keys) else { throw SampleValidationError.duplicateComposition }
             seenCompositions.formUnion(keys)
             let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
-            let possible = LyricsCompositionIdentity.possibleTitleKeys(metadata)
+            let possible = Set(LyricsCompositionIdentity.possibleTitleKeys(metadata).map(LyricsReceiptDigest.text))
             let overlap = possible.intersection(seenPossibleTitles)
             if !overlap.isEmpty {
-                possibleTitleOverlaps.append(["title": context.title, "possibleTitleKeys": overlap.sorted(),
+                possibleTitleOverlaps.append(["sampleKey": row["sampleKey"] ?? "missing", "possibleTitleKeys": overlap.sorted(),
                     "classification": "ambiguous shared possible title; human composition ground truth NOT_RUN"])
             }
             seenPossibleTitles.formUnion(possible)
@@ -80,8 +82,8 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
         configuration.urlCache = nil; configuration.httpCookieStorage = nil
         configuration.protocolClasses = [AuthorizedSampleHTTPTransport.self]
         let session = URLSession(configuration: configuration); defer { session.invalidateAndCancel() }
-        let repository = CompositeLyricsRepository(primary: LrcLibService(session: session, defaults: defaults),
-            secondary: LrcApiService(session: session, defaults: defaults), defaults: defaults, secondaryEnabled: { true }, probeBothSources: true)
+        let repository = CompositeLyricsRepository(primary: LrcLibService(session: session, defaults: defaults, captureReceipts: true),
+            secondary: LrcApiService(session: session, defaults: defaults, captureReceipts: true), defaults: defaults, secondaryEnabled: { true }, probeBothSources: true)
         var results: [[String: Any]] = []
         for (index, row) in selected.enumerated() {
             // Only these selected raw metadata fields cross into the test runner.
@@ -107,48 +109,41 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
             XCTAssertEqual(Set(requests.compactMap { $0["provider"] as? String }), ["lrclib", "lrcapi"])
             XCTAssertTrue(report.providers.allSatisfy { $0.successfulResponses <= 6 })
             if report.state == .synchronized || report.state == .confirmedPlain {
-                let selectedIdentity = report.lyrics?.candidates.first { $0.providerID == report.lyrics?.providerID && $0.lyrics.lines.first?.id == report.lyrics?.lines.first?.id }
+                let selectedIdentity = report.lyrics?.candidates.first { $0.id == report.lyrics?.selectedRecordID }
                 XCTAssertEqual(selectedIdentity?.identityDecision?.kind, .confirmed, "Uncertain sample identities must never count as automatic success")
             }
-            let providers: [[String: Any]] = try report.providers.map { outcome in
-                let evaluated = try JSONSerialization.jsonObject(with: JSONEncoder().encode(outcome.evaluatedCandidates))
-                return ["provider": outcome.providerID?.rawValue ?? "unknown", "result": outcome.kind.rawValue,
+            var receipt = try LyricsLiveReceiptBuilder.row(report, sample: row, batch: batch,
+                wallMilliseconds: Double(lookupMilliseconds), phases: requests)
+            let context = LyricsLookupContext(song: song)
+            let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
+            receipt["index"] = index
+            receipt["compositionKeys"] = Array(try compositionKeys(context)).map(LyricsReceiptDigest.text).sorted()
+            receipt["possibleTitleKeys"] = Array(LyricsCompositionIdentity.possibleTitleKeys(metadata)).map(LyricsReceiptDigest.text).sorted()
+            receipt["requests"] = requests
+            receipt["providers"] = report.providers.map { outcome in
+                ["provider": outcome.providerID?.rawValue ?? "unknown", "result": outcome.kind.rawValue,
                  "receivedCount": outcome.receivedCount, "contentCandidateCount": outcome.contentCandidateCount,
                  "acceptedCount": outcome.acceptedCount, "successfulResponses": outcome.successfulResponses,
-                 "httpFailures": outcome.failures.compactMap(\.httpStatus), "failureCount": outcome.failures.count,
-                 "failures": outcome.failures.map { ["reason": $0.reason.rawValue, "httpStatus": $0.httpStatus.map { $0 as Any } ?? NSNull()] },
-                 "rejectionReasons": outcome.rejectionReasons, "evaluatedCandidates": evaluated, "stageElapsedMilliseconds": outcome.stageTimings,
-                 "discardedContentOrMetadataCount": max(0, outcome.receivedCount - outcome.contentCandidateCount)]
+                 "failureCount": outcome.failures.count, "stageElapsedMilliseconds": outcome.stageTimings] as [String: Any]
             }
-            let candidates: [[String: Any]] = (report.lyrics?.candidates ?? []).map { candidate in
-                ["provider": candidate.providerID.rawValue, "recordID": candidate.recordID, "title": candidate.title, "artist": candidate.artist,
-                 "identity": candidate.identityDecision?.kind.rawValue ?? "unknown", "timing": candidate.lyrics.timingState.rawValue,
-                 "version": candidate.versionLabel, "reason": candidate.identityDecision?.reason?.rawValue ?? "confirmed"]
-            }
-            results.append(["index": index, "compositionKeys": Array(try compositionKeys(LyricsLookupContext(song: song))).sorted(), "title": title, "artist": artist, "stratum": row["stratum"] ?? "unknown",
-                "possibleTitleKeys": Array(LyricsCompositionIdentity.possibleTitleKeys(try XCTUnwrap(LyricsCanonicalMetadata(LyricsLookupContext(song: song))))).sorted(),
-                "state": report.state.rawValue, "lookupLatencyMilliseconds": lookupMilliseconds,
-                "stageElapsedInterpretation": "monotonic elapsed, not CPU; overlapping intervals must not be summed",
-                "providers": providers, "candidates": candidates, "requests": requests,
-                 "identicalTimedEvidenceGroups": LyricsRecordingEvidence.groups(report.lyrics?.candidates ?? []).map { ids in
-                     ids.map { ["provider": $0.providerID.rawValue, "recordID": $0.recordID] }
-                 }, "groupEvidenceIsNotHumanRecordingOrVocalVerification": true,
-                "contentRetrieved": report.providers.contains { $0.contentCandidateCount > 0 },
-                "automaticIdentity": report.state == .synchronized || report.state == .confirmedPlain,
-                "selectionMode": report.state == .synchronized || report.state == .confirmedPlain ? "automatic"
-                    : report.state == .manualSelection ? "manual" : report.state == .candidatesRejected ? "rejected" : "noUsableResult",
-                "identityHumanGroundTruth": "NOT_RUN", "actualVocalAlignment": "NOT_RUN",
-                "manualChoiceVerified": "NOT_RUN", "timestampStructureEvidence": candidates])
+            receipt["automaticIdentity"] = report.state == .synchronized || report.state == .confirmedPlain
+            receipt["selectionMode"] = report.lyrics?.selectionMethod ?? "noUsableResult"
+            receipt["identityHumanGroundTruth"] = "NOT_RUN"
+            receipt["actualVocalAlignment"] = "NOT_RUN"
+            receipt["manualChoiceVerified"] = "NOT_RUN"
+            results.append(receipt)
         }
-        let result: [String: Any] = ["seed": 20261006, "batch": batch, "previousManifestSHA256": document["previousManifestSHA256"] ?? NSNull(), "sampleCount": results.count, "nativeExecution": true,
-            "realProviderQueries": true, "probeBothSources": true,
-            "compositionKeyDefinition": "role anchored metadata projections; all possible-title overlaps retained separately",
+        let result: [String: Any] = ["schema": "evantube-fixed20-live-v1", "evidenceKind": "nativeActualProviderResponses",
+            "sourceQueriesAuthorized": true, "nativeCheckoutSHA": runContext["nativeCheckoutSHA"] ?? "missing",
+            "nativeRunID": runContext["nativeRunID"] ?? "missing", "independentLookups": true,
+            "seed": 20261006, "batch": batch, "previousManifestSHA256": document["previousManifestSHA256"] ?? NSNull(),
+            "sampleCount": results.count, "nativeExecution": true, "realProviderQueries": true, "probeBothSources": true,
+            "compositionKeyDefinition": "SHA256 of role anchored metadata projections; possible-title overlaps retained as digests",
             "compositionHumanGroundTruth": "NOT_RUN", "possibleTitleProjectionOverlaps": possibleTitleOverlaps,
             "realProviderResponses": results.contains { result in
                 (result["requests"] as? [[String: Any]] ?? []).contains { ($0["httpStatus"] as? Int ?? 0) > 0 }
-            }, "physicalDevice": false, "audioAlignmentValidated": false,
-            "newSampleAfterFailures": false, "manifestSHA256": document["manifestSHA256"] ?? "not-provided",
-            "results": results]
+            }, "physicalDevice": false, "audioAlignmentValidated": false, "newSampleAfterFailures": false,
+            "manifestSHA256": document["manifestSHA256"] ?? "not-provided", "results": results, "rows": results]
         let encoded = try JSONSerialization.data(withJSONObject: result, options: [.prettyPrinted, .sortedKeys])
         let attachment = XCTAttachment(data: encoded, uniformTypeIdentifier: "public.json")
         attachment.name = "EvanTube-authorized-twenty-song-sample-batch-" + String(batch); attachment.lifetime = .keepAlways; add(attachment)
@@ -161,69 +156,5 @@ final class AuthorizedRandomLyricsSampleTests: XCTestCase {
     private func compositionKeys(_ context: LyricsLookupContext) throws -> Set<String> {
         let metadata = try XCTUnwrap(LyricsCanonicalMetadata(context))
         return LyricsCompositionIdentity.keys(metadata)
-    }
-}
-
-/// Whitelist the two existing APIs and metadata query fields before issuing any live request.
-private final class AuthorizedSampleHTTPTransport: URLProtocol {
-    private static let lock = NSLock()
-    private static var evidence: [[String: Any]] = [], counts: [String: Int] = [:]
-    private let taskLock = NSLock(); private var forwarding: Task<Void, Never>?
-    static func beginSample(_ index: Int) { lock.withLock { evidence = []; counts = [:] } }
-    static var requests: [[String: Any]] { lock.withLock { evidence } }
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    override func startLoading() {
-        guard let url = request.url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              components.scheme == "https", components.user == nil, components.password == nil,
-              request.httpMethod == "GET", request.httpBody == nil else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
-        }
-        let primary = components.host == "lrclib.net"
-        let provider = primary ? "lrclib" : "lrcapi"
-        let route = primary ? ["/api/get", "/api/search"].contains(components.path)
-            : components.host == "api.lrc.cx" && components.path == "/jsonapi"
-        let allowed: Set<String> = primary ? ["track_name", "artist_name"] : ["title", "artist"]
-        let items = components.queryItems ?? []
-        guard route, !items.isEmpty, items.allSatisfy({ allowed.contains($0.name) }) else {
-            client?.urlProtocol(self, didFailWithError: URLError(.badURL)); return
-        }
-        let attempt = Self.lock.withLock { Self.counts[provider, default: 0] += 1; return Self.counts[provider]! }
-        guard attempt <= 12 else { client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable)); return }
-        let task = Task { [self] in
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.urlCache = nil; configuration.httpCookieStorage = nil
-            configuration.httpShouldSetCookies = false
-            configuration.timeoutIntervalForRequest = 8; configuration.timeoutIntervalForResource = 10
-            let upstream = URLSession(configuration: configuration, delegate: AuthorizedSampleNoRedirect(), delegateQueue: nil)
-            defer { upstream.invalidateAndCancel() }
-            do {
-                try await Task.sleep(for: .milliseconds(500))
-                var forwarded = request; forwarded.httpShouldHandleCookies = false
-                let (data, response) = try await upstream.data(for: forwarded)
-                try Task.checkCancellation()
-                Self.lock.withLock {
-                    Self.evidence.append(["provider": provider, "httpStatus": (response as? HTTPURLResponse)?.statusCode ?? 0,
-                        "attempt": attempt, "onlyTitleAndArtist": true,
-                        "query": Dictionary(items.map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { first, _ in first })])
-                }
-                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-                client?.urlProtocol(self, didLoad: data); client?.urlProtocolDidFinishLoading(self)
-            } catch {
-                Self.lock.withLock { Self.evidence.append(["provider": provider, "transportError": (error as NSError).code,
-                    "attempt": attempt, "onlyTitleAndArtist": true]) }
-                client?.urlProtocol(self, didFailWithError: error)
-            }
-        }
-        taskLock.withLock { forwarding = task }
-    }
-    override func stopLoading() { taskLock.withLock { forwarding?.cancel() } }
-}
-
-private final class AuthorizedSampleNoRedirect: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
-        // A redirect must not disclose the selected metadata to another endpoint.
-        completionHandler(nil)
     }
 }

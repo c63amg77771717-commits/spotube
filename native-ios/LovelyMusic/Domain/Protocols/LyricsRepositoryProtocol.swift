@@ -93,6 +93,9 @@ enum LyricsTimingState: String, Equatable {
 }
 
 struct SyncedLyrics {
+    let selectedRecordID: LyricsRecordID?
+    let selectionMargin: Int?
+    let selectionMethod: String?
     let lines: [LyricLine]
     let source: String
     let providerID: LyricsProviderID?
@@ -105,7 +108,8 @@ struct SyncedLyrics {
     init(lines: [LyricLine], source: String, isTimeSynced: Bool = true,
          candidates: [LyricsCandidate] = [], selectionKey: String? = nil,
          providerID: LyricsProviderID? = nil, sourceFailures: [LyricsSourceFailure] = [],
-         timingState: LyricsTimingState? = nil) {
+         timingState: LyricsTimingState? = nil, selectedRecordID: LyricsRecordID? = nil, selectionMargin: Int? = nil, selectionMethod: String? = nil) {
+        self.selectedRecordID = selectedRecordID; self.selectionMargin = selectionMargin; self.selectionMethod = selectionMethod
         self.lines = lines
         self.source = source
         self.providerID = providerID

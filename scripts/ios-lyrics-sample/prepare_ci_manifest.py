@@ -15,6 +15,9 @@ assert dict(collections.Counter(x['stratum'] for x in data['samples']))==data['s
 canonical={k:v for k,v in data.items() if k!='manifestSHA256'}
 actual=hashlib.sha256(json.dumps(canonical,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 assert actual==data['manifestSHA256'], 'Use the same fixed sample after failures'
+original=pathlib.Path(f"native-ios/EvanTubeTests/Fixtures/fixed_lyrics_batch{data['batch']}.json")
+locked=json.loads(original.read_text(encoding='utf8'))
+assert data==locked, 'Only the exact original fixed manifest is authorized; do not replace samples'
 if data['batch']==2:
  run_id=os.environ.get('EVANTUBE_FIRST_SAMPLE_RUN','');assert run_id.isdigit(), 'A successful batch-one run is required before batch two'
  repo=os.environ['GITHUB_REPOSITORY'];assert repo=='c63amg77771717-commits/spotube'
@@ -27,6 +30,10 @@ if data['batch']==2:
  first=json.loads((download/'evantube-random-sample.json').read_text(encoding='utf-8'))
  assert first['batch']==1 and first['sampleCount']==20 and first['nativeExecution'] and first['realProviderQueries']
  assert first['manifestSHA256']==data['previousManifestSHA256']
+ assert first['schema']=='evantube-fixed20-live-v1' and first['nativeCheckoutSHA']==os.environ['EVANTUBE_EXPECTED_SHA']
+ assert first['evidenceKind']=='nativeActualProviderResponses' and first['sourceQueriesAuthorized']
+ assert first['independentLookups'] and first['probeBothSources']
+ assert [row['sampleKey'] for row in first['rows']]==[f'sample-{i:02d}' for i in range(1,21)]
  data['priorCompositionKeys']=sorted({key for row in first['results'] for key in row['compositionKeys']})
  data['priorPossibleTitleKeys']=sorted({key for row in first['results'] for key in row.get('possibleTitleKeys',[])})
  (pathlib.Path(os.environ['RUNNER_TEMP'])/'evantube-first-sample.json').write_text(json.dumps(first,ensure_ascii=False,indent=2),encoding='utf-8')

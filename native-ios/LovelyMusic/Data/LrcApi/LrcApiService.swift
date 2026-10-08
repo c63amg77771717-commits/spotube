@@ -10,15 +10,19 @@ enum LyricsSecondarySettings {
 /// Official public /jsonapi endpoint. No cookies, credentials, disk cache or batch lookup.
 final class LrcApiService: LyricsRepositoryProtocol {
     private let session: URLSession
+    private let captureReceipts: Bool
+    private let receiptObserver: ((LyricsProviderQueryReceipt) -> Void)?
     private let defaults: UserDefaults
     private let timeout: TimeInterval
     private let retryTransient: Bool
     private let endpoint = URL(string: "https://api.lrc.cx/jsonapi")!
 
     init(session: URLSession? = nil, defaults: UserDefaults = .standard,
-         timeout: TimeInterval = 8, retryTransient: Bool = true) {
+         timeout: TimeInterval = 8, retryTransient: Bool = true, captureReceipts: Bool = false, receiptObserver: ((LyricsProviderQueryReceipt) -> Void)? = nil) {
         self.session = session ?? LyricsTransportPolicy.makeSession()
         self.defaults = defaults
+        self.captureReceipts = captureReceipts || receiptObserver != nil
+        self.receiptObserver = receiptObserver
         self.timeout = timeout.isFinite ? min(max(timeout, 0.1), 15) : 8
         self.retryTransient = retryTransient
     }
@@ -46,6 +50,8 @@ final class LrcApiService: LyricsRepositoryProtocol {
         var received = 0
         var successfulResponses = 0
         var directionCoverage = LyricsDirectionCoverage()
+        let recorder = captureReceipts ? LyricsQueryRecorder(provider: .lrcapi, metadata: metadata) : nil
+        defer { if let recorder { receiptObserver?(recorder.snapshot(coverage: directionCoverage, cancelled: Task.isCancelled)) } }
         func report(_ lyrics: SyncedLyrics?) -> LyricsLookupReport {
             var value = LyricsLookupReport.provider(.lrcapi, lyrics: lyrics, received: received,
                       successfulResponses: successfulResponses, failures: failures, contentCandidates: evidence.filter { $0.contentLineCount > 0 }.count,
@@ -55,23 +61,30 @@ final class LrcApiService: LyricsRepositoryProtocol {
             if LyricsDirectionPolicy.requiresEvidence(metadata) {
                 value.directionEvidence = .init(candidates: candidates, coverage: [directionCoverage])
             }
+            value.queryReceipts = recorder.map { [$0.snapshot(coverage: directionCoverage)] } ?? []
             return value
         }
         // jsonapi has no verified record-ID route. Revalidate saved IDs in bounded metadata responses.
         let pairs = timings.measure("queryPlanning", { LyricsQueryPlanner.secondaryPairs(metadata) })
-        for pair in pairs {
+        let observations = recorder?.plan(pairs.map { ("/jsonapi", $0, $0.artist.isEmpty ? ["title"] : ["title", "artist"]) })
+        for (index, pair) in pairs.enumerated() {
+            let observation = observations?[index]
             try Task.checkCancellation()
+            observation?.begin()
             do {
-                let records = try await request(pair: pair, diagnosticContext: context, timings: timings)
+                let records = try await request(pair: pair, diagnosticContext: context, timings: timings, receipt: observation)
                 try Task.checkCancellation()
                 LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi,
                     phase: .response, count: records.count))
                 successfulResponses += 1; received += min(records.count, 30)
-                directionCoverage.recordSuccess(pair, recordCount: records.count, metadataComplete: records.allSatisfy {
+                let metadataComplete = records.allSatisfy {
                     !$0.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.id.count <= 256
                         && $0.title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
                         && $0.artist?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                })
+                }
+                directionCoverage.recordSuccess(pair, recordCount: records.count, metadataComplete: metadataComplete)
+                observation?.complete(count: records.count, metadataComplete: metadataComplete,
+                    coverage: records.count <= 30 && metadataComplete ? "recordSuccess" : "recordIncomplete")
                 candidates += timings.measure("candidateContentAndEvidence") { records.prefix(30).compactMap { record -> LyricsCandidate? in
                     guard !record.id.isEmpty, record.id.count <= 256, let title = record.title, let artist = record.artist else {
                         LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .candidateDropped, reason: .missingMetadata))
@@ -94,6 +107,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                     evidence.append(.init(provider: .lrcapi, recordID: record.id, title: title, artist: artist,
                         album: record.album, duration: record.duration, metadata: metadata, candidate: candidate, remembered: remembered,
                         queryEndpoint: "jsonapi", queryTitle: pair.title, queryArtist: pair.artist, scoringSession: scoringSession))
+                    observation?.content(candidate)
                     return candidate
                 } }
                 if let result = timings.measure("selectionAndScoring", { LyricsCandidateScorer.choose(candidates, metadata: metadata, defaults: defaults, failures: failures, scoringSession: scoringSession, directionCoverage: [directionCoverage]) }) {
@@ -101,6 +115,8 @@ final class LrcApiService: LyricsRepositoryProtocol {
                     if !result.lines.isEmpty && result.isTimeSynced && !metadata.requiresManualIdentityConfirmation { return report(result) }
                 }
             } catch {
+                observation?.fail(error, coverage: error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled ? "none" : "recordFailure")
+                recorder?.stopped()
                 LyricsLookupDiagnostics.shared.recordFailure(context: context, provider: .lrcapi, error: error)
                 try LyricsMatchingPolicy.checkCancellation(error)
                 failures += LyricsSourceFailure.from(error, providerID: .lrcapi)
@@ -121,7 +137,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
                                        hasYouTubeOrigin: allowVideoCredits)).legacyValue()
     }
 
-    private func request(pair: LyricsLookupMetadata.Pair, diagnosticContext: LyricsLookupContext? = nil, timings: LyricsLookupStageTimings? = nil) async throws -> [LrcApiRecord] {
+    private func request(pair: LyricsLookupMetadata.Pair, diagnosticContext: LyricsLookupContext? = nil, timings: LyricsLookupStageTimings? = nil, receipt: LyricsQueryObservation? = nil) async throws -> [LrcApiRecord] {
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         var query = [URLQueryItem(name: "title", value: pair.title)]
         if !pair.artist.isEmpty { query.append(URLQueryItem(name: "artist", value: pair.artist)) }
@@ -144,7 +160,7 @@ final class LrcApiService: LyricsRepositoryProtocol {
             }
         }
         let (data, response) = try await PublicSourceRequest.data(for: request, session: session,
-                                                                source: "LrcApi", retryTransient: retryTransient, diagnostics: observer)
+                                                                source: "LrcApi", retryTransient: retryTransient, diagnostics: observer, receipt: receipt)
         try Task.checkCancellation()
         if let context = diagnosticContext {
             LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .lrcapi, phase: .response,

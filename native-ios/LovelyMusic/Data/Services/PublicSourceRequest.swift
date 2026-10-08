@@ -21,19 +21,33 @@ enum PublicSourceRequest {
         let latencyMilliseconds: Int
     }
     static func data(for request: URLRequest, session: URLSession = .shared,
-                     source: String, retryTransient: Bool = true, diagnostics: ((TransportEvidence) -> Void)? = nil) async throws -> (Data, HTTPURLResponse) {
+                     source: String, retryTransient: Bool = true, diagnostics: ((TransportEvidence) -> Void)? = nil, receipt: LyricsQueryObservation? = nil) async throws -> (Data, HTTPURLResponse) {
         for attempt in 0...1 {
             try Task.checkCancellation()
             let started = Date()
+            let monotonicStart = ProcessInfo.processInfo.systemUptime * 1000
             let metrics = diagnostics == nil ? nil : PublicSourceMetrics()
+            var recorded = false
+            func record(_ response: URLResponse?, error: Error? = nil) {
+                guard !recorded else { return }; recorded = true
+                let end = ProcessInfo.processInfo.systemUptime * 1000
+                receipt?.attempt(.init(attempt: attempt + 1, httpStatus: (response as? HTTPURLResponse)?.statusCode,
+                    transportErrorCode: error.map { ($0 as NSError).code },
+                    cancelled: error is CancellationError || (error as? URLError)?.code == .cancelled,
+                    fetchSource: metrics?.fetchSource ?? "not-observed", startMonotonicMilliseconds: monotonicStart,
+                    endMonotonicMilliseconds: end, attemptWallMilliseconds: max(0, end - monotonicStart)))
+            }
+            let observedRequest = receipt?.tag(request, attempt: attempt + 1) ?? request
             do {
                 let data: Data
                 let response: URLResponse
                 if let metrics {
-                    (data, response) = try await session.data(for: request, delegate: metrics)
+                    (data, response) = try await session.data(for: observedRequest, delegate: metrics)
                 } else {
-                    (data, response) = try await session.data(for: request)
+                    (data, response) = try await session.data(for: observedRequest)
                 }
+                record(response)
+                receipt?.body(data)
                 diagnostics?(.init(attempt: attempt + 1, httpStatus: (response as? HTTPURLResponse)?.statusCode,
                     fetchSource: metrics?.fetchSource ?? "not-observed", transportErrorCode: nil,
                     latencyMilliseconds: Int(max(0, Date().timeIntervalSince(started) * 1000))))
@@ -42,20 +56,30 @@ enum PublicSourceRequest {
                 }
                 if retryTransient, attempt == 0, let delay = retryDelay(status: http.statusCode,
                                                        retryAfter: http.value(forHTTPHeaderField: "Retry-After")) {
-                    try await Task.sleep(for: .seconds(delay))
+                    try await backoff(seconds: delay, receipt: receipt)
                     continue
                 }
                 return (data, http)
             } catch let error as URLError {
+                record(nil, error: error)
                 diagnostics?(.init(attempt: attempt + 1, httpStatus: nil,
                     fetchSource: metrics?.fetchSource ?? "not-observed", transportErrorCode: error.code.rawValue,
                     latencyMilliseconds: Int(max(0, Date().timeIntervalSince(started) * 1000))))
                 guard retryTransient, attempt == 0, [.timedOut, .networkConnectionLost, .cannotConnectToHost,
                                      .cannotFindHost, .dnsLookupFailed].contains(error.code) else { throw error }
-                try await Task.sleep(for: .milliseconds(250))
+                try await backoff(seconds: 0.25, receipt: receipt)
+            } catch {
+                record(nil, error: error)
+                throw error
             }
         }
         throw PublicSourceError.invalidResponse(source)
+    }
+
+    private static func backoff(seconds: Double, receipt: LyricsQueryObservation?) async throws {
+        let start = ProcessInfo.processInfo.systemUptime
+        defer { receipt?.backoff(max(0, ProcessInfo.processInfo.systemUptime - start) * 1000) }
+        try await Task.sleep(for: .seconds(seconds))
     }
 
     static func retryDelay(status: Int, retryAfter: String?, now: Date = Date()) -> Double? {

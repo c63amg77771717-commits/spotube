@@ -100,6 +100,7 @@ struct LyricsLookupReport {
     let lyrics: SyncedLyrics?
     let providers: [LyricsProviderOutcome]
     var directionEvidence: LyricsDirectionEvidence? = nil
+    var queryReceipts: [LyricsProviderQueryReceipt] = []
     var failures: [LyricsSourceFailure] { providers.flatMap(\.failures) }
     var canRetryAvailability: Bool { !failures.isEmpty }
     var failureSummary: String { Array(Set(failures.map(\.displayLabel))).sorted().joined(separator: ", ") }
