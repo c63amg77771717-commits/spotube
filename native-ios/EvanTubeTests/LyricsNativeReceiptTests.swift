@@ -212,7 +212,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
         XCTAssertTrue(receipt.queries.filter { $0.outcome == "notAttempted" }.allSatisfy { $0.attempts.isEmpty })
     }
 
-    func testOriginalFixed40ProducesAnonymousNativeMockReceipt() async throws {
+    func testSyntheticFixed40ProducesAnonymousNativeMockReceipt() async throws {
         ReceiptUpstreamMock.configure("empty")
         AuthorizedSampleHTTPTransport.configureMock(ReceiptUpstreamMock.self)
         defer { AuthorizedSampleHTTPTransport.configureMock(nil) }
@@ -223,6 +223,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
             let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: "fixed_lyrics_batch\(batch)", withExtension: "json"))
             let document = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
             manifests.append(try XCTUnwrap(document["manifestSHA256"] as? String))
+            XCTAssertEqual(document["dataOrigin"] as? String, "entirelySynthetic")
             let samples = try XCTUnwrap(document["samples"] as? [[String: Any]])
             XCTAssertEqual(samples.count, 20)
             for (index, sample) in samples.enumerated() {
@@ -245,7 +246,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
                 XCTAssertTrue(AuthorizedSampleHTTPTransport.requests.allSatisfy { $0["transportMode"] as? String == "mock" })
             }
         }
-        let receipt: [String: Any] = ["schema": "evantube-fixed40-live-v1", "evidenceKind": "nativeMockResponses", "nativeExecution": true,
+        let receipt: [String: Any] = ["dataOrigin": "entirelySynthetic", "schema": "evantube-fixed40-live-v1", "evidenceKind": "nativeMockResponses", "nativeExecution": true,
             "sourceQueriesAuthorized": false, "realProviderQueries": false, "probeBothSources": true, "independentLookups": true,
             "nativeCheckoutSHA": source, "batchSourceSHA": [source, source], "nativeRunIDs": [context["nativeRunID"] ?? "missing"],
             "batchOrder": [1, 2], "manifestSHA256": manifests, "rows": rows]

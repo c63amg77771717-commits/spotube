@@ -1,5 +1,7 @@
 """Validate only the twenty selected metadata rows before adding a test resource."""
 import os,json,pathlib,hashlib,re,collections,subprocess,urllib.request
+if any(key in os.environ for key in ['GITHUB_ACTIONS', 'GITHUB_RUN_ID']):
+ raise SystemExit('PRIVATE_LIVE_MANIFEST_BLOCKED_IN_CI')
 data=json.loads(os.environ['EVANTUBE_SAMPLE_JSON'])
 assert set(data)=={'seed','batch','drawSeed','previousManifestSHA256','samples','strata','manifestSHA256'} and data['seed']==20261006
 assert data['batch'] in [1,2] and data['drawSeed']==20261006+data['batch']-1

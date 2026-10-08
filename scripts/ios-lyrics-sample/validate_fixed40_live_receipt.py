@@ -51,7 +51,7 @@ def validate(receipt, manifests, synthetic=False, native_mock=False):
     require(receipt.get('sourceQueriesAuthorized') is (not native_mock), 'authorized execution receipt missing')
     require(receipt.get('probeBothSources') is True, 'two-source production route missing')
     require(receipt.get('independentLookups') is True, 'cache/remembered direction isolation missing')
-    require(receipt.get('manifestSHA256') == [x[2] for x in MANIFESTS], 'manifest chain differs')
+    require(receipt.get('manifestSHA256') == [x['manifestSHA256'] for x in manifests], 'manifest chain differs')
     source = receipt.get('nativeCheckoutSHA', '')
     require(len(source) == 40 and all(c in '0123456789abcdef' for c in source), 'exact native source missing')
     require(receipt.get('batchSourceSHA') == [source, source], 'batches use different native sources')
@@ -170,7 +170,7 @@ def synthetic_receipt(manifests):
                 for pair in ['forward', 'reverse']:
                     ledger.append({'provider': provider, 'lookupID': lookup, 'queryID': lookup + '/' + pair, 'pairKey': pair, 'endpoint': '/api/search' if provider == 'lrclib' else '/jsonapi', 'payloadKeys': ['track_name', 'artist_name'] if provider == 'lrclib' else ['title', 'artist'], 'outcome': 'completed', 'coverageMutation': 'recordSuccess', 'metadataComplete': True, 'returnedCount': 0, 'inspectedCount': 0, 'retryBackoffMilliseconds': 0, 'attempts': [{'attempt': 1, 'httpStatus': 200, 'transportErrorCode': None, 'cancelled': False, 'scheduledThrottleMilliseconds': 500, 'throttleMilliseconds': 501, 'upstreamMilliseconds': 300, 'localOverheadMilliseconds': 1, 'attemptWallMilliseconds': 802, 'startMonotonicMilliseconds': 0, 'networkStartMonotonicMilliseconds': 501, 'endMonotonicMilliseconds': 802}]})
             rows.append({'batch': b, 'sampleKey': f'sample-{i:02d}', 'sourceSampleSHA256': sample_digest(manifests[b - 1]['samples'][i - 1]), 'outcome': 'emptyProviderResults', 'lookupWallMilliseconds': 3220, 'contentRetrieved': False, 'humanVocalAlignment': 'NOT_RUN', 'humanRecordingIdentity': 'NOT_RUN', 'selected': None, 'sourceAvailabilityFailures': [], 'directionCoverage': {'requiredPairKeys': ['forward', 'reverse'], 'requiredForAutomatic': True, 'providers': providers}, 'queryLedger': ledger})
-    return {'schema': 'evantube-fixed40-live-v1', 'evidenceKind': 'syntheticVerifierSelfTest', 'nativeExecution': True, 'sourceQueriesAuthorized': True, 'probeBothSources': True, 'independentLookups': True, 'nativeCheckoutSHA': '0' * 40, 'batchSourceSHA': ['0' * 40] * 2, 'batchOrder': [1, 2], 'manifestSHA256': [m[2] for m in MANIFESTS], 'rows': rows}
+    return {'schema': 'evantube-fixed40-live-v1', 'evidenceKind': 'syntheticVerifierSelfTest', 'nativeExecution': True, 'sourceQueriesAuthorized': True, 'probeBothSources': True, 'independentLookups': True, 'nativeCheckoutSHA': '0' * 40, 'batchSourceSHA': ['0' * 40] * 2, 'batchOrder': [1, 2], 'manifestSHA256': [m['manifestSHA256'] for m in manifests], 'rows': rows}
 
 def self_test(manifests):
     sample = synthetic_receipt(manifests)

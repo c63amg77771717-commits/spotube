@@ -1,0 +1,241 @@
+{
+  "name": "LovelyMusic",
+  "options": {
+    "bundleIdPrefix": "com.lovelymusic",
+    "deploymentTarget": {
+      "iOS": "18.0"
+    },
+    "xcodeVersion": "16.0",
+    "generateEmptyDirectories": true,
+    "groupSortPosition": "top",
+    "developmentLanguage": "en"
+  },
+  "configs": {
+    "Debug": "debug",
+    "Staging": "release",
+    "Release": "release"
+  },
+  "settings": {
+    "base": {
+      "SWIFT_VERSION": "5.9",
+      "DEVELOPMENT_TEAM": "$(DEVELOPMENT_TEAM)",
+      "TARGETED_DEVICE_FAMILY": "1"
+    },
+    "configs": {
+      "Debug": {
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "DEBUG"
+      },
+      "Staging": {
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "STAGING"
+      },
+      "Release": {
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS": ""
+      }
+    }
+  },
+  "packages": {
+    "Nuke": {
+      "url": "https://github.com/kean/Nuke.git",
+      "from": "12.8.0"
+    },
+    "ZIPFoundation": {
+      "url": "https://github.com/weichsel/ZIPFoundation.git",
+      "from": "0.9.20"
+    },
+    "GoogleSignIn": {
+      "url": "https://github.com/google/GoogleSignIn-iOS.git",
+      "from": "9.0.0"
+    }
+  },
+  "schemes": {
+    "EvanTubePublicTests": {
+      "build": {
+        "targets": {
+          "LovelyMusic": "all",
+          "EvanTubePublicTests": [
+            "test"
+          ]
+        }
+      },
+      "test": {
+        "config": "Debug",
+        "targets": [
+          "EvanTubePublicTests"
+        ]
+      }
+    }
+  },
+  "targets": {
+    "LovelyMusic": {
+      "type": "application",
+      "platform": "iOS",
+      "sources": [
+        {
+          "path": "LovelyMusic"
+        }
+      ],
+      "dependencies": [
+        {
+          "package": "Nuke",
+          "product": "NukeUI"
+        },
+        {
+          "package": "ZIPFoundation"
+        },
+        {
+          "framework": "CarPlay.framework",
+          "embed": false
+        },
+        {
+          "package": "GoogleSignIn"
+        },
+        {
+          "package": "GoogleSignIn",
+          "product": "GoogleSignInSwift"
+        },
+        {
+          "target": "LovelyMusicNotificationService"
+        }
+      ],
+      "entitlements": {
+        "path": "LovelyMusic/Resources/LovelyMusic.entitlements",
+        "properties": {
+          "aps-environment": "$(APS_ENVIRONMENT)",
+          "com.apple.developer.ubiquity-kvstore-identifier": "$(TeamIdentifierPrefix)$(CFBundleIdentifier)",
+          "com.apple.developer.carplay-audio": true
+        }
+      },
+      "settings": {
+        "base": {
+          "INFOPLIST_FILE": "LovelyMusic/Resources/Info.plist",
+          "PRODUCT_BUNDLE_IDENTIFIER": "com.c63amg77771717.evantube",
+          "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+          "CODE_SIGN_STYLE": "Automatic",
+          "SWIFT_EMIT_LOC_STRINGS": "YES",
+          "MARKETING_VERSION": "1.0.0",
+          "CURRENT_PROJECT_VERSION": "25",
+          "TARGETED_DEVICE_FAMILY": "1",
+          "APS_ENVIRONMENT": "development",
+          "PROVISIONING_PROFILE_SPECIFIER": "$(APP_PROVISIONING_PROFILE_SPECIFIER)"
+        },
+        "configs": {
+          "Staging": {
+            "APS_ENVIRONMENT": "development",
+            "PRODUCT_NAME": "LovelyMusic (Staging)"
+          },
+          "Release": {
+            "APS_ENVIRONMENT": "production"
+          }
+        }
+      },
+      "info": {
+        "path": "LovelyMusic/Resources/Info.plist",
+        "properties": {
+          "CFBundleDisplayName": "EvanTube",
+          "GIDClientID": "239071444729-ltpo8bq50tkgqvilod56v5fcf65f38om.apps.googleusercontent.com",
+          "CFBundleURLTypes": [
+            {
+              "CFBundleURLSchemes": [
+                "com.googleusercontent.apps.239071444729-ltpo8bq50tkgqvilod56v5fcf65f38om"
+              ]
+            }
+          ],
+          "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+          "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
+          "CFBundleLocalizations": [
+            "zh-Hant",
+            "en",
+            "ja",
+            "vi"
+          ],
+          "UILaunchStoryboardName": "LaunchScreen",
+          "UIBackgroundModes": [
+            "audio"
+          ],
+          "UISupportedInterfaceOrientations": [
+            "UIInterfaceOrientationPortrait",
+            "UIInterfaceOrientationLandscapeLeft",
+            "UIInterfaceOrientationLandscapeRight"
+          ],
+          "UIApplicationSceneManifest": {
+            "UIApplicationSupportsMultipleScenes": true,
+            "UISceneConfigurations": {
+              "CPTemplateApplicationSceneSessionRoleApplication": [
+                {
+                  "UISceneConfigurationName": "CarPlay",
+                  "UISceneDelegateClassName": "$(PRODUCT_MODULE_NAME).CarPlaySceneDelegate"
+                }
+              ]
+            }
+          },
+          "ITSAppUsesNonExemptEncryption": false
+        }
+      }
+    },
+    "LovelyMusicNotificationService": {
+      "type": "app-extension",
+      "platform": "iOS",
+      "sources": [
+        {
+          "path": "LovelyMusicNotificationService"
+        }
+      ],
+      "settings": {
+        "base": {
+          "PRODUCT_BUNDLE_IDENTIFIER": "com.c63amg77771717.evantube.NotificationService",
+          "INFOPLIST_FILE": "LovelyMusicNotificationService/Info.plist",
+          "SWIFT_VERSION": "5.9",
+          "MARKETING_VERSION": "1.0.0",
+          "CURRENT_PROJECT_VERSION": "25",
+          "TARGETED_DEVICE_FAMILY": "1",
+          "PROVISIONING_PROFILE_SPECIFIER": "$(EXT_PROVISIONING_PROFILE_SPECIFIER)"
+        }
+      }
+    },
+    "EvanTubePublicTests": {
+      "type": "bundle.unit-test",
+      "platform": "iOS",
+      "sources": [
+        {
+          "path": "EvanTubeTests/LyricsDirectionRepositoryClosureTests.swift"
+        },
+        {
+          "path": "EvanTubeTests/LyricsNativeReceiptTests.swift"
+        },
+        {
+          "path": "EvanTubeTests/LyricsLiveReceiptSupport.swift"
+        },
+        {
+          "path": "EvanTubeTests/LyricsPublicBoundaryTests.swift"
+        },
+        {
+          "path": "EvanTubeTests/Fixtures/fixed_lyrics_batch1.json",
+          "buildPhase": "resources"
+        },
+        {
+          "path": "EvanTubeTests/Fixtures/fixed_lyrics_batch2.json",
+          "buildPhase": "resources"
+        },
+        {
+          "path": "EvanTubeTests/Fixtures/lyrics_receipt_run_context.json",
+          "buildPhase": "resources"
+        }
+      ],
+      "dependencies": [
+        {
+          "target": "LovelyMusic"
+        },
+        {
+          "package": "ZIPFoundation"
+        }
+      ],
+      "settings": {
+        "base": {
+          "PRODUCT_BUNDLE_IDENTIFIER": "com.c63amg77771717.evantube.publictests",
+          "GENERATE_INFOPLIST_FILE": "YES",
+          "SWIFT_ACTIVE_COMPILATION_CONDITIONS": "$(inherited) EVANTUBE_PUBLIC_CI"
+        }
+      }
+    }
+  }
+}

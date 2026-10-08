@@ -18,6 +18,13 @@ final class AuthorizedSampleHTTPTransport: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
+        let mock = Self.lock.withLock { Self.mockProtocol }
+        #if EVANTUBE_PUBLIC_CI
+        // Clearing a mock must never enable the live transport in public CI.
+        guard mock != nil else {
+            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)); return
+        }
+        #endif
         guard let url = request.url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme == "https", components.user == nil, components.password == nil,
               request.httpMethod == "GET", request.httpBody == nil else {
@@ -36,7 +43,6 @@ final class AuthorizedSampleHTTPTransport: URLProtocol {
         }
         let number = Self.lock.withLock { Self.counts[provider, default: 0] += 1; return Self.counts[provider]! }
         guard number <= 12 else { client?.urlProtocol(self, didFailWithError: URLError(.resourceUnavailable)); return }
-        let mock = Self.lock.withLock { Self.mockProtocol }
         let task = Task { [self] in
             let configuration = URLSessionConfiguration.ephemeral
             configuration.urlCache = nil; configuration.httpCookieStorage = nil
