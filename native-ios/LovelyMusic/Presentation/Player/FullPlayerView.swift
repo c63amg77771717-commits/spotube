@@ -46,6 +46,9 @@ struct FullPlayerView: View {
                     isVideoFullScreen = false
                 }
             }
+            .onChange(of: playerVM.playbackSelectionGeneration) { _, _ in
+                playerVM.cancelSourceReplacement()
+            }
             .onChange(of: scenePhase) { _, newPhase in
                 playerVM.updateTransferConsentPresentation(
                     applicationIsActive: newPhase == .active,
@@ -366,6 +369,18 @@ struct FullPlayerView: View {
                         onRetry: { playerVM.retryCurrentSong() }
                     )
 
+                    if playerVM.hasCurrentSourceReplacement {
+                        HStack {
+                            Label("使用替代來源", systemImage: "arrow.triangle.swap")
+                                .font(Theme.Typography.caption)
+                                .foregroundStyle(Theme.Colors.textSecondary)
+                            Spacer()
+                            Button("恢復原來源並重試") { playerVM.restoreCurrentSource() }
+                                .font(Theme.Typography.caption)
+                        }
+                        .padding(.horizontal, Theme.Spacing.xl)
+                    }
+
                     // Bottom action bar
                     PlayerBottomBarView(
                         playbackSpeedLabel: playerVM.playbackSpeedLabel,
@@ -451,6 +466,17 @@ struct FullPlayerView: View {
                             .foregroundStyle(Theme.Colors.textSecondary)
                         }
                         PlaybackDiagnosticsExportButton()
+                        if playerVM.canSearchReplacement {
+                            Button { playerVM.beginSourceReplacementSearch() } label: {
+                                Label("搜尋替代來源", systemImage: "magnifyingglass")
+                                    .font(Theme.Typography.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, Theme.Spacing.xl)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .background(Theme.Colors.brandGradient, in: Capsule())
+                            }
+                            .buttonStyle(.bouncy)
+                        }
                         if playerVM.streamErrorCategory == .authRequired,
                            featureFlags.isYouTubeAuthEnabled {
                             Button {
@@ -543,6 +569,15 @@ struct FullPlayerView: View {
             QueueView()
                 .environment(playerVM)
         }
+        .sheet(item: Binding(
+            get: { playerVM.sourceReplacementSession },
+            set: { if $0 == nil { playerVM.cancelSourceReplacement() } }
+        )) { session in
+            ReplacementSourceSearchSheet(model: session) { candidate in
+                playerVM.applySourceReplacement(candidate, sessionID: session.id)
+            }
+            .presentationBackground(Theme.Colors.backgroundPrimary)
+        }
         .sheet(isPresented: $showAddToPlaylist) {
             if let song = playerVM.currentSong {
                 AddToPlaylistSheet(
@@ -567,7 +602,7 @@ struct FullPlayerView: View {
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .padding()
-                        YouTubePlaybackWebView(videoID: song.id, authManager: container.authManager)
+                        YouTubePlaybackWebView(videoID: playerVM.currentPlaybackSourceID ?? song.id, authManager: container.authManager)
                     }
                     .background(Theme.Colors.backgroundPrimary)
                     .navigationTitle("YouTube 網頁播放")

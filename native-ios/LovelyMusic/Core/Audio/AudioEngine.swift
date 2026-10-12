@@ -181,6 +181,21 @@ final class AudioEngine {
     var audioSessionActivator: () -> Bool = { AudioSessionManager.activate() }
 
     var streamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
+    var playbackSourceIDResolver: (String) -> String = { $0 }
+    var playbackSelectionGeneration: UInt64 { loadGeneration }
+
+    /// Change media source while retaining playlist/lyrics/Now Playing identity.
+    func sourcePreparedSong(_ song: Song) -> Song {
+        var prepared = song
+        let sourceID = playbackSourceIDResolver(song.id)
+        if prepared.resolvedSourceID != sourceID,
+           prepared.resolvedSourceID != nil || sourceID != song.id {
+            prepared.streamURL = nil
+            prepared.streamContentLength = nil
+        }
+        prepared.resolvedSourceID = sourceID
+        return prepared
+    }
     var videoStreamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?)?)? {
         didSet { videoManager.videoStreamURLResolver = videoStreamURLResolver }
     }
@@ -888,6 +903,7 @@ final class AudioEngine {
     }
 
     func play(song: Song, fromQueue: [Song] = [], seekTo: TimeInterval? = nil) {
+        let song = sourcePreparedSong(song)
         hasReportedPlaybackStart = false
         let continuingCurrentSong = fromQueue.isEmpty && currentTrack?.id == song.id
         PersonalMusicTaste.shared.begin(song)
@@ -1080,7 +1096,7 @@ final class AudioEngine {
             }
         }
 
-        let song = queue[currentIndex]
+        let song = sourcePreparedSong(queue[currentIndex])
         PersonalMusicTaste.shared.begin(song)
         currentTrack = song
         currentTime = 0
@@ -1088,7 +1104,8 @@ final class AudioEngine {
 
         // Use pre-fetched item if available for this song
         if let prefetched = prefetchManager.prefetchedPlayerItem,
-            prefetchManager.prefetchedSongId == song.id
+            prefetchManager.prefetchedSongId == song.id,
+            prefetchManager.prefetchedSourceID == playbackSourceIDResolver(song.id)
         {
             recordPlaybackDiagnostic(.playbackSelection)
             let fileURL = prefetchManager.prefetchedLocalFileURL
@@ -1145,7 +1162,7 @@ final class AudioEngine {
         // If playing from autoplay, go back to last song in user queue
         if isPlayingFromAutoplay {
             isPlayingFromAutoplay = false
-            let song = queue[currentIndex]
+            let song = sourcePreparedSong(queue[currentIndex])
             PersonalMusicTaste.shared.begin(song)
             currentTrack = song
             currentTime = 0
@@ -1154,7 +1171,7 @@ final class AudioEngine {
             return
         }
         currentIndex = currentIndex > 0 ? currentIndex - 1 : queue.count - 1
-        let song = queue[currentIndex]
+        let song = sourcePreparedSong(queue[currentIndex])
         PersonalMusicTaste.shared.begin(song)
         currentTrack = song
         currentTime = 0
@@ -1554,6 +1571,7 @@ final class AudioEngine {
         prefetchManager.repeatMode = repeatMode
         prefetchManager.audioCacheManager = audioCacheManager
         prefetchManager.downloadManager = downloadManager
+        prefetchManager.playbackSourceIDResolver = playbackSourceIDResolver
     }
 
     // MARK: - Private
@@ -1562,6 +1580,7 @@ final class AudioEngine {
         guard let index = queue.firstIndex(where: { $0.id == songID }) else { return }
         queue[index].streamURL = streamURL
         queue[index].streamContentLength = contentLength
+        queue[index].resolvedSourceID = playbackSourceIDResolver(songID)
     }
 
     private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase, interruptionShouldResume: Bool? = nil) {
@@ -1592,7 +1611,8 @@ final class AudioEngine {
         currentTime = initialSeek ?? 0
         pendingSeekTime = initialSeek
         isPlaying = !isInterrupted
-        var songToPlay = song
+        var songToPlay = sourcePreparedSong(song)
+        currentTrack = songToPlay
         lastError = nil
         lastFailedSongId = nil
         lastErrorKind = .transient
@@ -1617,14 +1637,14 @@ final class AudioEngine {
         // exists. `performLoadAndPlay` already prefers these branches, so we
         // bypass the resolver entirely and let it handle local playback.
         // This restores playback while offline (no resolver call required).
-        let hasDownloadedFile = downloadManager?.localFileURL(songId: songToPlay.id) != nil
+        let hasDownloadedFile = downloadManager?.localFileURL(songId: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id)) != nil
         let hasCachedFile =
             !hasDownloadedFile
-            && (audioCacheManager?.getFile(for: songToPlay.id) != nil)
+            && (audioCacheManager?.getFile(for: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id)) != nil)
         let hasBundledFile =
             !hasDownloadedFile
             && !hasCachedFile
-            && (Bundle.main.url(forResource: songToPlay.id, withExtension: "m4a") != nil)
+            && (Bundle.main.url(forResource: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id), withExtension: "m4a") != nil)
 
         if hasDownloadedFile || hasCachedFile || hasBundledFile {
             // Cancel any in-flight resolver task (re-entrancy guard).
@@ -2639,7 +2659,7 @@ final class AudioEngine {
         }
 
         // Check for downloaded file first (offline playback)
-        if let downloadedURL = downloadManager?.localFileURL(songId: song.id) {
+        if let downloadedURL = downloadManager?.localFileURL(songId: song.resolvedSourceID ?? playbackSourceIDResolver(song.id)) {
             Log.audio.info(
                 "Playing from downloaded file: \(downloadedURL.lastPathComponent, privacy: .public)"
             )
@@ -2649,7 +2669,7 @@ final class AudioEngine {
         }
 
         // Check LRU cache for a previously remuxed file (seekable local playback)
-        if let cachedURL = audioCacheManager?.getFile(for: song.id) {
+        if let cachedURL = audioCacheManager?.getFile(for: song.resolvedSourceID ?? playbackSourceIDResolver(song.id)) {
             Log.audio.info(
                 "Playing from cached remuxed file: \(cachedURL.lastPathComponent, privacy: .public)"
             )
@@ -2659,7 +2679,7 @@ final class AudioEngine {
         }
 
         // Check for bundled audio file (demo/review mode)
-        if let bundledURL = Bundle.main.url(forResource: song.id, withExtension: "m4a") {
+        if let bundledURL = Bundle.main.url(forResource: song.resolvedSourceID ?? playbackSourceIDResolver(song.id), withExtension: "m4a") {
             Log.audio.info(
                 "Playing from bundled file: \(bundledURL.lastPathComponent, privacy: .public)"
             )
@@ -2870,6 +2890,7 @@ final class AudioEngine {
         url: URL, headers: [String: String], song: Song, seekTo initialSeek: TimeInterval? = nil
     ) {
         let generation = loadGeneration
+        let sourceID = song.resolvedSourceID ?? playbackSourceIDResolver(song.id)
         backgroundRemuxTask = Task { [weak self] in
             guard let self else { return }
             defer { if !Task.isCancelled, self.loadGeneration == generation { self.backgroundRemuxTask = nil } }
@@ -2879,11 +2900,11 @@ final class AudioEngine {
                 .appendingPathComponent("LovelyMusic", isDirectory: true)
             try? FileManager.default.createDirectory(
                 at: cacheDir, withIntermediateDirectories: true)
-            let rawURL = cacheDir.appendingPathComponent("\(song.id)_raw.m4a")
-            let remuxedURL = cacheDir.appendingPathComponent("\(song.id)_remuxed.m4a")
+            let rawURL = cacheDir.appendingPathComponent("\(sourceID)_raw.m4a")
+            let remuxedURL = cacheDir.appendingPathComponent("\(sourceID)_remuxed.m4a")
 
             // Check LRU cache (may have been populated by prefetch)
-            if let cachedURL = cacheManager?.getFile(for: song.id) {
+            if let cachedURL = cacheManager?.getFile(for: sourceID) {
                 guard !Task.isCancelled else { return }
                 Log.audio.info("Found cached remuxed file for \(song.id, privacy: .public)")
                 self.isStreamingMode = false
@@ -3020,7 +3041,7 @@ final class AudioEngine {
                 // Reserve the cache slot BEFORE the remux writes to disk so a
                 // concurrent `removeOrphans` Pass 2 cannot delete the file in
                 // the window between write and `registerFile`.
-                cacheManager?.reserveSlot(videoId: song.id, fileURL: remuxedURL)
+                cacheManager?.reserveSlot(videoId: sourceID, fileURL: remuxedURL)
                 let success = await Self.remuxToStandardMP4(source: rawURL, destination: remuxedURL)
                 guard !Task.isCancelled, self.currentTrack?.id == song.id else {
                     try? FileManager.default.removeItem(at: remuxedURL)
@@ -3028,7 +3049,7 @@ final class AudioEngine {
                 }
 
                 if success {
-                    cacheManager?.registerFile(videoId: song.id, fileURL: remuxedURL)
+                    cacheManager?.registerFile(videoId: sourceID, fileURL: remuxedURL)
                     Log.audio.info("Background remux completed for \(song.id, privacy: .public)")
                     self.handoffToLocalFile(remuxedURL, song: song)
                     try? FileManager.default.removeItem(at: rawURL)
@@ -3764,9 +3785,11 @@ final class AudioEngine {
     }
 
     private func validatedLocalCrossfadeFile(for song: Song) -> CrossfadeLocalFile? {
-        let candidateURL = audioCacheManager?.getFile(for: song.id)
-            ?? downloadManager?.localFileURL(songId: song.id)
-            ?? Bundle.main.url(forResource: song.id, withExtension: "m4a")
+        // Speculative next-track lookup uses its current mapping, not an old queue source.
+        let sourceID = playbackSourceIDResolver(song.id)
+        let candidateURL = audioCacheManager?.getFile(for: sourceID)
+            ?? downloadManager?.localFileURL(songId: sourceID)
+            ?? Bundle.main.url(forResource: sourceID, withExtension: "m4a")
         guard let candidateURL,
             candidateURL.isFileURL,
             FileManager.default.fileExists(atPath: candidateURL.path)
@@ -3961,7 +3984,8 @@ final class AudioEngine {
 
         if case .queue(let nextIndex) = reservation.destination,
             let prefetchedItem = prefetchManager.prefetchedPlayerItem,
-            prefetchManager.prefetchedSongId == nextSong.id
+            prefetchManager.prefetchedSongId == nextSong.id,
+            prefetchManager.prefetchedSourceID == playbackSourceIDResolver(nextSong.id)
         {
             let fileURL = prefetchManager.prefetchedLocalFileURL
             prefetchManager.cancelPrefetch()

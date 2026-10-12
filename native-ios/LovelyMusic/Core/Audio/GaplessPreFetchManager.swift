@@ -13,6 +13,8 @@ final class GaplessPreFetchManager {
     private(set) var prefetchedPlayerItem: AVPlayerItem?
     /// The song ID of the pre-fetched item, used to match on `next()`.
     private(set) var prefetchedSongId: String?
+    private(set) var prefetchedSourceID: String?
+    var playbackSourceIDResolver: (String) -> String = { $0 }
     /// Local file URL of the pre-fetched (remuxed) audio.
     private(set) var prefetchedLocalFileURL: URL?
 
@@ -57,6 +59,7 @@ final class GaplessPreFetchManager {
     func cancelPrefetch() {
         prefetchedPlayerItem = nil
         prefetchedSongId = nil
+        prefetchedSourceID = nil
         prefetchedLocalFileURL = nil
     }
 
@@ -80,21 +83,22 @@ final class GaplessPreFetchManager {
         }
 
         let nextSong = queue[nextIndex]
-        guard prefetchedSongId != nextSong.id else { return }
+        let sourceID = playbackSourceIDResolver(nextSong.id)
+        guard prefetchedSongId != nextSong.id || prefetchedSourceID != sourceID else { return }
 
         cancelPrefetch()
 
         // Existing remuxes, explicit downloads, and bundled audio are safe to prepare
         // because AVURLAsset cannot start a remote transfer for these file URLs.
-        if let cachedURL = audioCacheManager?.getFile(for: nextSong.id) {
+        if let cachedURL = audioCacheManager?.getFile(for: sourceID) {
             prepareLocalItem(for: nextSong, fileURL: cachedURL, source: "cache")
             return
         }
-        if let downloadedURL = downloadManager?.localFileURL(songId: nextSong.id) {
+        if let downloadedURL = downloadManager?.localFileURL(songId: sourceID) {
             prepareLocalItem(for: nextSong, fileURL: downloadedURL, source: "downloads")
             return
         }
-        if let bundledURL = Bundle.main.url(forResource: nextSong.id, withExtension: "m4a") {
+        if let bundledURL = Bundle.main.url(forResource: sourceID, withExtension: "m4a") {
             prepareLocalItem(for: nextSong, fileURL: bundledURL, source: "bundle")
         }
     }
@@ -105,6 +109,7 @@ final class GaplessPreFetchManager {
         item.preferredForwardBufferDuration = 0
         prefetchedPlayerItem = item
         prefetchedSongId = song.id
+        prefetchedSourceID = playbackSourceIDResolver(song.id)
         prefetchedLocalFileURL = fileURL
         Log.audio.info("Pre-fetched from \(source, privacy: .public): \(song.title, privacy: .public)")
     }

@@ -84,6 +84,12 @@ def preflight(repo, event=None, event_name=None, environ=None):
     require(test['settings']['base']['SWIFT_ACTIVE_COMPILATION_CONDITIONS'] == '$(inherited) EVANTUBE_PUBLIC_CI')
     workflow = (repo / '.github/workflows/evantube-native-ios-ipa.yml').read_text(encoding='utf8')
     require(not any(x in workflow for x in ['upload-artifact', 'toJSON(', '${{ inputs.', 'random_sample_json', 'EVANTUBE_SAMPLE_JSON']))
+    # Compile-only post-test job still has no external artifact upload.
+    from ipa_policy import PolicyBlocked, validate_workflows
+    try:
+        validate_workflows(repo)
+    except PolicyBlocked:
+        raise BoundaryBlocked('PUBLIC_CI_IPA_POLICY_BLOCKED') from None
 
 
 def captured_command(command, cwd, destination):

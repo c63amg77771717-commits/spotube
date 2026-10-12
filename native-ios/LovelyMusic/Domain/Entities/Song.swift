@@ -22,6 +22,8 @@ struct Song: Identifiable, Hashable, Codable {
     var episodeOf: String?
     var streamURL: String?
     var streamContentLength: Int64?
+    /// Transient source identity; playlist persistence retains the original Song.id.
+    var resolvedSourceID: String?
 
     // Exclude transient stream data from persistence — URLs expire after ~6h.
     private enum CodingKeys: String, CodingKey {

@@ -27,6 +27,7 @@ final class DIContainer {
 
     // MARK: - Use Cases
     let searchMusicUseCase: SearchMusicUseCase
+    let playbackSourceReplacementStore: PlaybackSourceReplacementStore
     let browseHomeUseCase: BrowseHomeUseCase
     let getArtistUseCase: GetArtistUseCase
     let getAlbumUseCase: GetAlbumUseCase
@@ -82,6 +83,8 @@ final class DIContainer {
     /// in `ContentView` updates the cache so the next `init()` reads the new value.
     init(featureFlagManager: FeatureFlagManager? = nil) {
         PlaybackStatePersistence.registerBuild9Defaults()
+        let sourceStore = PlaybackSourceReplacementStore()
+        self.playbackSourceReplacementStore = sourceStore
         // Feature flags — must be populated BEFORE repository & theme selection.
         let flagManager = featureFlagManager ?? FeatureFlagManager()
         self.featureFlagManager = flagManager
@@ -204,15 +207,21 @@ final class DIContainer {
         let playbackHeaders: [String: String] = isReviewMode
             ? [:]
             : AppConstants.youtubeStreamHeaders
-        self.audioEngine.streamURLResolver = PlaybackQualityWiring.makePlaybackResolver(
+        self.audioEngine.playbackSourceIDResolver = { [sourceStore] in sourceStore.sourceID(for: $0) }
+        let basePlaybackResolver = PlaybackQualityWiring.makePlaybackResolver(
             useCase: resolveStreamUseCase,
             settings: qualitySettings,
             networkSnapshot: { await networkMonitor.currentSnapshot },
             isPremium: { premiumManager.isPremium },
             requestHeaders: playbackHeaders
         )
-        self.audioEngine.videoStreamURLResolver = { [playerRepo] videoId in
-            try await playerRepo.resolveVideoStreamURL(videoId: videoId)
+        self.audioEngine.streamURLResolver = { [sourceStore] originalID in
+            try await sourceStore.resolve(originalID: originalID, using: basePlaybackResolver)
+        }
+        self.audioEngine.videoStreamURLResolver = { [playerRepo, sourceStore] originalID in
+            try await sourceStore.resolve(originalID: originalID) { sourceID in
+                try await playerRepo.resolveVideoStreamURL(videoId: sourceID)
+            }
         }
         self.audioEngine.streamHeaders = playbackHeaders
         // Provide auth cookies (SAPISID, SID, __Secure-1PSID…) for CDN download auth.
@@ -260,7 +269,11 @@ final class DIContainer {
             premiumManager: premiumManager,
             getRelatedSongsUseCase: getRelatedSongsUseCase,
             adManager: adManager,
-            telemetryManager: telemetryManager
+            telemetryManager: telemetryManager,
+            sourceReplacementStore: sourceStore,
+            replacementSearcher: { [searchMusicUseCase] query in
+                try await searchMusicUseCase.executeOnline(query: query, filter: .songs).songs
+            }
         )
         // Skip restoring old YouTube playback in demo mode
         if !isReviewMode {

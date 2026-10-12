@@ -41,11 +41,15 @@ enum PlaybackErrorCategory: Equatable {
             .contains(where: lower.contains) {
             return .regionBlocked
         }
-        if ["server", "500", "503", "伺服器"]
+        if ["server", "500", "503", "429", "too many requests", "rate limit", "quota", "限流", "配額", "伺服器"]
             .contains(where: lower.contains) {
             return .serverError
         }
         return .unknown
+    }
+
+    var permitsReplacementSearch: Bool {
+        self == .regionBlocked || self == .songRemoved || self == .unknown
     }
 
     var icon: String {
@@ -122,6 +126,9 @@ final class PlayerViewModel {
     private let getRelatedSongsUseCase: GetRelatedSongsUseCase
     private weak var adManager: AdManager?
     private let telemetryManager: TelemetryManager
+    private let sourceReplacementStore: PlaybackSourceReplacementStore
+    private let replacementSearcher: ((String) async throws -> [Song])?
+    private(set) var sourceReplacementSession: ReplacementSourceSearchModel?
 
     // MARK: - Lyrics
     private(set) var lyrics: SyncedLyrics?
@@ -245,7 +252,9 @@ final class PlayerViewModel {
         premiumManager: PremiumManager,
         getRelatedSongsUseCase: GetRelatedSongsUseCase,
         adManager: AdManager? = nil,
-        telemetryManager: TelemetryManager = .shared
+        telemetryManager: TelemetryManager = .shared,
+        sourceReplacementStore: PlaybackSourceReplacementStore? = nil,
+        replacementSearcher: ((String) async throws -> [Song])? = nil
     ) {
         self.audioEngine = audioEngine
         self.resolveStreamUseCase = resolveStreamUseCase
@@ -256,6 +265,8 @@ final class PlayerViewModel {
         self.getRelatedSongsUseCase = getRelatedSongsUseCase
         self.adManager = adManager
         self.telemetryManager = telemetryManager
+        self.sourceReplacementStore = sourceReplacementStore ?? PlaybackSourceReplacementStore()
+        self.replacementSearcher = replacementSearcher
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
         observeAudioEngineErrors()
@@ -270,6 +281,7 @@ final class PlayerViewModel {
     // MARK: - Actions
 
     func play(song: Song, fromQueue: [Song] = []) {
+        cancelSourceReplacement()
         autoSkipTask?.cancel()
         telemetryManager.trackEvent("song_play", parameters: ["song_id": song.id, "title": song.title])
         retryCount = 0
@@ -707,6 +719,82 @@ final class PlayerViewModel {
         streamErrorCategory = nil
     }
 
+
+    // MARK: - Per-song alternative playback sources
+
+    var playbackSelectionGeneration: UInt64 { audioEngine.playbackSelectionGeneration }
+
+    var currentPlaybackSourceID: String? {
+        currentSong.map { sourceReplacementStore.sourceID(for: $0.id) }
+    }
+
+    var hasCurrentSourceReplacement: Bool {
+        currentSong.map { sourceReplacementStore.hasReplacement(for: $0.id) } ?? false
+    }
+
+    var canSearchReplacement: Bool {
+        guard replacementSearcher != nil, let song = currentSong, streamError != nil,
+              streamErrorCategory?.permitsReplacementSearch == true else { return false }
+        return audioEngine.lastFailedSongId == nil || audioEngine.lastFailedSongId == song.id
+    }
+
+    func beginSourceReplacementSearch() {
+        guard canSearchReplacement, let song = currentSong, let searcher = replacementSearcher,
+              sourceReplacementSession == nil else { return }
+        autoSkipTask?.cancel()
+        audioEngine.pause()
+        let sessionID = UUID()
+        let selectionGeneration = audioEngine.playbackSelectionGeneration
+        sourceReplacementSession = ReplacementSourceSearchModel(
+            id: sessionID, original: song,
+            excludedIDs: [sourceReplacementStore.sourceID(for: song.id)],
+            contextIsCurrent: { [weak self] in
+                guard let self else { return false }
+                return self.currentSong?.id == song.id
+                    && self.audioEngine.playbackSelectionGeneration == selectionGeneration
+                    && self.sourceReplacementSession?.id == sessionID
+            },
+            searcher: searcher)
+    }
+
+    func cancelSourceReplacement() {
+        sourceReplacementSession?.cancel()
+        sourceReplacementSession = nil
+    }
+
+    func applySourceReplacement(_ candidate: PlaybackSourceCandidate, sessionID: UUID) {
+        guard let session = sourceReplacementSession, session.id == sessionID,
+              currentSong?.id == session.original.id, session.contains(candidate) else { return }
+        do {
+            try sourceReplacementStore.save(sourceID: candidate.id, for: session.original.id)
+        } catch { session.reportSaveFailure(); return }
+        cancelSourceReplacement()
+        reloadCurrentSource()
+    }
+
+    func restoreCurrentSource() {
+        guard let song = currentSong, sourceReplacementStore.hasReplacement(for: song.id) else { return }
+        cancelSourceReplacement()
+        do { try sourceReplacementStore.restore(originalID: song.id) }
+        catch { streamError = "無法恢復來源，請再試一次。"; return }
+        reloadCurrentSource()
+    }
+
+    private func reloadCurrentSource() {
+        guard var song = currentSong else { return }
+        autoSkipTask?.cancel()
+        retryCount = 0
+        streamError = nil
+        streamErrorCategory = nil
+        bufferingTooLong = false
+        lastHandledVideoTrackId = nil
+        song.streamURL = nil
+        song.streamContentLength = nil
+        song.resolvedSourceID = nil
+        // Preserve queue position and original identity; explicitly restart the selected source.
+        audioEngine.play(song: song, seekTo: 0)
+    }
+
     // MARK: - Observation
 
     private func observeAudioEngineErrors() {
@@ -742,7 +830,7 @@ final class PlayerViewModel {
                 && audioEngine.lastErrorKind != .permanent && retryCount == 0
                 && currentSong != nil
                 && category != .sourceNotConfigured && category != .verificationRequired
-                && category != .authRequired
+                && category != .authRequired && category != .noInternet && category != .serverError
             // One bounded automatic retry is still resolving this attempt.
             // Preserve the engine diagnostic, but do not render it as a final UI failure.
             streamError = retryIsPending ? nil : userReadableError(from: error)
@@ -751,7 +839,21 @@ final class PlayerViewModel {
                 autoSkipTask?.cancel()
                 return
             }
+            // Service-wide failures are not evidence that this song or queue is invalid.
+            if category == .noInternet || category == .serverError {
+                autoSkipTask?.cancel()
+                return
+            }
+            if sourceReplacementSession != nil {
+                autoSkipTask?.cancel()
+                return
+            }
             let isPermanent = audioEngine.lastErrorKind == .permanent
+            // Keep a confirmed single-source failure available for an explicit alternative choice.
+            if isPermanent, replacementSearcher != nil, category.permitsReplacementSearch {
+                autoSkipTask?.cancel()
+                return
+            }
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
 
@@ -884,6 +986,7 @@ final class PlayerViewModel {
                     // next/previous to load video again. (ExecPlan T3.)
                     if self.previousObservedTrackId != song.id {
                         self.cancelLyricsRequest()
+                        self.cancelSourceReplacement()
                         self.autoSkipTask?.cancel()
                         self.retryCount = 0
                         self.streamError = nil
@@ -908,6 +1011,7 @@ final class PlayerViewModel {
                     self.requestLyrics(for: song)
                 } else {
                     self.cancelLyricsRequest()
+                    self.cancelSourceReplacement()
                 }
 
                 self.observeTrackChanges()

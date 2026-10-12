@@ -1,51 +1,82 @@
-name: EvanTube public synthetic native tests
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [codex/ios-neonoir-20260930]
-    paths:
-      - native-ios/**
-      - scripts/ios-public-ci/**
-      - .github/workflows/evantube-native-ios-ipa.yml
-
-permissions:
-  contents: read
-
-concurrency:
-  group: evantube-public-synthetic-${{ github.ref }}
-  cancel-in-progress: true
-
-jobs:
-  public_synthetic_validation:
-    runs-on: macos-14
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Reject live input and unreviewed public test resources
-        run: python3 scripts/ios-public-ci/boundary.py preflight
-      - name: Verify synthetic leak guards and strict receipt checks
-        run: python3 scripts/ios-public-ci/boundary_tests.py
-      - uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '16.2'
-      - name: Generate the allowlisted simulator project
-        working-directory: native-ios
-        run: |
-          brew install xcodegen
-          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
-          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
-          python3 ../scripts/ios-lyrics-sample/write_receipt_context.py
-          xcodegen generate --spec public-ci-project.json
-          python3 - <<'PY'
-          import os, pathlib, plistlib
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
-              'application-identifier': 'com.c63amg77771717.evantube',
-              'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))
-          PY
-      - name: Native synthetic tests and aggregate validation
-        run: python3 scripts/ios-public-ci/boundary.py native --temporary "$RUNNER_TEMP"
-      # Detailed logs, xcresults, manifests and receipts remain runner-local.
-      # No artifact upload, screenshot, UI, real provider query or IPA step.
+{
+  "name": "EvanTube public synthetic native tests",
+  "on": {
+    "workflow_dispatch": {},
+    "push": {
+      "branches": [
+        "codex/ios-neonoir-20260930"
+      ],
+      "paths": [
+        "native-ios/**",
+        "scripts/ios-public-ci/**",
+        "scripts/ios-source-replacement/**",
+        ".github/workflows/evantube-native-ios-ipa.yml",
+        ".github/workflows/evantube-public-unsigned-ipa.yml"
+      ]
+    }
+  },
+  "permissions": {
+    "contents": "read"
+  },
+  "concurrency": {
+    "group": "evantube-public-synthetic-${{ github.ref }}",
+    "cancel-in-progress": true
+  },
+  "jobs": {
+    "public_synthetic_validation": {
+      "runs-on": "macos-14",
+      "timeout-minutes": 60,
+      "steps": [
+        {
+          "uses": "actions/checkout@v4",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Reject live input and unreviewed public test resources",
+          "run": "python3 scripts/ios-public-ci/boundary.py preflight"
+        },
+        {
+          "name": "Verify synthetic leak guards and strict receipt checks",
+          "run": "python3 scripts/ios-public-ci/boundary_tests.py"
+        },
+        {
+          "name": "Verify IPA workflow and output privacy guards",
+          "run": "python3 scripts/ios-public-ci/ipa_policy_tests.py"
+        },
+        {
+          "uses": "maxim-lobanov/setup-xcode@v1",
+          "with": {
+            "xcode-version": "16.2"
+          }
+        },
+        {
+          "name": "Prepare simulator test dependencies",
+          "working-directory": "native-ios",
+          "run": "brew install xcodegen\ncp Secrets.plist.example LovelyMusic/Resources/Secrets.plist\n/usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true\npython3 - <<'PY'\nimport os, pathlib, plistlib\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\n    'application-identifier': 'com.c63amg77771717.evantube',\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\nPY"
+        },
+        {
+          "name": "Source replacement synthetic tests",
+          "run": "python3 scripts/ios-source-replacement/run_native.py"
+        },
+        {
+          "name": "Generate the allowlisted lyrics simulator project",
+          "working-directory": "native-ios",
+          "run": "python3 ../scripts/ios-lyrics-sample/write_receipt_context.py\nxcodegen generate --spec public-ci-project.json"
+        },
+        {
+          "name": "Native synthetic tests and aggregate validation",
+          "run": "python3 scripts/ios-public-ci/boundary.py native --temporary \"$RUNNER_TEMP\""
+        }
+      ]
+    },
+    "unsigned_ipa": {
+      "needs": "public_synthetic_validation",
+      "uses": "./.github/workflows/evantube-public-unsigned-ipa.yml",
+      "permissions": {
+        "contents": "read"
+      }
+    }
+  }
+}
