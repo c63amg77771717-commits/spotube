@@ -102,6 +102,28 @@ final class YouTubeAuthManager {
         return values.keys.sorted().map { "\($0)=\(values[$0]!)" }.joined(separator: "; ")
     }
 
+    /// Signs a request with this user's already-issued YouTube session cookie.
+    /// Never generates credentials, handles anti-bot challenges, or logs secrets.
+    nonisolated static func sessionAuthorizationHeader(
+        cookieHeader: String?, origin: String,
+        timestamp: Int = Int(Date().timeIntervalSince1970)
+    ) -> String? {
+        guard origin == "https://www.youtube.com" || origin == "https://music.youtube.com",
+              let cookieHeader else { return nil }
+        let sapisid = cookieHeader.split(separator: ";").compactMap { part -> String? in
+            let components = part.trimmingCharacters(in: .whitespaces)
+                .split(separator: "=", maxSplits: 1)
+            guard components.count == 2, components[0] == "SAPISID",
+                  !components[1].isEmpty else { return nil }
+            return String(components[1])
+        }.first
+        guard let sapisid else { return nil }
+        let text = "\(timestamp) \(sapisid) \(origin)"
+        let digest = Insecure.SHA1.hash(data: Data(text.utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        return "SAPISIDHASH \(timestamp)_\(digest)"
+    }
+
     func authorizationHeader() -> String? {
         let cookies = getAuthCookies()
         guard let sapisid = cookies.first(where: { $0.name == "SAPISID" })?.value else {
