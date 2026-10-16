@@ -86,15 +86,15 @@ class IPAPolicyTests(unittest.TestCase):
         with patch.object(pathlib.Path, 'read_text', alter):
             self.blocked_safely(lambda: validate_no_lyrics_application(REPO))
 
-    def test_official_playback_fallback_remains_safe_and_configured(self):
+    def test_signed_native_playback_is_required_and_external_handoff_is_not(self):
         validate_verification_recovery(REPO)
         from unittest.mock import patch
         original = pathlib.Path.read_text
         def sabotage(path, *args, **kwargs):
-            value = original(path, *args, **kwargs)
+            source = original(path, *args, **kwargs)
             if path.name == 'PlayerRepository.swift':
-                return value.replace('api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration', 'false')
-            return value
+                return source.replace('label: "IOS(session)"', 'label: "ExternalApp"')
+            return source
         with patch.object(pathlib.Path, 'read_text', sabotage):
             self.blocked_safely(lambda: validate_verification_recovery(REPO))
 
