@@ -204,6 +204,12 @@ final class PlaybackSourceReplacementTests: XCTestCase {
     }
 
     func testGlobalFailureCategoriesDoNotOfferSongInvalidation() {
+        for message in ["verificationRequired", "LOGIN_REQUIRED: verificationRequired",
+                        "Sign in to confirm you\'re not a bot"] {
+            XCTAssertEqual(PlaybackErrorCategory.classify(message), .verificationRequired)
+        }
+        XCTAssertEqual(PlaybackErrorCategory.classify("LOGIN_REQUIRED"), .authRequired)
+        XCTAssertEqual(PlaybackErrorCategory.classify("sourceNotConfigured"), .sourceNotConfigured)
         for message in ["HTTP 429", "quota exceeded", "rate limit", "server 503"] {
             XCTAssertEqual(PlaybackErrorCategory.classify(message), .serverError)
         }

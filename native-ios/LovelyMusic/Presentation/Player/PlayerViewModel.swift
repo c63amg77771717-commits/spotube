@@ -17,13 +17,14 @@ enum PlaybackErrorCategory: Equatable {
 
     static func classify(_ message: String) -> Self {
         let lower = message.lowercased()
-        if lower.contains("online source is not configured") || lower.contains("尚未設定線上音源") {
+        if lower.contains("sourcenotconfigured") || lower.contains("online source is not configured")
+            || lower.contains("尚未設定線上音源") {
             return .sourceNotConfigured
         }
-        if ["not a bot", "不是機器人", "不是机器人"].contains(where: lower.contains) {
+        if ["verificationrequired", "verification required", "not a bot", "不是機器人", "不是机器人"].contains(where: lower.contains) {
             return .verificationRequired
         }
-        if ["sign in", "login", "authentication required", "unauthorized",
+        if ["login_required", "sign in", "login", "authentication required", "unauthorized",
             "confirm your age", "private", "登入", "私人影片"]
             .contains(where: lower.contains) {
             return .authRequired

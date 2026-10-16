@@ -331,7 +331,11 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         let response = try decoder.decode(PlayerResponse.self, from: data)
 
         guard response.playabilityStatus?.status == "OK" else {
-            throw PlayabilityFailure(reason: response.playabilityStatus?.reason ?? "Unknown")
+            let status = response.playabilityStatus?.status ?? "UNKNOWN"
+            let reason = response.playabilityStatus?.reason ?? ""
+            // Retain the machine-readable status when YouTube omits or localizes its reason.
+            // This prevents service-wide LOGIN_REQUIRED from being treated as an unknown song error.
+            throw PlayabilityFailure(reason: reason.isEmpty ? status : "\(status): \(reason)")
         }
 
         let streamingData = StreamingDataMapper.map(response.streamingData)
