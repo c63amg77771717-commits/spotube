@@ -232,6 +232,23 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertFalse(signed?.contains("fixture-only") == true)
         XCTAssertNil(YouTubeAuthManager.sessionAuthorizationHeader(
             cookieHeader: "SAPISID=fixture-only", origin: "https://evil.invalid", timestamp: 1234))
+        // Intercept both watch and player requests: an already-issued signed
+        // account header must reach the actual native IOS POST.
+        let storage = HTTPCookieStorage.shared
+        let saved = storage.cookies ?? []
+        defer {
+            for cookie in storage.cookies ?? [] { storage.deleteCookie(cookie) }
+            for cookie in saved { storage.setCookie(cookie) }
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [NativePlaybackAuthFixture.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let api = InnerTubeAPI(session: session)
+        await api.setCookie("SID=synthetic-session; SAPISID=synthetic-secret")
+        let player = try await api.playerWithSession(videoId: "AAAAAAAAAAA")
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: player) as? [String: Any])
+        XCTAssertEqual((object["playabilityStatus"] as? [String: String])?["status"], "OK")
     }
 
     func testRepeatedSearchAllowsOnlyTheLatestSelection() async throws {
@@ -274,4 +291,30 @@ private final class SyntheticReplacementSearchProbe {
     func finish(_ index: Int, with songs: [Song]) {
         pending.removeValue(forKey: index)?.resume(returning: songs)
     }
+}
+
+private final class NativePlaybackAuthFixture: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard let url = request.url else { XCTFail("No synthetic native URL"); return }
+        XCTAssertEqual(url.host, "www.youtube.com")
+        let isPlayer = request.httpMethod == "POST"
+        let cookies = request.value(forHTTPHeaderField: "Cookie") ?? ""
+        XCTAssertEqual(cookies.components(separatedBy: "; ").filter { $0.hasPrefix("SID=") },
+                       ["SID=synthetic-session"])
+        if isPlayer {
+            let authorization = request.value(forHTTPHeaderField: "Authorization")
+            XCTAssertTrue(authorization?.hasPrefix("SAPISIDHASH ") == true)
+            XCTAssertFalse(authorization?.contains("synthetic-secret") == true)
+        }
+        let response = HTTPURLResponse(url: url, statusCode: 200,
+                                       httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        let bytes = isPlayer ? #"{"playabilityStatus":{"status":"OK"}}"#
+                             : #"<html><script>{"visitorData":"fixture"}</script></html>"#
+        client?.urlProtocol(self, didLoad: Data(bytes.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
 }
