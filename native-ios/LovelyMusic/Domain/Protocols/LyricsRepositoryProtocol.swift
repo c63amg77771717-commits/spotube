@@ -7,6 +7,19 @@ protocol LyricsRepositoryProtocol {
     func getLyrics(title: String, artist: String, duration: Int?, allowVideoCredits: Bool) async throws -> SyncedLyrics?
 }
 
+
+/// Deliberately disabled in EvanTube iOS: never queries LRCLib, LrcApi, or a lyric fixture.
+struct DisabledLyricsRepository: LyricsRepositoryProtocol {
+    func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
+        try Task.checkCancellation()
+        return .legacy(nil)
+    }
+    func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
+        try Task.checkCancellation()
+        return nil
+    }
+}
+
 extension LyricsRepositoryProtocol {
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
         try Task.checkCancellation()

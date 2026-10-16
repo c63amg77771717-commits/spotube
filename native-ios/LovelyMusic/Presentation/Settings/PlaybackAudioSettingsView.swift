@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Sub-page combining Playback, Audio, and Lyrics settings.
+/// Sub-page combining Playback and Audio settings.
 /// Accessed from the Settings hub via NavigationLink.
 struct PlaybackAudioSettingsView: View {
     @Bindable var viewModel: SettingsViewModel
@@ -200,78 +200,6 @@ struct PlaybackAudioSettingsView: View {
                 }
                 .staggeredAppear(index: 2)
 
-                // MARK: - Lyrics
-                SettingsGroup(
-                    header: "Lyrics",
-                    footer: "Synced lyrics scroll in real-time with playback. Translation displays side-by-side lyrics when available."
-                ) {
-                    SettingsRow(
-                        icon: "quote.bubble.fill",
-                        iconColor: Theme.Colors.brandGradientEnd,
-                        title: "記憶播放頁面選擇"
-                    ) {
-                        Text("記憶歌詞或封面選擇，切歌不會自動改變；仍可手動開啟影片或佇列。")
-                            .font(Theme.Typography.caption)
-                            .foregroundStyle(Theme.Colors.textSecondary)
-                    }
-
-                    SettingsDivider()
-
-                    SettingsRow(
-                        icon: "text.magnifyingglass",
-                        iconColor: .cyan,
-                        title: "LrcApi secondary lyrics"
-                    ) {
-                        CustomToggle(isOn: $viewModel.isLrcApiEnabled)
-                            .accessibilityIdentifier("lyrics_lrcapi_enabled")
-                    }
-                    Text(LocalizationManager.text("Uses song title and performer when LRCLib has no reliable match."))
-                        .font(Theme.Typography.caption)
-                        .foregroundStyle(Theme.Colors.textSecondary)
-                        .padding(.horizontal, Theme.Spacing.lg)
-
-                    SettingsDivider()
-
-                    SettingsRow(
-                        icon: "textformat.size",
-                        iconColor: .purple,
-                        title: "Lyrics Font Size"
-                    ) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            CustomMenuPicker(
-                                selection: Binding(
-                                    get: { viewModel.lyricsFontSize },
-                                    set: { newValue in
-                                            viewModel.lyricsFontSize = newValue
-                                    }
-                                ),
-                                options: LyricsFontSize.allCases,
-                                label: { $0.displayName },
-                                icon: nil
-                            )
-                        }
-                    }
-
-                    SettingsDivider()
-
-                    SettingsRow(
-                        icon: "character.bubble.fill",
-                        iconColor: .indigo,
-                        title: "Show Translation"
-                    ) {
-                        HStack(spacing: Theme.Spacing.xs) {
-                            CustomToggle(
-                                isOn: Binding(
-                                    get: { viewModel.showLyricsTranslation },
-                                    set: { newValue in
-                                            viewModel.showLyricsTranslation = newValue
-                                    }
-                                )
-                            )
-                        }
-                    }
-                }
-                .staggeredAppear(index: 3)
             }
             .padding(.vertical, Theme.Spacing.lg)
         }
@@ -294,9 +222,6 @@ struct PlaybackAudioSettingsView: View {
         .animation(Theme.AnimationPresets.gentle, value: viewModel.autoSkipOnError)
         .animation(Theme.AnimationPresets.gentle, value: viewModel.autoplayRelatedSongs)
         .animation(Theme.AnimationPresets.gentle, value: viewModel.crossfadeDuration)
-        .onChange(of: viewModel.isLrcApiEnabled) { _, _ in
-            playerVM.lyricsSourceSettingsChanged()
-        }
         .onAppear {
             playerVM.isDockHidden = true
         }

@@ -137,7 +137,6 @@ struct LovelyMusicApp: App {
                 }
             } else if newPhase == .active {
                 diContainer?.audioEngine.applicationDidBecomeActive()
-                diContainer?.playerViewModel.retryInterruptedLyrics()
                 if isLocalLibraryReady {
                     GoogleDrivePlaylistSync.shared.startForeground()
                 }
