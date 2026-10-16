@@ -190,6 +190,10 @@ actor InnerTubeAPI {
 
         if setLogin, let cookie {
             request.setValue(cookie, forHTTPHeaderField: "Cookie")
+            if let authorization = YouTubeAuthManager.sessionAuthorizationHeader(
+                cookieHeader: cookie, origin: "https://music.youtube.com") {
+                request.setValue(authorization, forHTTPHeaderField: "Authorization")
+            }
         }
 
         request.httpBody = try encoder.encode(body)
@@ -922,6 +926,11 @@ actor InnerTubeAPI {
             request.setValue(visitorForHeader, forHTTPHeaderField: "X-Goog-Visitor-Id")
         }
         request.setValue(cookieHeaderString(), forHTTPHeaderField: "Cookie")
+        // Use only credentials from the user's current, saved session.
+        if let authorization = YouTubeAuthManager.sessionAuthorizationHeader(
+            cookieHeader: cookie, origin: "https://www.youtube.com") {
+            request.setValue(authorization, forHTTPHeaderField: "Authorization")
+        }
 
         let body = IOSPlayerBody(
             context: .init(
