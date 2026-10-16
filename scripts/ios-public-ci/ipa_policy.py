@@ -10,11 +10,11 @@ VERSION = '1.0.1'
 BUILD = '26'
 IPA_NAME = 'EvanTube-iOS-1.0.1-build26-unsigned.ipa'
 MANIFEST_NAME = 'ipa-manifest.json'
-EXPECTED_MAIN = json.loads("{\"name\":\"EvanTube public synthetic native tests\",\"on\":{\"workflow_dispatch\":{},\"push\":{\"branches\":[\"codex/ios-neonoir-20260930\"],\"paths\":[\"native-ios/**\",\"scripts/ios-public-ci/**\",\"scripts/ios-source-replacement/**\",\".github/workflows/evantube-native-ios-ipa.yml\",\".github/workflows/evantube-public-unsigned-ipa.yml\"]}},\"permissions\":{\"contents\":\"read\"},\"concurrency\":{\"group\":\"evantube-public-synthetic-${{ github.ref }}\",\"cancel-in-progress\":true},\"jobs\":{\"public_synthetic_validation\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"name\":\"Reject live input and unreviewed public test resources\",\"run\":\"python3 scripts/ios-public-ci/boundary.py preflight\"},{\"name\":\"Verify synthetic leak guards and strict receipt checks\",\"run\":\"python3 scripts/ios-public-ci/boundary_tests.py\"},{\"name\":\"Verify IPA workflow and output privacy guards\",\"run\":\"python3 scripts/ios-public-ci/ipa_policy_tests.py\"},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Prepare simulator test dependencies\",\"working-directory\":\"native-ios\",\"run\":\"brew install xcodegen\\ncp Secrets.plist.example LovelyMusic/Resources/Secrets.plist\\n/usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true\\npython3 - <<'PY'\\nimport os, pathlib, plistlib\\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\\n    'application-identifier': 'com.c63amg77771717.evantube',\\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\\nPY\"},{\"name\":\"Source replacement synthetic tests\",\"run\":\"python3 scripts/ios-source-replacement/run_native.py\"},{\"name\":\"Generate the allowlisted lyrics simulator project\",\"working-directory\":\"native-ios\",\"run\":\"python3 ../scripts/ios-lyrics-sample/write_receipt_context.py\\nxcodegen generate --spec public-ci-project.json\"},{\"name\":\"Native synthetic tests and aggregate validation\",\"run\":\"python3 scripts/ios-public-ci/boundary.py native --temporary \\\"$RUNNER_TEMP\\\"\"}]},\"unsigned_ipa\":{\"needs\":\"public_synthetic_validation\",\"uses\":\"./.github/workflows/evantube-public-unsigned-ipa.yml\",\"permissions\":{\"contents\":\"read\"}}}}")
+EXPECTED_MAIN = json.loads("{\"name\":\"EvanTube public synthetic native tests\",\"on\":{\"workflow_dispatch\":{},\"push\":{\"branches\":[\"codex/ios-neonoir-20260930\"],\"paths\":[\"native-ios/**\",\"scripts/ios-public-ci/**\",\"scripts/ios-source-replacement/**\",\".github/workflows/evantube-native-ios-ipa.yml\",\".github/workflows/evantube-public-unsigned-ipa.yml\"]}},\"permissions\":{\"contents\":\"read\"},\"concurrency\":{\"group\":\"evantube-public-synthetic-${{ github.ref }}\",\"cancel-in-progress\":true},\"jobs\":{\"public_synthetic_validation\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"name\":\"Reject live input and unreviewed public test resources\",\"run\":\"python3 scripts/ios-public-ci/boundary.py preflight\"},{\"name\":\"Verify synthetic leak guards and strict receipt checks\",\"run\":\"python3 scripts/ios-public-ci/boundary_tests.py\"},{\"name\":\"Verify IPA workflow and output privacy guards\",\"run\":\"python3 scripts/ios-public-ci/ipa_policy_tests.py\"},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Prepare simulator test dependencies\",\"working-directory\":\"native-ios\",\"run\":\"brew install xcodegen\\ncp Secrets.plist.example LovelyMusic/Resources/Secrets.plist\\n/usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true\\npython3 - <<'PY'\\nimport os, pathlib, plistlib\\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\\n    'application-identifier': 'com.c63amg77771717.evantube',\\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\\nPY\"},{\"name\":\"Source replacement synthetic tests\",\"run\":\"python3 scripts/ios-source-replacement/run_native.py\"}]},\"unsigned_ipa\":{\"needs\":\"public_synthetic_validation\",\"uses\":\"./.github/workflows/evantube-public-unsigned-ipa.yml\",\"permissions\":{\"contents\":\"read\"}}}}")
 EXPECTED_CHILD = json.loads("{\"name\":\"EvanTube public unsigned IPA\",\"on\":{\"workflow_call\":{}},\"permissions\":{\"contents\":\"read\"},\"jobs\":{\"unsigned_ipa\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"uses\":\"actions/setup-python@v5\",\"with\":{\"python-version\":\"3.12\"}},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Compile and validate credential-free unsigned IPA\",\"run\":\"python3 scripts/ios-public-ci/build_ipa.py\"},{\"name\":\"Upload only validated unsigned IPA and safe manifest\",\"uses\":\"actions/upload-artifact@v4\",\"with\":{\"name\":\"EvanTube-iOS-1.0.1-build26-unsigned-${{ github.sha }}\",\"path\":\"${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build26-unsigned.ipa\\n${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json\",\"if-no-files-found\":\"error\",\"retention-days\":3}}]}}}")
 MANIFEST_KEYS = {'file', 'bytes', 'sha256', 'sourceSHA', 'version', 'build', 'bundleID',
                  'architecture', 'unsigned', 'archiveIntegrity', 'deviceCompilation',
-                 'sourceReplacementTests', 'lyricsRegressionTests', 'liveQueries',
+                 'sourceReplacementTests', 'lyricsRegressionTests', 'lyricsEnabled', 'liveQueries',
                  'physicalDevice', 'humanVerification', 'credentialsEmbedded'}
 
 class PolicyBlocked(Exception):
@@ -30,11 +30,45 @@ def validate_workflow_values(main, child):
     require(json.dumps(main, sort_keys=True) == json.dumps(EXPECTED_MAIN, sort_keys=True))
     require(json.dumps(child, sort_keys=True) == json.dumps(EXPECTED_CHILD, sort_keys=True))
 
+def validate_no_lyrics_application(repo):
+    """Fail closed if playback restores a lyric request, UI entry, or live provider."""
+    checks = {
+        'player': repo / 'native-ios/LovelyMusic/Presentation/Player/PlayerViewModel.swift',
+        'ui': repo / 'native-ios/LovelyMusic/Presentation/Player/FullPlayerView.swift',
+        'bar': repo / 'native-ios/LovelyMusic/Presentation/Player/Components/PlayerBottomBarView.swift',
+        'settings': repo / 'native-ios/LovelyMusic/Presentation/Settings/PlaybackAudioSettingsView.swift',
+        'di': repo / 'native-ios/LovelyMusic/App/DIContainer.swift',
+        'provider': repo / 'native-ios/LovelyMusic/Domain/Protocols/LyricsRepositoryProtocol.swift',
+        'app': repo / 'native-ios/LovelyMusic/App/LovelyMusicApp.swift',
+    }
+    try:
+        source = {name: file.read_text(encoding='utf8') for name, file in checks.items()}
+    except OSError:
+        raise PolicyBlocked('PUBLIC_IPA_LYRICS_DISABLED_CONTRACT') from None
+    require('private func requestLyrics(for song: Song) {}' in source['player'])
+    require('func loadLyrics(for song: Song) async { cancelLyricsRequest() }' in source['player'])
+    require('getLyricsUseCase.executeReport(' not in source['player'])
+    require('await self?.loadLyrics(for: song)' not in source['player'])
+    require('onToggleLyrics' not in source['bar'])
+    require('isLyricsVisible' not in source['bar'])
+    require('SyncedLyricsScrollView(' not in source['ui'])
+    require('inlineLyricsView' not in source['ui'])
+    require('isLyricsVisible' not in source['ui'])
+    require('header: "Lyrics"' not in source['settings'])
+    require('lyrics_lrcapi_enabled' not in source['settings'])
+    require('onChange(of: viewModel.isLrcApiEnabled)' not in source['settings'])
+    require('let lyricsRepo: LyricsRepositoryProtocol = DisabledLyricsRepository()' in source['di'])
+    require('CompositeLyricsRepository(' not in source['di'])
+    require('struct DisabledLyricsRepository: LyricsRepositoryProtocol' in source['provider'])
+    require('return .legacy(nil)' in source['provider'])
+    require('retryInterruptedLyrics()' not in source['app'])
+
 def validate_workflows(repo):
     try:
         main = json.loads((repo / '.github/workflows/evantube-native-ios-ipa.yml').read_bytes())
         child = json.loads((repo / '.github/workflows/evantube-public-unsigned-ipa.yml').read_bytes())
         validate_workflow_values(main, child)
+        validate_no_lyrics_application(repo)
     except (OSError, ValueError, KeyError):
         raise PolicyBlocked('PUBLIC_IPA_WORKFLOW_BLOCKED') from None
 
@@ -111,6 +145,7 @@ def validate_manifest(value):
     require(value['architecture'] == 'arm64' and value['unsigned'] is True)
     require(value['archiveIntegrity'] == 'PASS' and value['deviceCompilation'] == 'PASS')
     require(type(value['sourceReplacementTests']) is int and value['sourceReplacementTests'] == 17)
-    require(type(value['lyricsRegressionTests']) is int and value['lyricsRegressionTests'] == 16)
+    require(type(value['lyricsRegressionTests']) is int and value['lyricsRegressionTests'] == 0)
+    require(value['lyricsEnabled'] is False)
     require(type(value['liveQueries']) is int and value['liveQueries'] == 0 and value['credentialsEmbedded'] is False)
     require(value['physicalDevice'] == 'NOT_RUN' and value['humanVerification'] == 'NOT_RUN')

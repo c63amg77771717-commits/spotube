@@ -43,13 +43,6 @@ jobs:
           PY
       - name: Execute 17 source-replacement synthetic tests
         run: python3 scripts/ios-source-replacement/run_native.py
-      - name: Prepare lyric regression test project
-        working-directory: native-ios
-        run: |
-          python3 ../scripts/ios-lyrics-sample/write_receipt_context.py
-          xcodegen generate --spec public-ci-project.json
-      - name: Execute 16 native lyric regression tests
-        run: python3 scripts/ios-public-ci/boundary.py native --temporary "$RUNNER_TEMP"
 
   unsigned_ipa:
     needs: public_synthetic_validation

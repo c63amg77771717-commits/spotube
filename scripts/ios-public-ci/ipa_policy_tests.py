@@ -12,7 +12,7 @@ import unittest
 
 from ipa_policy import (BUILD, VERSION, IPA_NAME, EXPECTED_MAIN, EXPECTED_CHILD, PolicyBlocked,
                         validate_app, validate_manifest, validate_macho, validate_project,
-                        validate_workflow_values, validate_workflows)
+                        validate_workflow_values, validate_workflows, validate_no_lyrics_application)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CANARY = 'SYNTHETIC_PRIVATE_CANARY_NO_REAL_SONG_OR_CREDENTIAL'
@@ -72,6 +72,20 @@ class IPAPolicyTests(unittest.TestCase):
                                                     'with': {'path': CANARY + '.log'}})
         self.blocked_safely(lambda: validate_workflow_values(EXPECTED_MAIN, child))
 
+    def test_runtime_lyrics_are_inert_and_workflow_does_not_run_lyrics_regression(self):
+        validate_no_lyrics_application(REPO)
+        names = [step.get('name') for step in EXPECTED_MAIN['jobs']['public_synthetic_validation']['steps']]
+        self.assertEqual(names.count('Source replacement synthetic tests'), 1)
+        self.assertFalse(any(name and 'lyrics' in name.lower() for name in names))
+        self.assertFalse(any('EvanTubePublicTests' in step.get('run', '') for step in EXPECTED_MAIN['jobs']['public_synthetic_validation']['steps']))
+        original = pathlib.Path.read_text
+        from unittest.mock import patch
+        def alter(path, *args, **kwargs):
+            value = original(path, *args, **kwargs)
+            return value + '\\nonToggleLyrics()\\n' if path.name == 'PlayerBottomBarView.swift' else value
+        with patch.object(pathlib.Path, 'read_text', alter):
+            self.blocked_safely(lambda: validate_no_lyrics_application(REPO))
+
     def test_project_has_only_original_app_and_extension_with_new_version(self):
         project = json.loads((REPO / 'native-ios/public-ipa-project.json').read_bytes())
         validate_project(project)
@@ -120,7 +134,8 @@ class IPAPolicyTests(unittest.TestCase):
         clean = {'file': IPA_NAME, 'bytes': 1024, 'sha256': 'a' * 64, 'sourceSHA': 'b' * 40,
                  'version': VERSION, 'build': BUILD, 'bundleID': 'com.c63amg77771717.evantube',
                  'architecture': 'arm64', 'unsigned': True, 'archiveIntegrity': 'PASS',
-                 'deviceCompilation': 'PASS', 'sourceReplacementTests': 17, 'lyricsRegressionTests': 16,
+                 'deviceCompilation': 'PASS', 'sourceReplacementTests': 17, 'lyricsRegressionTests': 0,
+                 'lyricsEnabled': False,
                  'liveQueries': 0, 'physicalDevice': 'NOT_RUN', 'humanVerification': 'NOT_RUN',
                  'credentialsEmbedded': False}
         validate_manifest(clean)

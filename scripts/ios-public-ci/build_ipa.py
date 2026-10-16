@@ -67,12 +67,12 @@ def main():
                     'sourceSHA': os.environ['GITHUB_SHA'], 'version': VERSION, 'build': BUILD,
                     'bundleID': info['CFBundleIdentifier'], 'architecture': 'arm64', 'unsigned': True,
                     'archiveIntegrity': 'PASS', 'deviceCompilation': 'PASS',
-                    'sourceReplacementTests': 17, 'lyricsRegressionTests': 16, 'liveQueries': 0,
+                    'sourceReplacementTests': 17, 'lyricsRegressionTests': 0, 'lyricsEnabled': False, 'liveQueries': 0,
                     'physicalDevice': 'NOT_RUN', 'humanVerification': 'NOT_RUN', 'credentialsEmbedded': False}
         validate_manifest(manifest)
         (output / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf8')
         require({path.name for path in output.iterdir()} == {IPA_NAME, MANIFEST_NAME})
-        print('PUBLIC_UNSIGNED_IPA_PASS version=1.0.1 build=26 sourceTests=17 regressionTests=16 physicalDevice=NOT_RUN')
+        print('PUBLIC_UNSIGNED_IPA_PASS version=1.0.1 build=26 sourceTests=17 regressionTests=0 lyricsEnabled=false physicalDevice=NOT_RUN')
         return 0
     except Exception:
         print('PUBLIC_UNSIGNED_IPA_BLOCKED_OR_FAILED; detailed output stays runner-local', file=sys.stderr)
