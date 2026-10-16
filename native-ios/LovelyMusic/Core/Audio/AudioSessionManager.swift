@@ -3,6 +3,13 @@ import os
 
 enum AudioSessionManager {
     static var onResume: (@MainActor @Sendable () -> Void)?
+    static let mixWithOthersKey = "evantube.audio.mixWithOthers"
+
+    /// Mixing permits navigation / speed-alert speech to coexist. Ducking is
+    /// requested by the speaking app; we do not duck that app continuously.
+    static var mixingEnabledByPreference: Bool {
+        UserDefaults.standard.object(forKey: mixWithOthersKey) as? Bool ?? true
+    }
 
     /// Configure the audio session category at app launch.
     ///
@@ -15,7 +22,8 @@ enum AudioSessionManager {
     static func setCategory() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(.playback, mode: .default,
+                options: mixingEnabledByPreference ? [.mixWithOthers] : [])
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionConfigured,
                 audioMixingEnabled: session.categoryOptions.contains(.mixWithOthers)))
             return true
@@ -31,8 +39,8 @@ enum AudioSessionManager {
     /// either configuration or activation failure so the engine keeps playback paused.
     @discardableResult
     static func activate() -> Bool {
-        // A mixable session cannot own system Now Playing / accessory commands.
-        // Reapply the non-mixable playback policy after resets; activate only on play.
+        // Reapply the selected mixing policy after resets; activate only on play.
+        // Headset controls and Now Playing are verified separately on a physical device.
         guard setCategory() else {
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionActivated, audioActivationSucceeded: false))
             return false

@@ -6,6 +6,7 @@ import XCTest
 final class Build20AudioSessionTests: XCTestCase {
     private let keys = ["persistentQueue", "persisted_playback_state", "playbackShuffleEnabled", "playbackRepeatMode",
                         "crossfade_duration", "audioNormalization", "skipSilence", "playbackSpeed", "equalizerEnabled",
+                        AudioSessionManager.mixWithOthersKey,
                         "equalizerPreset", "equalizerCustomBands"]
     private var backup: [String: Any] = [:]
     override func setUp() {
@@ -34,20 +35,26 @@ final class Build20AudioSessionTests: XCTestCase {
         let session = AVAudioSession.sharedInstance()
         XCTAssertEqual(session.category, .playback)
         XCTAssertEqual(session.mode, .default)
-        XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertTrue(session.categoryOptions.contains(.mixWithOthers))
         XCTAssertFalse(session.categoryOptions.contains(.duckOthers))
         XCTAssertFalse(session.categoryOptions.contains(.interruptSpokenAudioAndMixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionConfigured }
-        XCTAssertEqual(event?.audioMixingEnabled, false)
+        XCTAssertEqual(event?.audioMixingEnabled, true)
+        UserDefaults.standard.set(false, forKey: AudioSessionManager.mixWithOthersKey)
+        XCTAssertTrue(AudioSessionManager.setCategory())
+        XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
+        UserDefaults.standard.removeObject(forKey: AudioSessionManager.mixWithOthersKey)
+        XCTAssertTrue(AudioSessionManager.setCategory())
+        XCTAssertTrue(session.categoryOptions.contains(.mixWithOthers))
     }
 
     func testLazyActivationReportsActualSuccessAndPreservesNowPlayingPolicy() {
         AudioSessionManager.setCategory()
         XCTAssertTrue(AudioSessionManager.activate())
-        XCTAssertFalse(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
+        XCTAssertTrue(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionActivated }
         XCTAssertEqual(event?.audioActivationSucceeded, true)
-        XCTAssertEqual(event?.audioMixingEnabled, false)
+        XCTAssertEqual(event?.audioMixingEnabled, true)
     }
 
     func testFiveIndependentGenuineInterruptionsRetainQueueSpeedAndProcessingSettings() async throws {
