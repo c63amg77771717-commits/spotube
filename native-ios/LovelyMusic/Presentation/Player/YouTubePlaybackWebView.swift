@@ -11,9 +11,11 @@ struct YouTubePlaybackWebView: UIViewRepresentable {
         configuration.websiteDataStore = .default()
         configuration.allowsInlineMediaPlayback = true
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        guard let url = YouTubeOfficialPlaybackPolicy.watchURL(for: videoID) else {
-            return webView
-        }
+        var components = URLComponents(string: "https://www.youtube.com/watch")!
+        components.queryItems = [
+            URLQueryItem(name: "v", value: videoID),
+            URLQueryItem(name: "hl", value: "zh-TW"),
+        ]
         let cookies = authManager.getAuthCookies()
         context.coordinator.loadTask = Task { @MainActor in
             for cookie in cookies {
@@ -21,7 +23,7 @@ struct YouTubePlaybackWebView: UIViewRepresentable {
                 await configuration.websiteDataStore.httpCookieStore.setCookie(cookie)
             }
             guard !Task.isCancelled else { return }
-            webView.load(URLRequest(url: url))
+            if let url = components.url { webView.load(URLRequest(url: url)) }
         }
         return webView
     }
