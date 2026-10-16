@@ -1,71 +1,78 @@
-name: EvanTube iOS IPA
-
+# On master this existing path remains the original Flutter workflow.
+# When manually selected with ref=codex/ios-neonoir-20260930, run the
+# separate native Build26 synthetic validation and credential-free IPA.
+name: EvanTube public synthetic native tests
 on:
   workflow_dispatch:
-  push:
-    branches: [master]
-    paths:
-      - "lib/**"
-      - "ios/**"
-      - "pubspec.yaml"
-      - ".github/workflows/evantube-ios-ipa.yml"
 
-env:
-  FLUTTER_VERSION: "3.35.2"
-  FLUTTER_CHANNEL: master
-  CHANNEL: stable
-  DOTENV: |
-    LASTFM_API_KEY=evantube
-    LASTFM_API_SECRET=evantube
-    HIDE_DONATIONS=1
-    ENABLE_UPDATE_CHECK=0
+permissions:
+  contents: read
+concurrency:
+  group: evantube-build26-dispatch-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-ios:
+  public_synthetic_validation:
     runs-on: macos-14
     timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2.18.0
+      - uses: actions/checkout@v4
         with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
-          git-source: https://github.com/flutter/flutter.git
-
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+          persist-credentials: false
+      - name: Reject live inputs and unreviewed test resources
+        run: python3 scripts/ios-public-ci/boundary.py preflight
+      - name: Verify synthetic leak guards and receipts
+        run: python3 scripts/ios-public-ci/boundary_tests.py
+      - name: Verify IPA and output privacy policy
+        run: python3 scripts/ios-public-ci/ipa_policy_tests.py
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          toolchain: stable
-
-      - name: Install Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: "16.2"
-
-      - name: Install iOS dependencies
+          xcode-version: '16.2'
+      - name: Prepare simulation-only dependencies
+        working-directory: native-ios
         run: |
-          flutter pub get
-          dart cli/cli.dart install-dependencies --platform=ios --arch=all
-
-      - name: Build unsigned iOS IPA
-        run: dart cli/cli.dart build --arch=all ios
-
-      - name: Rename IPA
-        shell: bash
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          /usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true
+          python3 - <<'PY'
+          import os, pathlib, plistlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True}))
+          PY
+      - name: Execute 17 source-replacement synthetic tests
+        run: python3 scripts/ios-source-replacement/run_native.py
+      - name: Prepare lyric regression test project
+        working-directory: native-ios
         run: |
-          set -euo pipefail
-          test -f Spotube-iOS.ipa
-          mv Spotube-iOS.ipa EvanTube-iOS.ipa
-          shasum -a 256 EvanTube-iOS.ipa
+          python3 ../scripts/ios-lyrics-sample/write_receipt_context.py
+          xcodegen generate --spec public-ci-project.json
+      - name: Execute 16 native lyric regression tests
+        run: python3 scripts/ios-public-ci/boundary.py native --temporary "$RUNNER_TEMP"
 
-      - name: Upload IPA
+  unsigned_ipa:
+    needs: public_synthetic_validation
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Build and verify credential-free unsigned Build26 IPA
+        run: python3 scripts/ios-public-ci/build_ipa.py
+      - name: Upload only validated unsigned IPA and safe manifest
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-iOS
-          path: EvanTube-iOS.ipa
+          name: EvanTube-iOS-1.0.1-build26-unsigned-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build26-unsigned.ipa
+            ${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
