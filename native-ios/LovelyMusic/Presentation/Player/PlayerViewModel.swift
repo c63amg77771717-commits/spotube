@@ -240,7 +240,13 @@ final class PlayerViewModel {
     }
 
     var hasTrack: Bool { currentSong != nil }
-    var canRetry: Bool { retryCount < maxRetries && currentSong != nil }
+    var canRetry: Bool {
+        guard retryCount < maxRetries, currentSong != nil else { return false }
+        // These are global service or client-configuration failures, not a
+        // transient broken recording; offer the official web player instead.
+        return ![.authRequired, .verificationRequired, .sourceNotConfigured, .serverError]
+            .contains(where: { $0 == streamErrorCategory })
+    }
 
     // MARK: - Init
 

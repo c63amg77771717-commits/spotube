@@ -513,7 +513,8 @@ struct FullPlayerView: View {
                             .buttonStyle(.bouncy)
                         }
                         if playerVM.streamErrorCategory == .authRequired
-                            || playerVM.streamErrorCategory == .verificationRequired {
+                            || playerVM.streamErrorCategory == .verificationRequired
+                            || playerVM.streamErrorCategory == .sourceNotConfigured {
                             Button {
                                 playerVM.prepareForWebPlayback()
                                 showYouTubeWebPlayback = true
