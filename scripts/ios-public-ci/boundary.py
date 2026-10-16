@@ -110,7 +110,27 @@ def run_native(repo, temporary):
                '-destination', 'platform=iOS Simulator,name=iPhone 16 Pro', '-derivedDataPath', str(temporary / 'public-derived'),
                '-parallel-testing-enabled', 'NO', '-only-testing:EvanTubePublicTests', '-resultBundlePath', str(bundle),
                'CODE_SIGNING_ALLOWED=YES', 'CODE_SIGN_IDENTITY=-', 'CODE_SIGN_ENTITLEMENTS=' + str(temporary / 'evantube-simulator.entitlements'), 'test']
-    captured_command(command, repo / 'native-ios', log)
+    try:
+        captured_command(command, repo / 'native-ios', log)
+    except BoundaryBlocked:
+        # Emit only fixed failure categories and allowlisted public XCTest names.
+        # Never publish raw compiler errors, assertions, metadata, lyrics or logs.
+        raw = log.read_text(encoding='utf8', errors='replace') if log.exists() else ''
+        allowed_tests = set()
+        for name in TEST_SOURCES:
+            source = (repo / 'native-ios' / name).read_text(encoding='utf8')
+            allowed_tests.update(re.findall(r'func (test[A-Za-z0-9_]+)\s*\(', source))
+        failed = sorted({
+            name for name in re.findall(r"Test Case '[^'\n]*?\s+(test[A-Za-z0-9_]+)\]' failed", raw)
+            if name in allowed_tests
+        })
+        category = ('TEST_ASSERTION' if failed or 'TEST FAILED' in raw
+                    else 'SWIFT_COMPILATION' if 'SwiftCompile' in raw or 'error:' in raw
+                    else 'XCODEBUILD_OR_INFRASTRUCTURE')
+        print('PUBLIC_CI_NATIVE_FAILURE_CATEGORY=' + category, file=sys.stderr)
+        if failed:
+            print('PUBLIC_CI_NATIVE_FAILED_PUBLIC_TESTS=' + ','.join(failed), file=sys.stderr)
+        raise
     raw = log.read_text(encoding='utf8', errors='replace')
     counts = re.findall(r'Executed (\d+) tests?, with (\d+) failures?', raw)
     require(counts and counts[-1] == ('16', '0'))
