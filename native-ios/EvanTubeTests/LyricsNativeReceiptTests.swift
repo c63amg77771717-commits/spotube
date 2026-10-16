@@ -166,6 +166,7 @@ final class LyricsNativeReceiptTests: XCTestCase {
             artist: "", duration: 231, hasYouTubeOrigin: true)))
         XCTAssertEqual(videoAnthem.pair.title, "Together")
         XCTAssertEqual(videoAnthem.pair.artist, "SampleA & SampleB")
+        XCTAssertTrue(videoAnthem.requiresManualIdentityConfirmation)
         let broadcast = try XCTUnwrap(LyricsCanonicalMetadata(.init(
             title: "[ 纯享 ] 虚构歌手《假想曲》《幻想聲音3》EP11 20190104  /示例电视台官方音乐HD/",
             artist: "", duration: 236, hasYouTubeOrigin: true)))
