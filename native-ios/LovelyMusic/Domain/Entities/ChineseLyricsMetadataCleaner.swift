@@ -104,6 +104,24 @@ enum ChineseLyricsMetadataCleaner {
         return (preparedRoles.isEmpty ? originalRoles : preparedRoles).map { adding(credit?.guest, to: $0) }
     }
 
+    /// A video-labelled dash caption may supply two explicitly co-equal artists.
+    /// Keep the complete credits as a manual lookup hypothesis; never guess a primary.
+    private static func coequalMusicVideoPair(_ context: LyricsLookupContext,
+                                              prepared: String, supplied: String) -> LyricsLookupMetadata.Pair? {
+        guard context.hasYouTubeOrigin, supplied.isEmpty,
+              context.title.range(
+                  of: #"(?i)(?:\\(\\s*music\\s+video\\s*\\)|\\[\\s*official\\s+mv\\s*\\])"#,
+                  options: .regularExpression) != nil else { return nil }
+        let pieces = prepared.components(separatedBy: " - ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard pieces.count == 2, pieces[0].contains(" & "),
+              (2...160).contains(pieces[1].count) else { return nil }
+        let credits = LyricsCanonicalMetadata.creditComponents(pieces[0])
+        guard credits.count == 2, credits.allSatisfy({ (2...50).contains($0.count) })
+        else { return nil }
+        return .init(title: pieces[1], artist: pieces[0])
+    }
+
     static func analyze(_ context: LyricsLookupContext) -> Analysis {
         let supplied = context.artistNameSource?.isDisplayOnly == true ? "" : context.artist.trimmingCharacters(in: .whitespacesAndNewlines)
         guard context.hasYouTubeOrigin else {
@@ -116,6 +134,7 @@ enum ChineseLyricsMetadataCleaner {
         let whitespaceAlternative = supplied.isEmpty && LyricsLookupMetadata.isWhitespaceVideoCredit(context.title)
             ? roles(context).first : nil
         let pair = LyricsLookupMetadata.cleanedLegacy(title: title, artist: supplied, allowVideoCredits: true)
+            ?? coequalMusicVideoPair(context, prepared: title, supplied: supplied)
             ?? whitespaceAlternative ?? .init(title: title, artist: supplied)
         let result = adding(credit?.guest, to: .init(title: strippingLyricLabels(pair.title), artist: pair.artist))
         // Named works are weak context only; never a required title or performer identity.
