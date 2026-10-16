@@ -32,6 +32,8 @@ final class PublicSourceRecoveryTests: XCTestCase {
 
     func testRetryAfterIsRespectedWithinBoundAndLongWaitDoesNotRetry() {
         XCTAssertEqual(PublicSourceRequest.retryDelay(status: 429, retryAfter: "3"), 3)
+        XCTAssertNil(PublicSourceRequest.retryDelay(status: 429, retryAfter: nil))
+        XCTAssertEqual(PublicSourceRequest.retryDelay(status: 503, retryAfter: nil), 0.25)
         XCTAssertNil(PublicSourceRequest.retryDelay(status: 429, retryAfter: "60"))
         XCTAssertNil(PublicSourceRequest.retryDelay(status: 404, retryAfter: "0"))
         XCTAssertNil(PublicSourceRequest.retryDelay(status: 400, retryAfter: nil))

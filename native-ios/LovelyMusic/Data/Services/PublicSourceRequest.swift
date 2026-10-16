@@ -84,7 +84,9 @@ enum PublicSourceRequest {
 
     static func retryDelay(status: Int, retryAfter: String?, now: Date = Date()) -> Double? {
         guard status == 408 || status == 429 || (500...599).contains(status) else { return nil }
-        guard let retryAfter else { return 0.25 }
+        // A 429 without an explicit short Retry-After is a provider throttle,
+        // not permission to immediately repeat the same expensive lyric search.
+        guard let retryAfter else { return status == 429 ? nil : 0.25 }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
