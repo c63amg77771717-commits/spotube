@@ -87,8 +87,9 @@ enum PlaybackErrorCategory: Equatable {
         case .serverError: return LocalizationManager.text("Please try again later")
         case .authRequired: return LocalizationManager.text("Sign in to YouTube to access this content")
         case .verificationRequired:
-            return "YouTube 要求驗證目前的播放連線。可改用 YouTube 網頁播放，或稍後重試。"
-        case .sourceNotConfigured: return LocalizationManager.text("This test build needs source configuration for online playback.")
+            return "YouTube 拒絕此原生串流請求。請在 YouTube 官方播放器完成登入或驗證；App 無法代為解除。"
+        case .sourceNotConfigured:
+            return "此版本未配置原生 YouTube 音源。請使用官方 YouTube 播放器。"
         case .unknown: return LocalizationManager.text("Something went wrong")
         }
     }

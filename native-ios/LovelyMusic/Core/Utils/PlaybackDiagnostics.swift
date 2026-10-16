@@ -18,8 +18,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
 
         static func classify(_ message: String) -> Self {
             let text = message.lowercased()
-            if ["not a bot", "不是機器人", "不是机器人"].contains(where: text.contains) { return .verificationRequired }
-            if ["sign in", "login", "登入", "登录"].contains(where: text.contains) { return .signInRequired }
+            if ["verificationrequired", "verification required", "not a bot", "不是機器人", "不是机器人"].contains(where: text.contains) { return .verificationRequired }
+            if ["login_required", "sign in", "login", "登入", "登录"].contains(where: text.contains) { return .signInRequired }
+            if ["sourcenotconfigured", "source not configured", "尚未設定線上音源"].contains(where: text.contains) { return .sourceNotConfigured }
             if ["region", "country", "地區", "地区"].contains(where: text.contains) { return .regionRestricted }
             if ["unavailable", "private", "removed", "無法播放"].contains(where: text.contains) { return .unavailable }
             if ["network", "timed out", "timeout", "網路", "逾時"].contains(where: text.contains) { return .network }

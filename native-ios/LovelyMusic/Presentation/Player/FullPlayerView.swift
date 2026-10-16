@@ -9,9 +9,9 @@ struct FullPlayerView: View {
     @Environment(DIContainer.self) private var container
     @Environment(FeatureFlagManager.self) private var featureFlags
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var dragOffset: CGFloat = 0
     @State private var showAddToPlaylist = false
-    @State private var showYouTubeLogin = false
     @State private var showYouTubeWebPlayback = false
     @State private var showYouTubeLoginAlert = false
     @State private var isVideoFullScreen = false
@@ -467,27 +467,20 @@ struct FullPlayerView: View {
                             }
                             .buttonStyle(.bouncy)
                         }
-                        if playerVM.streamErrorCategory == .authRequired,
-                           featureFlags.isYouTubeAuthEnabled {
+                        if [.authRequired, .verificationRequired, .sourceNotConfigured]
+                            .contains(where: { $0 == playerVM.streamErrorCategory }),
+                           officialYouTubeURL != nil {
                             Button {
-                                showYouTubeLogin = true
+                                openOfficialYouTube()
                             } label: {
-                                Label(
-                                    container.authManager.isLoggedIn
-                                        ? LocalizationManager.text("Sign in again to YouTube")
-                                        : LocalizationManager.text("Sign in to YouTube"),
-                                    systemImage: "person.crop.circle.badge.plus"
-                                )
+                                Label("在 YouTube App／Safari 播放", systemImage: "arrow.up.right.square")
                                     .font(Theme.Typography.subheadline.weight(.semibold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, Theme.Spacing.xl)
                                     .padding(.vertical, Theme.Spacing.sm)
-                                    .background(
-                                        Theme.Colors.brandGradient,
-                                        in: Capsule()
-                                    )
+                                    .background(Theme.Colors.brandGradient, in: Capsule())
                             }
-                            .buttonStyle(.bouncy)
+                            .accessibilityIdentifier("youtube_official_playback")
                         }
                         if playerVM.canRetry {
                             Button {
@@ -580,19 +573,21 @@ struct FullPlayerView: View {
                 .presentationBackground(Theme.Colors.backgroundPrimary)
             }
         }
-        .sheet(isPresented: $showYouTubeLogin) {
-            YouTubeLoginView(authManager: container.authManager) {
-                playerVM.retryCurrentSong(resetRetryCount: true)
-            }
-        }
         .sheet(isPresented: $showYouTubeWebPlayback) {
             if let song = playerVM.currentSong {
                 NavigationStack {
                     VStack(spacing: 0) {
-                        Text("請在 YouTube 頁面按播放；網頁模式需保持此頁開啟。")
+                        Text("這是可見的 YouTube 官方網頁。若頁面要求登入，請改用 YouTube App／Safari 完成驗證。")
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .padding()
+                        if officialYouTubeURL != nil {
+                            Button("在 YouTube App／Safari 開啟") {
+                                openOfficialYouTube()
+                            }
+                            .accessibilityIdentifier("youtube_official_from_web")
+                            .padding(.bottom, 10)
+                        }
                         YouTubePlaybackWebView(videoID: playerVM.currentPlaybackSourceID ?? song.id, authManager: container.authManager)
                     }
                     .background(Theme.Colors.backgroundPrimary)
@@ -605,19 +600,28 @@ struct FullPlayerView: View {
             }
         }
         .onChange(of: playerVM.showYouTubeLoginPrompt) { _, shouldPrompt in
-            if shouldPrompt && featureFlags.isYouTubeAuthEnabled && !container.authManager.isLoggedIn {
-                showYouTubeLoginAlert = true
+            if shouldPrompt {
+                showYouTubeLoginAlert = officialYouTubeURL != nil
                 playerVM.showYouTubeLoginPrompt = false
             }
         }
-        .alert("Sign in required", isPresented: $showYouTubeLoginAlert) {
-            Button("Sign in") {
-                showYouTubeLogin = true
-            }
-            Button("Cancel", role: .cancel) {}
+        .alert("需要 YouTube 官方登入", isPresented: $showYouTubeLoginAlert) {
+            Button("在 YouTube App／Safari 開啟") { openOfficialYouTube() }
+            Button("取消", role: .cancel) {}
         } message: {
-            Text("This content requires signing in with a YouTube account. Would you like to sign in now?")
+            Text("YouTube 拒絕原生串流請求；請使用官方網站或 App 完成驗證。")
         }
+    }
+
+    private var officialYouTubeURL: URL? {
+        guard let id = playerVM.currentPlaybackSourceID else { return nil }
+        return YouTubeOfficialPlaybackPolicy.watchURL(for: id)
+    }
+
+    private func openOfficialYouTube() {
+        guard let url = officialYouTubeURL else { return }
+        playerVM.prepareForWebPlayback()
+        openURL(url)
     }
 
     private var transferConsentIsPresented: Binding<Bool> {

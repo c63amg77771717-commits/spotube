@@ -79,6 +79,13 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         videoId: String,
         quality: AudioQuality
     ) async throws -> StreamDescriptor {
+        // The public, credential-free iOS IPA intentionally embeds no InnerTube
+        // playback source keys. Fail before initiating anonymous device-client
+        // probes, and let the UI offer the official YouTube player instead.
+        // Injected fixture PlayerAPIClient implementations remain testable offline.
+        if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration {
+            throw InnerTubeError.sourceNotConfigured
+        }
         let cpn = generateCPN()
         return try await withTimeout(seconds: 45) { [self] in
             // Client fallback chain: VISIONOS → ANDROID_VR(session/IOS) → IOS → WEB_REMIX
@@ -198,10 +205,17 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                     return result
                 }
             } catch let failure as PlayabilityFailure {
-                // Server explicitly said "unplayable" — skip remaining attempts
-                // for this client; same response would repeat. Propagate the
-                // reason so the top-level resolver can throw videoUnavailable
-                // when every client agrees.
+                // YouTube is explicitly asking for sign-in or human verification.
+                // Switching client identities cannot complete that verification;
+                // do not retry it on multiple unofficial client endpoints.
+                let lowerReason = failure.reason.lowercased()
+                if lowerReason.contains("login_required") || lowerReason.contains("not a bot")
+                    || lowerReason.contains("不是機器人") || lowerReason.contains("不是机器人")
+                    || lowerReason.contains("verificationrequired") {
+                    throw InnerTubeError.videoUnavailable(reason: failure.reason)
+                }
+                // Other video-specific failures can still fall through the
+                // existing bounded candidate handling.
                 playabilityReason = failure.reason
                 Log.player.warning(
                     "[\(label, privacy: .public)] Playability not OK: \(failure.reason, privacy: .public) — skipping to next client"

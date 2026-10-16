@@ -218,6 +218,15 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         }
         XCTAssertTrue(PlaybackErrorCategory.songRemoved.permitsReplacementSearch)
         XCTAssertTrue(PlaybackErrorCategory.regionBlocked.permitsReplacementSearch)
+
+        // Official fallback always stays on youtube.com and only accepts a
+        // verified 11-character video ID. No extracted stream or credentials.
+        XCTAssertEqual(YouTubeOfficialPlaybackPolicy.watchURL(for: "AAAAAAAAAAA")?.absoluteString,
+                       "https://www.youtube.com/watch?v=AAAAAAAAAAA")
+        XCTAssertEqual(YouTubeOfficialPlaybackPolicy.watchURL(for: "BBBBBBBBBBB")?.host, "www.youtube.com")
+        for invalid in ["", "AAAAAAAAAA", "https://evil.example/a", "漢漢漢漢漢漢漢漢漢漢漢", "A&B=C", "AAAAAAAAAAA/evil"] {
+            XCTAssertNil(YouTubeOfficialPlaybackPolicy.watchURL(for: invalid))
+        }
     }
 
     func testRepeatedSearchAllowsOnlyTheLatestSelection() async throws {
