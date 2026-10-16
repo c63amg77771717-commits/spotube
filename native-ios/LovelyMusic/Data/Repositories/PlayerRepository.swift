@@ -79,37 +79,40 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         videoId: String,
         quality: AudioQuality
     ) async throws -> StreamDescriptor {
-        // The public, credential-free iOS IPA intentionally embeds no InnerTube
-        // playback source keys. Fail before initiating anonymous device-client
-        // probes, and let the UI offer the official YouTube player instead.
-        // Injected fixture PlayerAPIClient implementations remain testable offline.
-        if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration {
-            throw InnerTubeError.sourceNotConfigured
-        }
+        // The user's own session may work without optional fallback client keys.
+        // Do not block the signed-in native playback request before it can run.
         let cpn = generateCPN()
         return try await withTimeout(seconds: 45) { [self] in
-            // Client fallback chain: VISIONOS → ANDROID_VR(session/IOS) → IOS → WEB_REMIX
-            // VISIONOS (ID 101) is preferred: returns hlsManifestUrl with no byte-range limit.
-            // ANDROID_VR label kept for logging; actual client is IOS per playerWithSession().
+            // First use the real IOS session and its available authenticated cookies.
+            // Optional alternate clients must not supersede the user's account.
             var lastPlayabilityReason: String?
             var lastDescriptorError: StreamDescriptorError?
 
-            // Priority 0: VISIONOS — returns HLS manifest for full-song streaming
-            if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
-                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
-                    videoID: videoId, hlsAvailable: true))
-                Log.player.info("[VISIONOS] HLS stream resolved for \(videoId, privacy: .public)")
-                return hlsDesc
-            }
-
-            // Primary: ANDROID_VR with session cookies
+            // Native IOS request with the user's existing session takes priority.
             if let result = try await attemptClientWithRetries(
-                label: "ANDROID_VR(session)", videoId: videoId, cpn: cpn, useSession: true,
+                label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
                 quality: quality,
                 playabilityReason: &lastPlayabilityReason,
                 descriptorError: &lastDescriptorError
             ) {
                 return result
+            }
+
+            // No configured alternate source is not permission to invent a key.
+            // Preserve definitive server authentication/playability failures.
+            if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration {
+                if let reason = lastPlayabilityReason {
+                    throw InnerTubeError.videoUnavailable(reason: reason)
+                }
+                if let lastDescriptorError { throw lastDescriptorError }
+                throw InnerTubeError.sourceNotConfigured
+            }
+
+            // Optional configured HLS fallback.
+            if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
+                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
+                    videoID: videoId, hlsAvailable: true))
+                return hlsDesc
             }
 
             // Reset session before trying fallback clients
@@ -169,7 +172,7 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         playabilityReason: inout String?,
         descriptorError: inout StreamDescriptorError?
     ) async throws -> StreamDescriptor? {
-        for attempt in 0..<Self.maxAttempts {
+        for attempt in 0..<(useSession ? 1 : Self.maxAttempts) {
             if attempt > 0 {
                 let delayMs = Self.backoffDelaysMs[attempt]
                 Log.player.debug(
