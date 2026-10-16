@@ -141,30 +141,30 @@ final class LyricsNativeReceiptTests: XCTestCase {
             XCTAssertFalse(receipt.missingPairKeys.isEmpty)
             XCTAssertTrue(report.failures.isEmpty)
         }
-        // Replay four anonymized real video-title shapes without any live lookup.
-        let mao = try XCTUnwrap(LyricsCanonicalMetadata(.init(
-            title: "毛不易 Mao Buyi《不染 Unsullied》【香蜜沉沉燼如霜主題曲】官方動態歌詞MV(無損高音質) Ashes of Love OST",
+        // Synthetic shape-only regressions. No user-supplied song titles or live HTTP.
+        let bilingualOST = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "甲乙 Sample Singer《雨眠 Dream Rain》【虛構星河劇主題曲】官方動態歌詞MV(無損高音質) Fictional Love OST",
             artist: "", duration: 326, hasYouTubeOrigin: true)))
-        XCTAssertEqual(mao.pair.title, "不染 Unsullied")
-        XCTAssertEqual(mao.pair.artist, "毛不易 Mao Buyi")
-        XCTAssertTrue(mao.explicitTitleVariants.contains("不染"))
-        let davichi = try XCTUnwrap(LyricsCanonicalMetadata(.init(
-            title: "[MV] DAVICHI(다비치) - This Love(이 사랑) l Descendants of the Sun 태양의 후예 OST",
+        XCTAssertEqual(bilingualOST.pair.title, "雨眠 Dream Rain")
+        XCTAssertEqual(bilingualOST.pair.artist, "甲乙 Sample Singer")
+        XCTAssertTrue(bilingualOST.explicitTitleVariants.contains("雨眠"))
+        let koreanOST = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "[MV] SampleDuo(가상가수) - This Light(별빛 노래) l Fictional Drama OST",
             artist: "", duration: 230, hasYouTubeOrigin: true)))
-        XCTAssertEqual(davichi.pair.title, "This Love(이 사랑)")
-        XCTAssertEqual(davichi.pair.artist, "DAVICHI(다비치)")
-        XCTAssertTrue(davichi.explicitTitleVariants.contains("This Love"))
-        XCTAssertTrue(davichi.explicitArtistVariants.contains("다비치"))
-        let friends = try XCTUnwrap(LyricsCanonicalMetadata(.init(
-            title: "Marshmello & Anne-Marie - FRIENDS (Music Video) *OFFICIAL FRIENDZONE ANTHEM*",
+        XCTAssertEqual(koreanOST.pair.title, "This Light(별빛 노래)")
+        XCTAssertEqual(koreanOST.pair.artist, "SampleDuo(가상가수)")
+        XCTAssertTrue(koreanOST.explicitTitleVariants.contains("This Light"))
+        XCTAssertTrue(koreanOST.explicitArtistVariants.contains("가상가수"))
+        let videoAnthem = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "SampleA & SampleB - Together (Music Video) *OFFICIAL FICTIONAL ANTHEM*",
             artist: "", duration: 231, hasYouTubeOrigin: true)))
-        XCTAssertEqual(friends.pair.title, "FRIENDS")
-        XCTAssertEqual(friends.pair.artist, "Marshmello & Anne-Marie")
+        XCTAssertEqual(videoAnthem.pair.title, "Together")
+        XCTAssertEqual(videoAnthem.pair.artist, "SampleA & SampleB")
         let broadcast = try XCTUnwrap(LyricsCanonicalMetadata(.init(
-            title: "[ 纯享 ] 张靓颖《眼泪成诗》《梦想的声音3》EP11 20190104  /浙江卫视官方音乐HD/",
+            title: "[ 纯享 ] 虚构歌手《假想曲》《幻想聲音3》EP11 20190104  /示例电视台官方音乐HD/",
             artist: "", duration: 236, hasYouTubeOrigin: true)))
-        XCTAssertEqual(broadcast.pair.title, "眼泪成诗")
-        XCTAssertEqual(broadcast.pair.artist, "张靓颖")
+        XCTAssertEqual(broadcast.pair.title, "假想曲")
+        XCTAssertEqual(broadcast.pair.artist, "虚构歌手")
         XCTAssertTrue(broadcast.requiresManualIdentityConfirmation)
         XCTAssertEqual(ChineseLyricsMetadataCleaner.preparedTitle("[Unknown] Formal Title"), "[Unknown] Formal Title")
     }
