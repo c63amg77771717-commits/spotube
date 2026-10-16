@@ -57,8 +57,10 @@ final class LrcApiSecondaryRepositoryTests: XCTestCase {
             defer { f.close() }
             do { _ = try await f.lookup(); XCTFail("Unavailable secondary cannot become a successful nil") }
             catch LyricsLookupError.unavailable(let failures) { XCTAssertEqual(failures.last?.providerID, .lrcapi) }
-            XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count,
-                           String(describing: failure).contains("429") ? 1 : 2)
+            let expectedAttempts: Int
+            if case .status(429) = failure { expectedAttempts = 1 }
+            else { expectedAttempts = 2 }
+            XCTAssertEqual(f.requests.filter { $0.url?.host == "api.lrc.cx" }.count, expectedAttempts)
         }
     }
 
