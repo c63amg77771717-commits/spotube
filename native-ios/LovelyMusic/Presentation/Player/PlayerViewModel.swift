@@ -314,8 +314,12 @@ final class PlayerViewModel {
     // listener's manual cover/video choice for the same recording.
     private func requestLyrics(for song: Song) {
         guard currentSong?.id == song.id, lyricsTrackID != song.id else { return }
+        // Reserve synchronously before the task is scheduled to prevent duplicate lookups.
+        let epoch = lyricsGeneration
+        lyricsTrackID = song.id
         Task { [weak self] in
-            guard let self, self.currentSong?.id == song.id, self.lyricsTrackID != song.id else { return }
+            guard let self, self.currentSong?.id == song.id, self.lyricsTrackID == song.id,
+                  self.lyricsGeneration == epoch else { return }
             await self.loadLyrics(for: song)
         }
     }
@@ -333,8 +337,11 @@ final class PlayerViewModel {
     }
 
     func retryLyrics() {
-        guard let song = currentSong else { return }
-        Task { [weak self] in await self?.loadLyrics(for: song) }
+        guard !isLoadingLyrics, let song = currentSong else { return }
+        Task { [weak self] in
+            guard let self, !self.isLoadingLyrics, self.currentSong?.id == song.id else { return }
+            await self.loadLyrics(for: song)
+        }
     }
 
     private func cancelLyricsRequest() {

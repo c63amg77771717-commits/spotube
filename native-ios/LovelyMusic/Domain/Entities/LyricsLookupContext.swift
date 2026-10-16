@@ -137,18 +137,28 @@ struct LyricsCanonicalMetadata {
         creditComponents(artist).map(LyricsLookupMetadata.identityKey)
     }
 
+    /// Per-video evidence only: do not invent an artist alias from other songs.
+    static func verifiedBilingualCreditVariants(_ credit: String) -> [String] {
+        let patterns = [
+            #"^([\p{Han}]{2,})\s+([A-Za-z][A-Za-z .'-]*)$"#,
+            #"^([\p{Han}]{2,})\s*\(([A-Za-z][A-Za-z .'-]{1,64})\)$"#,
+            #"^([A-Za-z][A-Za-z .'-]{1,64})\s*\(([가-힣][가-힣 ]{1,40})\)$"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: credit, range: NSRange(credit.startIndex..., in: credit)),
+                  let first = Range(match.range(at: 1), in: credit),
+                  let second = Range(match.range(at: 2), in: credit) else { continue }
+            return [credit, String(credit[first]), String(credit[second])]
+        }
+        return [credit]
+    }
+
     /// Bilingual equivalents come only from this verified video's explicit credit.
     /// Never infer unrelated aliases or reorder the primary performer.
     private var bilingualCredits: [[String]] {
         guard context.hasYouTubeOrigin else { return [] }
-        let pattern = "^([\\p{Han}]{2,})\\s+([A-Za-z][A-Za-z .'-]*)$"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        return Self.creditComponents(pair.artist).map { credit in
-            guard let match = regex.firstMatch(in: credit, range: NSRange(credit.startIndex..., in: credit)),
-                  let han = Range(match.range(at: 1), in: credit),
-                  let latin = Range(match.range(at: 2), in: credit) else { return [credit] }
-            return [credit, String(credit[han]), String(credit[latin])]
-        }
+        return Self.creditComponents(pair.artist).map(Self.verifiedBilingualCreditVariants)
     }
 
     func performerIdentity(_ token: String) -> String {

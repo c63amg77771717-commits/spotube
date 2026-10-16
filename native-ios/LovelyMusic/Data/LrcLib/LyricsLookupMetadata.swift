@@ -384,6 +384,14 @@ enum LyricsLookupMetadata {
         return credits
     }
 
+    private static func explicitPresentationFooter(_ text: String) -> Bool {
+        guard LyricsCanonicalMetadata.versions(text).isEmpty else { return false }
+        let soundtrack = #"(?i)^\s*【[^】\r\n]{1,80}(?:主題曲|主题曲|片頭曲|片头曲|片尾曲|插曲)】\s*(?:官方(?:動態|动态)?(?:歌詞|歌词)(?:版)?\s*MV)?\s*(?:[（(]無損高音質[）)])?\s*(?:[A-Za-z][A-Za-z ]{2,80}\s+OST)?\s*$"#
+        let broadcast = #"(?i)^\s*《[^《》\r\n]{1,70}》\s*EP\s*\d{1,3}(?:\s*\d{8})?(?:\s*/[^/\r\n]{2,80}/)?\s*$"#
+        return text.range(of: soundtrack, options: .regularExpression) != nil
+            || text.range(of: broadcast, options: .regularExpression) != nil
+    }
+
     static func bracketedVideoCredit(_ input: String) -> Pair? {
         let brackets: [(Character, Character)] = [("《", "》"), ("〈", "〉"), ("『", "』"), ("【", "】"), ("[", "]")]
         let spans = brackets.compactMap { open, close in balancedBracket(open, close, in: input) }
@@ -406,7 +414,7 @@ enum LyricsLookupMetadata {
         let remainder = strippingVideoPresentation(tail, allowEmpty: true).trimmingCharacters(in: .whitespacesAndNewlines)
         // Only a complete named-work role after an explicit song span can be
         // presentation. Unknown prose and version-bearing suffixes survive.
-        let suffix = unbracketedSoundtrackNote(remainder) ? "" : remainder
+        let suffix = (unbracketedSoundtrackNote(remainder) || explicitPresentationFooter(remainder)) ? "" : remainder
         return Pair(title: track + (suffix.isEmpty ? "" : " " + suffix), artist: credit)
     }
 

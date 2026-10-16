@@ -22,6 +22,15 @@ enum ChineseLyricsMetadataCleaner {
             if next == value { break }; value = next
         }
         value = replacing(" [–—－─━] ", in: value, with: " - ")
+        // Explicit video-description suffixes from real diagnostics, never general title words.
+        let videoLabel = #"(?i)\(\s*(?:music\s+video|official\s+(?:music\s+video|mv))\s*\)"#
+        if value.range(of: videoLabel, options: .regularExpression) != nil {
+            value = replacing(#"(?i)\s*\*\s*OFFICIAL\s+[A-Z][A-Z \-]{3,64}\s+(?:ANTHEM|VIDEO|MV)\s*\*\s*$"#, in: value)
+        }
+        if value.range(of: #"\s+-\s+"#, options: .regularExpression) != nil {
+            value = replacing(#"(?i)\s+(?:\||l)\s+[^\r\n|]{4,120}\bOST\s*$"#, in: value)
+        }
+        value = replacing(#"(?i)^\[\s*(?:純享|纯享)\s*\]\s*(?=[\p{Han}]{2,20}《)"#, in: value)
         // Compact Han credits remain two uncertain role hypotheses; this is not a performer assertion.
         value = replacing("^([\\p{Han}]{2,4})\\s*[-–—－]\\s*(?=\\S)", in: value, with: "$1 - ")
         if !suppliedArtist.isEmpty {
@@ -137,6 +146,13 @@ enum ChineseLyricsMetadataCleaner {
            let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
            let han = Range(match.range(at: 1), in: title), let latin = Range(match.range(at: 2), in: title) {
             values += [String(title[han]), String(title[latin])]
+        }
+        let hangulTitle = #"^(.{2,80}?)\s*\(([가-힣][가-힣 ]{1,40})\)$"#
+        if explicit, let regex = try? NSRegularExpression(pattern: hangulTitle),
+           let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
+           let a = Range(match.range(at: 1), in: title),
+           let b = Range(match.range(at: 2), in: title) {
+            values += [String(title[a]).trimmingCharacters(in: .whitespaces), String(title[b])]
         }
         return values
     }

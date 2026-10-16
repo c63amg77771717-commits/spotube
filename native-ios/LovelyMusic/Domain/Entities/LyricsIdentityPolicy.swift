@@ -28,12 +28,7 @@ struct LyricsIdentityDecision {
 enum LyricsIdentityPolicy {
     private static func equivalentCredits(_ left: String, _ right: String, video: Bool) -> Bool {
         func aliases(_ credit: String) -> Set<String> {
-            var values = [credit]
-            if video, let regex = try? NSRegularExpression(pattern: "^([\\p{Han}]{2,})\\s+([A-Za-z][A-Za-z .'-]*)$"),
-               let match = regex.firstMatch(in: credit, range: NSRange(credit.startIndex..., in: credit)),
-               let han = Range(match.range(at: 1), in: credit), let latin = Range(match.range(at: 2), in: credit) {
-                values += [String(credit[han]), String(credit[latin])]
-            }
+            let values = video ? LyricsCanonicalMetadata.verifiedBilingualCreditVariants(credit) : [credit]
             return Set(values.map { LyricsCanonicalMetadata.artistIdentity(LyricsLookupMetadata.identityKey($0)) })
         }
         let lhs = LyricsCanonicalMetadata.creditComponents(left).map(aliases)
@@ -64,8 +59,11 @@ enum LyricsIdentityPolicy {
         // A song span plus an observed presentation label establishes roles more
         // strongly than bare brackets, a dash or uploader text on their own.
         let bounded = explicit != nil && (hasPresentation || supplied) && !conflict
+        // "純享" indicates a broadcast performance, not a guaranteed studio recording.
+        let broadcastPerformance = context.title.range(
+            of: #"(?i)^\s*\[\s*(?:純享|纯享)\s*\]"#, options: .regularExpression) != nil
         let primaryAutomatic = !metadata.pair.artist.isEmpty && !ambiguousOrder && !quoteRemoved
-            && !conflict && (supplied || bounded)
+            && !conflict && !broadcastPerformance && (supplied || bounded)
         let primaryEvidence: LyricsIdentityHypothesis.Evidence = metadata.pair.title == metadata.originalTitle
             && metadata.pair.artist == trusted ? .literal
             : bounded ? .boundedVideoCredit : supplied ? .trustedPerformer : .uncertainCredit
@@ -94,12 +92,9 @@ enum LyricsIdentityPolicy {
 
     private static func performerIdentity(_ token: String, hypothesis: LyricsIdentityHypothesis,
                                           video: Bool) -> String {
-        if video, let regex = try? NSRegularExpression(pattern: "^([\\p{Han}]{2,})\\s+([A-Za-z][A-Za-z .'-]*)$") {
+        if video {
             for credit in LyricsCanonicalMetadata.creditComponents(hypothesis.pair.artist) {
-                guard let match = regex.firstMatch(in: credit, range: NSRange(credit.startIndex..., in: credit)),
-                      let han = Range(match.range(at: 1), in: credit),
-                      let latin = Range(match.range(at: 2), in: credit) else { continue }
-                let keys = [credit, String(credit[han]), String(credit[latin])].map(LyricsLookupMetadata.identityKey)
+                let keys = LyricsCanonicalMetadata.verifiedBilingualCreditVariants(credit).map(LyricsLookupMetadata.identityKey)
                 if keys.contains(token) { return LyricsCanonicalMetadata.artistIdentity(keys[0]) }
             }
         }

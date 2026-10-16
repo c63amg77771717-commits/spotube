@@ -141,6 +141,32 @@ final class LyricsNativeReceiptTests: XCTestCase {
             XCTAssertFalse(receipt.missingPairKeys.isEmpty)
             XCTAssertTrue(report.failures.isEmpty)
         }
+        // Replay four anonymized real video-title shapes without any live lookup.
+        let mao = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "毛不易 Mao Buyi《不染 Unsullied》【香蜜沉沉燼如霜主題曲】官方動態歌詞MV(無損高音質) Ashes of Love OST",
+            artist: "", duration: 326, hasYouTubeOrigin: true)))
+        XCTAssertEqual(mao.pair.title, "不染 Unsullied")
+        XCTAssertEqual(mao.pair.artist, "毛不易 Mao Buyi")
+        XCTAssertTrue(mao.explicitTitleVariants.contains("不染"))
+        let davichi = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "[MV] DAVICHI(다비치) - This Love(이 사랑) l Descendants of the Sun 태양의 후예 OST",
+            artist: "", duration: 230, hasYouTubeOrigin: true)))
+        XCTAssertEqual(davichi.pair.title, "This Love(이 사랑)")
+        XCTAssertEqual(davichi.pair.artist, "DAVICHI(다비치)")
+        XCTAssertTrue(davichi.explicitTitleVariants.contains("This Love"))
+        XCTAssertTrue(davichi.explicitArtistVariants.contains("다비치"))
+        let friends = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "Marshmello & Anne-Marie - FRIENDS (Music Video) *OFFICIAL FRIENDZONE ANTHEM*",
+            artist: "", duration: 231, hasYouTubeOrigin: true)))
+        XCTAssertEqual(friends.pair.title, "FRIENDS")
+        XCTAssertEqual(friends.pair.artist, "Marshmello & Anne-Marie")
+        let broadcast = try XCTUnwrap(LyricsCanonicalMetadata(.init(
+            title: "[ 纯享 ] 张靓颖《眼泪成诗》《梦想的声音3》EP11 20190104  /浙江卫视官方音乐HD/",
+            artist: "", duration: 236, hasYouTubeOrigin: true)))
+        XCTAssertEqual(broadcast.pair.title, "眼泪成诗")
+        XCTAssertEqual(broadcast.pair.artist, "张靓颖")
+        XCTAssertTrue(broadcast.requiresManualIdentityConfirmation)
+        XCTAssertEqual(ChineseLyricsMetadataCleaner.preparedTitle("[Unknown] Formal Title"), "[Unknown] Formal Title")
     }
 
     func testCancellationBeforeUpstreamRetainsActualPartialThrottle() async throws { try await cancellation(duringNetwork: false) }
