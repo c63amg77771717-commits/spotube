@@ -219,27 +219,19 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertTrue(PlaybackErrorCategory.songRemoved.permitsReplacementSearch)
         XCTAssertTrue(PlaybackErrorCategory.regionBlocked.permitsReplacementSearch)
 
-        // Official fallback always stays on youtube.com and only accepts a
-        // verified 11-character video ID. No extracted stream or credentials.
-        XCTAssertEqual(YouTubeOfficialPlaybackPolicy.watchURL(for: "AAAAAAAAAAA")?.absoluteString,
-                       "https://www.youtube.com/watch?v=AAAAAAAAAAA")
-        XCTAssertEqual(YouTubeOfficialPlaybackPolicy.watchURL(for: "BBBBBBBBBBB")?.host, "www.youtube.com")
-        for invalid in ["", "AAAAAAAAAA", "https://evil.example/a", "漢漢漢漢漢漢漢漢漢漢漢", "A&B=C", "AAAAAAAAAAA/evil"] {
-            XCTAssertNil(YouTubeOfficialPlaybackPolicy.watchURL(for: invalid))
-        }
-
-        // Public IPA carries no private playback source configuration.
-        // A real InnerTube repository must not send any client/player requests.
-        if !SecretsProvider.hasPlayerSourceConfiguration {
-            let repository = PlayerRepository(api: InnerTubeAPI())
-            do {
-                _ = try await repository.resolveStreamDescriptor(
-                    videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
-                XCTFail("Unconfigured playback must stop locally, not attempt the network")
-            } catch InnerTubeError.sourceNotConfigured {
-                // Expected immediately before any network call.
-            }
-        }
+        // Native playback authenticates with the existing user-issued session.
+        // No authorization may be synthesized for an unauthenticated request.
+        XCTAssertNil(YouTubeAuthManager.sessionAuthorizationHeader(
+            cookieHeader: nil, origin: "https://www.youtube.com", timestamp: 1234))
+        XCTAssertNil(YouTubeAuthManager.sessionAuthorizationHeader(
+            cookieHeader: "SID=synthetic", origin: "https://www.youtube.com", timestamp: 1234))
+        let signed = YouTubeAuthManager.sessionAuthorizationHeader(
+            cookieHeader: "SID=synthetic; SAPISID=fixture-only",
+            origin: "https://www.youtube.com", timestamp: 1234)
+        XCTAssertTrue(signed?.hasPrefix("SAPISIDHASH 1234_") == true)
+        XCTAssertFalse(signed?.contains("fixture-only") == true)
+        XCTAssertNil(YouTubeAuthManager.sessionAuthorizationHeader(
+            cookieHeader: "SAPISID=fixture-only", origin: "https://evil.invalid", timestamp: 1234))
     }
 
     func testRepeatedSearchAllowsOnlyTheLatestSelection() async throws {
