@@ -249,6 +249,14 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         let player = try await api.playerWithSession(videoId: "AAAAAAAAAAA")
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: player) as? [String: Any])
         XCTAssertEqual((object["playabilityStatus"] as? [String: String])?["status"], "OK")
+        // End-to-end from the native IOS session through AVPlayer's stream
+        // descriptor path, with every network call intercepted locally.
+        let repository = PlayerRepository(api: api)
+        let descriptor = try await repository.resolveStreamDescriptor(
+            videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
+        XCTAssertEqual(descriptor.videoID, "AAAAAAAAAAA")
+        XCTAssertEqual(descriptor.remoteURL.host, "cdn.example")
+        XCTAssertEqual(descriptor.mimeType, "audio/mp4")
     }
 
     func testRepeatedSearchAllowsOnlyTheLatestSelection() async throws {
@@ -311,8 +319,9 @@ private final class NativePlaybackAuthFixture: URLProtocol {
         let response = HTTPURLResponse(url: url, statusCode: 200,
                                        httpVersion: nil, headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        let bytes = isPlayer ? #"{"playabilityStatus":{"status":"OK"}}"#
-                             : #"<html><script>{"visitorData":"fixture"}</script></html>"#
+        let bytes = isPlayer
+            ? #"{"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[{"itag":140,"url":"https://cdn.example/descriptor.mp4","mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","bitrate":128000,"contentLength":"4000000","approxDurationMs":"245678","initRange":{"start":"0","end":"699"},"indexRange":{"start":"700","end":"1199"}}]}}"#
+            : #"<html><script>{"visitorData":"fixture"}</script></html>"#
         client?.urlProtocol(self, didLoad: Data(bytes.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
