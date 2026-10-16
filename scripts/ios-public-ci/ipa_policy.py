@@ -31,27 +31,29 @@ def validate_workflow_values(main, child):
     require(json.dumps(child, sort_keys=True) == json.dumps(EXPECTED_CHILD, sort_keys=True))
 
 def validate_verification_recovery(repo):
-    """Public IPA may not retry a known authentication gate or invent a provider."""
-    sources = {
+    """Require signed, in-app native playback before optional fallback clients."""
+    paths = {
         'repository': 'native-ios/LovelyMusic/Data/Repositories/PlayerRepository.swift',
-        'routing': 'native-ios/LovelyMusic/Domain/Entities/PlaybackSourceReplacement.swift',
-        'ui': 'native-ios/LovelyMusic/Presentation/Player/FullPlayerView.swift',
-        'web': 'native-ios/LovelyMusic/Presentation/Player/YouTubePlaybackWebView.swift',
+        'api': 'native-ios/LovelyMusic/InnerTube/InnerTube.swift',
+        'auth': 'native-ios/LovelyMusic/Core/Auth/YouTubeAuthManager.swift',
+        'view': 'native-ios/LovelyMusic/Presentation/Player/FullPlayerView.swift',
         'tests': 'native-ios/EvanTubeTests/PlaybackSourceReplacementTests.swift',
     }
     try:
-        code = {name: (repo / path).read_text(encoding='utf8') for name, path in sources.items()}
+        src = {k: (repo / path).read_text(encoding='utf8') for k, path in paths.items()}
     except OSError:
-        raise PolicyBlocked('PUBLIC_IPA_OFFICIAL_YOUTUBE_RECOVERY_BLOCKED') from None
-    require('api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration' in code['repository'])
-    require('throw InnerTubeError.sourceNotConfigured' in code['repository'])
-    require('throw InnerTubeError.videoUnavailable(reason: failure.reason)' in code['repository'])
-    require('components.host = "www.youtube.com"' in code['routing'])
-    require('PlaybackSourceReplacementPolicy.isVideoID(videoID)' in code['routing'])
-    require('youtube_official_playback' in code['ui'])
-    require('openURL(url)' in code['ui'])
-    require('YouTubeOfficialPlaybackPolicy.watchURL' in code['web'])
-    require('YouTubeOfficialPlaybackPolicy.watchURL' in code['tests'])
+        raise PolicyBlocked('PUBLIC_IPA_NATIVE_AUTH_BLOCKED') from None
+    require('label: "IOS(session)"' in src['repository'])
+    require('let cpn = generateCPN()' in src['repository'])
+    require('if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration' in src['repository'])
+    require('throw InnerTubeError.videoUnavailable(reason: failure.reason)' in src['repository'])
+    require('sessionAuthorizationHeader(' in src['api'])
+    require('YouTubeAuthManager.sessionAuthorizationHeader' in src['api'])
+    require('static func sessionAuthorizationHeader(' in src['auth'])
+    require('YouTubeLoginView(authManager:' in src['view'])
+    require('youtube_official_playback' not in src['view'])
+    require('YouTubeOfficialPlaybackPolicy' not in src['tests'])
+    require('SAPISIDHASH 1234_' in src['tests'])
 
 def validate_no_lyrics_application(repo):
     """Fail closed if playback restores a lyric request, UI entry, or live provider."""
