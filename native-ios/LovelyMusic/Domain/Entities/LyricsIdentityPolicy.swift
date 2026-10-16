@@ -125,6 +125,24 @@ enum LyricsIdentityPolicy {
         return values
     }
 
+    /// Remove an optional standalone soundtrack role only when the selected
+    /// video itself explicitly states a soundtrack role. Never normalize live,
+    /// remix, alternate singers, or an unrelated parenthesized subtitle.
+    private static func matchingCandidateTitle(_ candidate: String, metadata: LyricsCanonicalMetadata) -> String {
+        var title = metadata.context.hasYouTubeOrigin
+            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(candidate))
+            : candidate
+        guard metadata.context.hasYouTubeOrigin,
+              metadata.context.title.range(of: #"(?i)(?:主題曲|主题曲|\\bOST\\b)"#, options: .regularExpression) != nil
+        else { return title }
+        let role = #"(?i)\\s*[（(]\\s*(?:主題曲|主题曲|OST)\\s*[）)]\\s*$"#
+        if let range = title.range(of: role, options: .regularExpression) {
+            let base = String(title[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !base.isEmpty { title = base }
+        }
+        return title
+    }
+
     /// Complete source/candidate field agreement before any score can remove a
     /// direction cap. Provider metadata does not invent missing source credits.
     static func hasCompleteDirectionIdentity(_ candidate: LyricsCandidate, hypothesis: LyricsIdentityHypothesis,
@@ -135,8 +153,7 @@ enum LyricsIdentityPolicy {
         let expected = Set(expectedTokens)
         guard !expected.isEmpty, expected.count == expectedTokens.count else { return false }
         for view in candidateViews(candidate) {
-            let title = metadata.context.hasYouTubeOrigin
-                ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(view.title)) : view.title
+            let title = matchingCandidateTitle(view.title, metadata: metadata)
             let actualTokens = LyricsCanonicalMetadata.tokens(view.artist).map(identity)
             guard expected == Set(actualTokens), actualTokens.count == expected.count,
                   hasOrderedCredit(hypothesis.pair.artist) == hasOrderedCredit(view.artist),
@@ -182,8 +199,7 @@ enum LyricsIdentityPolicy {
         // Later literal/role probes must not overwrite the derived identity's rejection.
         var rejection: LyricsLookupDiagnostics.Reason?
         for view in candidateViews(candidate) {
-        let title = metadata.context.hasYouTubeOrigin
-            ? LyricsLookupMetadata.strippingVideoPresentation(LyricsCanonicalMetadata.presentationTitle(view.title)) : view.title
+        let title = matchingCandidateTitle(view.title, metadata: metadata)
         for hypothesis in metadata.hypotheses {
             let identity: (String) -> String = { performerIdentity($0, hypothesis: hypothesis, video: metadata.context.hasYouTubeOrigin) }
             let duetCredits = LyricsLookupMetadata.corroboratedDuetCredits(context: metadata.context, pair: hypothesis.pair, returnedArtist: view.artist)

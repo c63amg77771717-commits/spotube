@@ -148,6 +148,12 @@ final class LyricsNativeReceiptTests: XCTestCase {
         XCTAssertEqual(bilingualOST.pair.title, "雨眠 Dream Rain")
         XCTAssertEqual(bilingualOST.pair.artist, "甲乙 Sample Singer")
         XCTAssertTrue(bilingualOST.explicitTitleVariants.contains("雨眠"))
+        let soundtrackCandidate = LyricsCandidate(
+            id: .init(providerID: .lrclib, recordID: "synthetic-role-1"),
+            title: "雨眠 (主题曲)", artist: "甲乙", duration: 326,
+            lyrics: .init(lines: [.init(time: 1, text: "Synthetic note"),
+                                  .init(time: 2, text: "Synthetic line")], source: "Synthetic"))
+        XCTAssertNotEqual(LyricsIdentityPolicy.decision(soundtrackCandidate, metadata: bilingualOST).kind, .rejected)
         let koreanOST = try XCTUnwrap(LyricsCanonicalMetadata(.init(
             title: "[MV] SampleDuo(가상가수) - This Light(별빛 노래) l Fictional Drama OST",
             artist: "", duration: 230, hasYouTubeOrigin: true)))
