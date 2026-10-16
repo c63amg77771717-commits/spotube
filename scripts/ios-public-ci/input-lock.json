@@ -7,7 +7,7 @@
     "native-ios/EvanTubeTests/Fixtures/fixed_lyrics_batch2.json": "173259952d8d444dbb9be968634fbd78a05c1dce40f5331e58d16160aaadf228",
     "native-ios/EvanTubeTests/LyricsDirectionRepositoryClosureTests.swift": "375e613347eb92e56058670eae8bf603056fc441e55531fbbb29e48d61463a3e",
     "native-ios/EvanTubeTests/LyricsLiveReceiptSupport.swift": "f4037e0112a8d17e9f992621898c627a0ff961b4a88b272e2ce6361ad3bac48f",
-    "native-ios/EvanTubeTests/LyricsNativeReceiptTests.swift": "6319611cb495547583c9fbec4f4dac50a27f2e051b9c19e7bb857098b858951b",
+    "native-ios/EvanTubeTests/LyricsNativeReceiptTests.swift": "82719fc429cdd638e81a72e5c0c2d01b34234dfc4ac77b1fcbfdcc9c013673ef",
     "native-ios/EvanTubeTests/LyricsPublicBoundaryTests.swift": "5531abedfdb6bee2be015cd82fea768d7f45e0097b553899847817512ed0b950",
     "native-ios/LovelyMusic/App/AppConstants.swift": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "native-ios/LovelyMusic/App/AppDelegate.swift": "dbdcc6e80eae4f2ca635a23461108e73626a830fc7531ccdddda84f560dba197",
