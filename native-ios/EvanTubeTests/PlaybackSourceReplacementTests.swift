@@ -203,7 +203,7 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertNil(engine.sourcePreparedSong(fresh).streamURL)
     }
 
-    func testGlobalFailureCategoriesDoNotOfferSongInvalidation() {
+    func testGlobalFailureCategoriesDoNotOfferSongInvalidation() async throws {
         for message in ["verificationRequired", "LOGIN_REQUIRED: verificationRequired",
                         "Sign in to confirm you\'re not a bot"] {
             XCTAssertEqual(PlaybackErrorCategory.classify(message), .verificationRequired)
@@ -226,6 +226,19 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(YouTubeOfficialPlaybackPolicy.watchURL(for: "BBBBBBBBBBB")?.host, "www.youtube.com")
         for invalid in ["", "AAAAAAAAAA", "https://evil.example/a", "漢漢漢漢漢漢漢漢漢漢漢", "A&B=C", "AAAAAAAAAAA/evil"] {
             XCTAssertNil(YouTubeOfficialPlaybackPolicy.watchURL(for: invalid))
+        }
+
+        // Public IPA carries no private playback source configuration.
+        // A real InnerTube repository must not send any client/player requests.
+        if !SecretsProvider.hasPlayerSourceConfiguration {
+            let repository = PlayerRepository(api: InnerTubeAPI())
+            do {
+                _ = try await repository.resolveStreamDescriptor(
+                    videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
+                XCTFail("Unconfigured playback must stop locally, not attempt the network")
+            } catch InnerTubeError.sourceNotConfigured {
+                // Expected immediately before any network call.
+            }
         }
     }
 
