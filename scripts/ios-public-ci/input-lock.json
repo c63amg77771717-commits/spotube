@@ -91,7 +91,7 @@
     "native-ios/LovelyMusic/Data/Repositories/PlayerRepository.swift": "f4c4543d11675e3556d7b184e319539c71de5da60c27319dd432c226462793cc",
     "native-ios/LovelyMusic/Data/Repositories/PremiumRepository.swift": "f0b5f83d5de5b2f3ff7b6b3ab624cc517a5100603f0f5075d960ee1a1a8e29e3",
     "native-ios/LovelyMusic/Data/Repositories/PushTokenRepository.swift": "685ed5cf8e9c36561dd1fdb2857096e22d9e07f00ce87033d337470e453b3e3f",
-    "native-ios/LovelyMusic/Data/Services/PublicSourceRequest.swift": "7d40435582721f81f770d6d5a66014243b3770e4c1a425b4f9853c8af4c5a912",
+    "native-ios/LovelyMusic/Data/Services/PublicSourceRequest.swift": "fc2d79d4b222b7a99067dc50e1ba2e955564006971e9ab7decb3babdc1206845",
     "native-ios/LovelyMusic/Data/Services/YouTubeSearchKeyStore.swift": "007705de2ccf71a2a152055fd08dd23df28c249b9483be3eb4c55009ac4e927e",
     "native-ios/LovelyMusic/Data/Services/YouTubeSearchService.swift": "cbe7391fe4e888ff4fcd6779810c17943398afcca0b43c293a62ac751764e85e",
     "native-ios/LovelyMusic/Data/Sync/DrivePlaylistJournal.swift": "56379273fb6b5a9898f7c5840436ea53fa00cdc3838a29d58baef782e59c3adf",
