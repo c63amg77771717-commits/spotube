@@ -19,19 +19,6 @@ struct PlaybackSourceCandidate: Identifiable {
     var id: String { song.id }
 }
 
-/// A user-initiated, visible official YouTube watch page.
-enum YouTubeOfficialPlaybackPolicy {
-    static func watchURL(for videoID: String) -> URL? {
-        guard PlaybackSourceReplacementPolicy.isVideoID(videoID) else { return nil }
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "www.youtube.com"
-        components.path = "/watch"
-        components.queryItems = [URLQueryItem(name: "v", value: videoID)]
-        return components.url
-    }
-}
-
 enum PlaybackSourceReplacementPolicy {
     static func query(for song: Song) -> String {
         [song.artistName, song.title].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
