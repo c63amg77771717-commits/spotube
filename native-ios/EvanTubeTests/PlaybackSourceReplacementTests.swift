@@ -257,6 +257,25 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(descriptor.videoID, "AAAAAAAAAAA")
         XCTAssertEqual(descriptor.remoteURL.host, "cdn.example")
         XCTAssertEqual(descriptor.mimeType, "audio/mp4")
+        // Build27 field diagnostic: IOS(session) answered HTTP 400 despite a
+        // valid watch session. An available, in-app HTTPS HLS stream must be
+        // usable without configured optional client keys.
+        let hlsRecovered = try await PlayerRepository(api: NativeSessionHTTP400HLSFixture(
+            hlsAvailable: true
+        )).resolveStreamDescriptor(videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
+        XCTAssertEqual(hlsRecovered.remoteURL.absoluteString, "https://cdn.example/audio.m3u8")
+        XCTAssertEqual(hlsRecovered.mimeType, "application/x-mpegURL")
+
+        // If no HLS is available either, the original HTTP 400 is the real
+        // error. The UI must not receive sourceNotConfigured instead.
+        do {
+            _ = try await PlayerRepository(api: NativeSessionHTTP400HLSFixture(
+                hlsAvailable: false
+            )).resolveStreamDescriptor(videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
+            XCTFail("Original IOS HTTP 400 must be preserved")
+        } catch InnerTubeError.httpError(let status) {
+            XCTAssertEqual(status, 400)
+        }
     }
 
     func testRepeatedSearchAllowsOnlyTheLatestSelection() async throws {
@@ -326,4 +345,24 @@ private final class NativePlaybackAuthFixture: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
     override func stopLoading() {}
+}
+
+/// Offline-only native playback probe, including an actual HTTP 400 from the
+/// first client and an independently available HLS response. No live traffic.
+private struct NativeSessionHTTP400HLSFixture: PlayerAPIClient {
+    let hlsAvailable: Bool
+
+    func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {
+        throw InnerTubeError.httpError(statusCode: 400)
+    }
+    func player(client: YouTubeClient, videoId: String, playlistId: String?) async throws -> Data {
+        throw InnerTubeError.httpError(statusCode: 403)
+    }
+    func playerWithVisionOS(videoId: String) async throws -> Data {
+        if hlsAvailable {
+            return Data(#"{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://cdn.example/audio.m3u8"}}"#.utf8)
+        }
+        return Data(#"{"playabilityStatus":{"status":"ERROR"}}"#.utf8)
+    }
+    func resetSession() async {}
 }
