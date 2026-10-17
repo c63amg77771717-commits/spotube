@@ -468,7 +468,8 @@ struct FullPlayerView: View {
                             .buttonStyle(.bouncy)
                         }
                         if (playerVM.streamErrorCategory == .authRequired
-                            || playerVM.streamErrorCategory == .verificationRequired),
+                            || playerVM.streamErrorCategory == .verificationRequired
+                            || playerVM.streamErrorCategory == .requestRejected),
                            featureFlags.isYouTubeAuthEnabled {
                             Button {
                                 showYouTubeLogin = true
