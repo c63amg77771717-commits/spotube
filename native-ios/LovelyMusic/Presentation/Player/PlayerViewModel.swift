@@ -10,6 +10,7 @@ enum PlaybackErrorCategory: Equatable {
     case regionBlocked
     case songRemoved
     case serverError
+    case requestRejected
     case authRequired
     case verificationRequired
     case sourceNotConfigured
@@ -20,6 +21,9 @@ enum PlaybackErrorCategory: Equatable {
         if lower.contains("sourcenotconfigured") || lower.contains("online source is not configured")
             || lower.contains("尚未設定線上音源") {
             return .sourceNotConfigured
+        }
+        if lower.contains("http") && lower.contains("400") {
+            return .requestRejected
         }
         if ["verificationrequired", "verification required", "not a bot", "不是機器人", "不是机器人"].contains(where: lower.contains) {
             return .verificationRequired
@@ -59,6 +63,7 @@ enum PlaybackErrorCategory: Equatable {
         case .regionBlocked: return "globe.badge.chevron.backward"
         case .songRemoved: return "trash.circle"
         case .serverError: return "exclamationmark.icloud"
+        case .requestRejected: return "exclamationmark.triangle"
         case .authRequired: return "person.crop.circle.badge.exclamationmark"
         case .verificationRequired: return "checkmark.shield"
         case .sourceNotConfigured: return "gearshape"
@@ -72,6 +77,7 @@ enum PlaybackErrorCategory: Equatable {
         case .regionBlocked: return LocalizationManager.text("Not Available in Your Region")
         case .songRemoved: return LocalizationManager.text("Song No Longer Available")
         case .serverError: return LocalizationManager.text("Server Error")
+        case .requestRejected: return "原生播放請求遭拒"
         case .authRequired: return LocalizationManager.text("Sign In Required")
         case .verificationRequired: return "YouTube 播放驗證"
         case .sourceNotConfigured: return LocalizationManager.text("Online source is not configured")
@@ -85,6 +91,7 @@ enum PlaybackErrorCategory: Equatable {
         case .regionBlocked: return LocalizationManager.text("This content is restricted in your area")
         case .songRemoved: return LocalizationManager.text("This song has been removed from the catalog")
         case .serverError: return LocalizationManager.text("Please try again later")
+        case .requestRejected: return "YouTube 回傳 HTTP 400。App 已嘗試 HLS 備援，請檢查登入狀態或匯出播放診斷。"
         case .authRequired: return LocalizationManager.text("Sign in to YouTube to access this content")
         case .verificationRequired:
             return "YouTube 尚未接受目前的原生播放工作階段。請在 EvanTube 確認登入狀態，若持續失敗請匯出播放診斷。"
@@ -243,7 +250,7 @@ final class PlayerViewModel {
         guard retryCount < maxRetries, currentSong != nil else { return false }
         // These are global service or client-configuration failures, not a
         // transient broken recording; offer the official web player instead.
-        return ![.authRequired, .verificationRequired, .sourceNotConfigured, .serverError]
+        return ![.authRequired, .verificationRequired, .sourceNotConfigured, .serverError, .requestRejected]
             .contains(where: { $0 == streamErrorCategory })
     }
 
@@ -748,6 +755,7 @@ final class PlayerViewModel {
                 && currentSong != nil
                 && category != .sourceNotConfigured && category != .verificationRequired
                 && category != .authRequired && category != .noInternet && category != .serverError
+                && category != .requestRejected
             // One bounded automatic retry is still resolving this attempt.
             // Preserve the engine diagnostic, but do not render it as a final UI failure.
             streamError = retryIsPending ? nil : userReadableError(from: error)
@@ -757,7 +765,7 @@ final class PlayerViewModel {
                 return
             }
             // Service-wide failures are not evidence that this song or queue is invalid.
-            if category == .noInternet || category == .serverError {
+            if category == .noInternet || category == .serverError || category == .requestRejected {
                 autoSkipTask?.cancel()
                 return
             }
@@ -1002,6 +1010,8 @@ final class PlayerViewModel {
             return PlaybackErrorCategory.songRemoved.action
         case .serverError:
             return PlaybackErrorCategory.serverError.action
+        case .requestRejected:
+            return PlaybackErrorCategory.requestRejected.action
         case .sourceNotConfigured:
             return PlaybackErrorCategory.sourceNotConfigured.action
         case .unknown:
