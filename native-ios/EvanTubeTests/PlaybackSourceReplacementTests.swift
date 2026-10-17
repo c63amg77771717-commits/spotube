@@ -261,17 +261,17 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(descriptor.remoteURL.host, "cdn.example")
         XCTAssertEqual(descriptor.mimeType, "audio/mp4")
         // The rendered iOS Control Center must be bound to this AVPlayer.
-        let player = AVPlayer()
+        let nowPlayingAVPlayer = AVPlayer()
         let nowPlaying = NowPlayingManager()
-        let session = nowPlaying.attachPlayer(player)
-        XCTAssertTrue(session.players.first === player)
-        XCTAssertFalse(session.automaticallyPublishesNowPlayingInfo)
+        let mediaSession = nowPlaying.attachPlayer(nowPlayingAVPlayer)
+        XCTAssertTrue(mediaSession.players.first === nowPlayingAVPlayer)
+        XCTAssertFalse(mediaSession.automaticallyPublishesNowPlayingInfo)
         let commands = RemoteCommandManager()
-        commands.bind(session: session)
-        XCTAssertTrue(session.remoteCommandCenter.playCommand.isEnabled)
-        XCTAssertTrue(session.remoteCommandCenter.nextTrackCommand.isEnabled)
+        commands.bind(session: mediaSession)
+        XCTAssertTrue(mediaSession.remoteCommandCenter.playCommand.isEnabled)
+        XCTAssertTrue(mediaSession.remoteCommandCenter.nextTrackCommand.isEnabled)
         commands.tearDown()
-        session.nowPlayingInfoCenter.nowPlayingInfo = nil
+        mediaSession.nowPlayingInfoCenter.nowPlayingInfo = nil
         // Build27 field diagnostic: IOS(session) answered HTTP 400 despite a
         // valid watch session. An available, in-app HTTPS HLS stream must be
         // usable without configured optional client keys.
