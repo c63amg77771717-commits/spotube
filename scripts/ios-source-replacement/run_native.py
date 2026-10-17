@@ -44,16 +44,16 @@ def main():
                 log = log_file.read_text(encoding='utf8', errors='replace')
                 allowed_files = {p.name for folder in ('LovelyMusic', 'EvanTubeTests')
                                  for p in (REPO / 'native-ios' / folder).rglob('*.swift')}
-                errors = re.findall(r'([A-Za-z_][A-Za-z0-9_]+\\.swift):(\\d+):(\\d+):\\s*error:', log)
+                errors = re.findall(r'([A-Za-z_][A-Za-z0-9_]+\.swift):(\d+):(\d+):\s*error:', log)
                 checked = sorted({f'{filename}:{line}' for filename, line, _ in errors
                                   if filename in allowed_files})
                 if checked:
                     print('SYNTHETIC_SWIFT_COMPILER_LOCATIONS=' + ','.join(checked[:8]), file=sys.stderr)
-                allowed_tests = set(re.findall(r'func (test[A-Za-z0-9_]+)\\s*\\(',
+                allowed_tests = set(re.findall(r'func (test[A-Za-z0-9_]+)\s*\(',
                     (REPO / 'native-ios/EvanTubeTests/PlaybackSourceReplacementTests.swift')
                     .read_text(encoding='utf8')))
                 failures = sorted({name for name in allowed_tests
-                                   if re.search(r'Test Case [^\\n]*' + re.escape(name) + r'[^\\n]*failed', log)})
+                                   if re.search(r'Test Case [^\n]*' + re.escape(name) + r'[^\n]*failed', log)})
                 if failures:
                     print('SYNTHETIC_FAILED_PUBLIC_TESTS=' + ','.join(failures), file=sys.stderr)
                 if not checked and not failures:
