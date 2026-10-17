@@ -14,10 +14,11 @@ final class PlaybackDiagnostics: @unchecked Sendable {
     enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, musicRefresh, persisted, generated, appFallback }
     enum QueueSource: String, Codable, Sendable { case userQueue, autoplay }
     enum Reason: String, Codable, Sendable {
-        case verificationRequired, signInRequired, regionRestricted, unavailable, sourceNotConfigured, cancelled, network, other
+        case verificationRequired, signInRequired, regionRestricted, unavailable, sourceNotConfigured, badRequest, cancelled, network, other
 
         static func classify(_ message: String) -> Self {
             let text = message.lowercased()
+            if text.contains("http") && text.contains("400") { return .badRequest }
             if ["verificationrequired", "verification required", "not a bot", "不是機器人", "不是机器人"].contains(where: text.contains) { return .verificationRequired }
             if ["login_required", "sign in", "login", "登入", "登录"].contains(where: text.contains) { return .signInRequired }
             if ["sourcenotconfigured", "source not configured", "尚未設定線上音源"].contains(where: text.contains) { return .sourceNotConfigured }
