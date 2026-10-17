@@ -35,6 +35,34 @@ def main():
         print('SOURCE_REPLACEMENT_SYNTHETIC_PASS nativeTests=17 liveQueries=0 humanVerification=NOT_RUN packageBuilt=false')
         return 0
     except Exception:
+        # Emit only source-file basenames and locations from checked-in Swift
+        # source, or allowlisted synthetic test method names. Do not print raw
+        # compiler messages, assertion values, user data, URLs or xcresults.
+        try:
+            log_file = pathlib.Path(os.environ['RUNNER_TEMP']) / 'evantube-source-replacement/native-local-only.log'
+            if log_file.exists():
+                log = log_file.read_text(encoding='utf8', errors='replace')
+                allowed_files = {p.name for folder in ('LovelyMusic', 'EvanTubeTests')
+                                 for p in (REPO / 'native-ios' / folder).rglob('*.swift')}
+                errors = re.findall(r'([A-Za-z_][A-Za-z0-9_]+\\.swift):(\\d+):(\\d+):\\s*error:', log)
+                checked = sorted({f'{filename}:{line}' for filename, line, _ in errors
+                                  if filename in allowed_files})
+                if checked:
+                    print('SYNTHETIC_SWIFT_COMPILER_LOCATIONS=' + ','.join(checked[:8]), file=sys.stderr)
+                allowed_tests = set(re.findall(r'func (test[A-Za-z0-9_]+)\\s*\\(',
+                    (REPO / 'native-ios/EvanTubeTests/PlaybackSourceReplacementTests.swift')
+                    .read_text(encoding='utf8')))
+                failures = sorted({name for name in allowed_tests
+                                   if re.search(r'Test Case [^\\n]*' + re.escape(name) + r'[^\\n]*failed', log)})
+                if failures:
+                    print('SYNTHETIC_FAILED_PUBLIC_TESTS=' + ','.join(failures), file=sys.stderr)
+                if not checked and not failures:
+                    group = ('SWIFT_COMPILATION' if 'SwiftCompile' in log or 'SwiftEmitModule' in log
+                             else 'TEST_EXECUTION' if 'Test Case' in log
+                             else 'XCODEBUILD_OR_ENVIRONMENT')
+                    print('SYNTHETIC_FAILURE_PHASE=' + group, file=sys.stderr)
+        except Exception:
+            pass
         print('SOURCE_REPLACEMENT_BLOCKED_OR_FAILED; detailed output remains runner-local', file=sys.stderr)
         return 1
 
