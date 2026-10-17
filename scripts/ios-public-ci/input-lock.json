@@ -338,7 +338,7 @@
     "scripts/ios-source-replacement/run_native.py": "f065661b08aa137d48e25817a8890e5c2fbf6a86a8f86dcdc4461332132d1d50",
     "native-ios/project.yml": "7f9eb2c540c18cb325e61e0efd64c19918a796e5b21be4d6cbb154111f363989",
     "native-ios/public-ipa-project.json": "1e75cfedcedc7a66285ad7ce44eb48dd1e9412ebf98ed56ad82cb6bb34007dc9",
-    "scripts/ios-public-ci/ipa_policy.py": "996f09e7babe7da7ac51c28ee9afbb8fe0d22e7caa745f153ead6a3c33d4e884",
+    "scripts/ios-public-ci/ipa_policy.py": "bb4b8eb1ef15b9957dab10c0caaabccf0fb3da4fa70a36b91ea99d95438ad930",
     "scripts/ios-public-ci/build_ipa.py": "74e2240512502a7403ced33783d410d813a92a9a52204e265b0491c49a78b91d",
     "scripts/ios-public-ci/ipa_policy_tests.py": "8aa044928f89c0318448f8c54b774be41fb9e109706f7a27cf9ca708cbb9fd96",
     ".github/workflows/evantube-public-unsigned-ipa.yml": "a8d4d993cfb3b42623e5cdc3439094be0a743f36bd259b253b134bb85e143132"
