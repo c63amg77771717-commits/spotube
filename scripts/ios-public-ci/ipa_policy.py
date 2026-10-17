@@ -53,7 +53,7 @@ def validate_system_player_controls(repo):
     require('nowPlayingManager.activateForCurrentPlayback()' in source['engine'])
     require('nowPlayingActive: Bool?' in source['diagnostics'])
     require('mixingEnabledByPreference ? [.mixWithOthers] : []' in source['audio'])
-    require('session.remoteCommandCenter.playCommand.isEnabled' in source['synthetic'])
+    require('mediaSession.remoteCommandCenter.playCommand.isEnabled' in source['synthetic'])
 
 def validate_verification_recovery(repo):
     """Require signed, in-app native playback before optional fallback clients."""
