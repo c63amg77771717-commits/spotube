@@ -12,7 +12,7 @@ import unittest
 
 from ipa_policy import (BUILD, VERSION, IPA_NAME, EXPECTED_MAIN, EXPECTED_CHILD, PolicyBlocked,
                         validate_app, validate_manifest, validate_macho, validate_project,
-                        validate_workflow_values, validate_workflows, validate_no_lyrics_application, validate_verification_recovery)
+                        validate_workflow_values, validate_workflows, validate_no_lyrics_application, validate_verification_recovery, validate_system_player_controls)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CANARY = 'SYNTHETIC_PRIVATE_CANARY_NO_REAL_SONG_OR_CREDENTIAL'
@@ -97,6 +97,19 @@ class IPAPolicyTests(unittest.TestCase):
             return source
         with patch.object(pathlib.Path, 'read_text', sabotage):
             self.blocked_safely(lambda: validate_verification_recovery(REPO))
+
+    def test_real_now_playing_session_is_required_for_control_center(self):
+        validate_system_player_controls(REPO)
+        from unittest.mock import patch
+        original = pathlib.Path.read_text
+        def unbind_player(path, *args, **kwargs):
+            value = original(path, *args, **kwargs)
+            if path.name == 'NowPlayingManager.swift':
+                return value.replace('MPNowPlayingSession(players: [player])',
+                                     'MPNowPlayingSession(players: [])')
+            return value
+        with patch.object(pathlib.Path, 'read_text', unbind_player):
+            self.blocked_safely(lambda: validate_system_player_controls(REPO))
 
     def test_project_has_only_original_app_and_extension_with_new_version(self):
         project = json.loads((REPO / 'native-ios/public-ipa-project.json').read_bytes())
