@@ -1,6 +1,6 @@
 # On master this existing path remains the original Flutter workflow.
 # When manually selected with ref=codex/ios-neonoir-20260930, run the
-# separate native Build27 synthetic validation and credential-free IPA.
+# separate native Build28 synthetic validation and credential-free IPA.
 name: EvanTube public synthetic native tests
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: evantube-build27-dispatch-${{ github.ref }}
+  group: evantube-build28-dispatch-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,14 +58,14 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.2'
-      - name: Build and verify credential-free unsigned Build27 IPA
+      - name: Build and verify credential-free unsigned Build28 IPA
         run: python3 scripts/ios-public-ci/build_ipa.py
       - name: Upload only validated unsigned IPA and safe manifest
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-iOS-1.0.1-build27-unsigned-${{ github.sha }}
+          name: EvanTube-iOS-1.0.1-build28-unsigned-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build27-unsigned.ipa
+            ${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build28-unsigned.ipa
             ${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json
           if-no-files-found: error
           retention-days: 3
