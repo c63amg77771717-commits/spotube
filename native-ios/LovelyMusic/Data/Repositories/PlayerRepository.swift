@@ -87,32 +87,47 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             // Optional alternate clients must not supersede the user's account.
             var lastPlayabilityReason: String?
             var lastDescriptorError: StreamDescriptorError?
+            var lastSessionFailure: InnerTubeError?
 
-            // Native IOS request with the user's existing session takes priority.
-            if let result = try await attemptClientWithRetries(
-                label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
-                quality: quality,
-                playabilityReason: &lastPlayabilityReason,
-                descriptorError: &lastDescriptorError
-            ) {
-                return result
+            // Start with this user's own iOS session. Preserve the exact HTTP
+            // failure; a missing optional alternate-client key is not the cause.
+            do {
+                if let result = try await attemptClientWithRetries(
+                    label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
+                    quality: quality,
+                    playabilityReason: &lastPlayabilityReason,
+                    descriptorError: &lastDescriptorError
+                ) {
+                    return result
+                }
+            } catch let error as InnerTubeError {
+                switch error {
+                case .httpError, .sourceNotConfigured:
+                    lastSessionFailure = error
+                default:
+                    // Respect YouTube's explicit sign-in/verification rejection.
+                    throw error
+                }
             }
 
-            // No configured alternate source is not permission to invent a key.
-            // Preserve definitive server authentication/playability failures.
+            // This HLS source previously resolved successfully in EvanTube.
+            // It needs no optional app-embedded client key, so try it before
+            // claiming the online source is unconfigured.
+            if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
+                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
+                    videoID: videoId, hlsAvailable: true))
+                return hlsDesc
+            }
+
+            // No configured alternate client: retain the real server response,
+            // rather than misleadingly relabeling HTTP 400 as configuration.
             if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration {
                 if let reason = lastPlayabilityReason {
                     throw InnerTubeError.videoUnavailable(reason: reason)
                 }
                 if let lastDescriptorError { throw lastDescriptorError }
+                if let lastSessionFailure { throw lastSessionFailure }
                 throw InnerTubeError.sourceNotConfigured
-            }
-
-            // Optional configured HLS fallback.
-            if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
-                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
-                    videoID: videoId, hlsAvailable: true))
-                return hlsDesc
             }
 
             // Reset session before trying fallback clients
@@ -152,6 +167,7 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             if let lastDescriptorError {
                 throw lastDescriptorError
             }
+            if let lastSessionFailure { throw lastSessionFailure }
             throw InnerTubeError.noStreamAvailable
         }
     }
@@ -235,6 +251,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                     return nil
                 }
                 if case .httpError(let code) = error {
+                    // Preserve the authenticated native response for the
+                    // resolver to decide whether a legitimate HLS stream works.
+                    if useSession { throw error }
                     if code == 429 {
                         Log.player.warning(
                             "[\(label, privacy: .public)] Rate limited (429), retrying with backoff"
@@ -424,7 +443,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         let response = try decoder.decode(PlayerResponse.self, from: data)
         guard response.playabilityStatus?.status == "OK",
               let hlsString = response.streamingData?.hlsManifestUrl,
-              let hlsURL = URL(string: hlsString) else {
+              let hlsURL = URL(string: hlsString),
+              hlsURL.scheme?.lowercased() == "https",
+              hlsURL.host?.isEmpty == false else {
             return nil
         }
         return StreamDescriptor(
