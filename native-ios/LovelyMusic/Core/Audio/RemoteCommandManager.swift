@@ -21,7 +21,7 @@ final class RemoteCommandManager {
     }
 
     func setup() {
-        let commandCenter = commandCenter
+        let commandCenter = self.commandCenter
 
         // Remove any previously registered targets to prevent accumulation
         // when setup() is called multiple times.
@@ -83,7 +83,7 @@ final class RemoteCommandManager {
     /// Removes all command center targets. Call on deallocation or when the
     /// manager is no longer needed to prevent leaked handler closures.
     func tearDown() {
-        let commandCenter = commandCenter
+        let commandCenter = self.commandCenter
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.removeTarget(nil)

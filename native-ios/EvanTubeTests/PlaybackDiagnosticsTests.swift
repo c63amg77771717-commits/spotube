@@ -48,6 +48,18 @@ final class PlaybackDiagnosticsTests: XCTestCase {
         XCTAssertFalse(json.contains("example.com"))
     }
 
+    func testNowPlayingActivationResultSurvivesRelaunchWithoutPrivateData() throws {
+        let file = fileURL()
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let store = PlaybackDiagnostics(fileURL: file)
+        store.record(.init(phase: .nowPlayingSession, nowPlayingActive: false))
+        let restored = PlaybackDiagnostics(fileURL: file)
+        XCTAssertEqual(restored.events.first?.phase, .nowPlayingSession)
+        XCTAssertEqual(restored.events.first?.nowPlayingActive, false)
+        let report = try restored.reportData()
+        XCTAssertTrue(String(decoding: report, as: UTF8.self).contains("nowPlayingActive"))
+    }
+
     func testClearRemovesPersistedEvents() throws {
         let file = fileURL()
         defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }

@@ -64,7 +64,12 @@ final class NowPlayingManager {
 
     func activateForCurrentPlayback() {
         guard currentSongId != nil, attachedPlayer?.currentItem != nil else { return }
-        nowPlayingSession?.becomeActiveIfPossible()
+        nowPlayingSession?.becomeActiveIfPossible { accepted in
+            // On-device evidence: whether iOS accepted the audio player as
+            // Control Center's active Now Playing session. No private data.
+            PlaybackDiagnostics.shared.record(.init(
+                phase: .nowPlayingSession, nowPlayingActive: accepted))
+        }
     }
 
     func updateNowPlayingInfo(song: Song?, duration: TimeInterval) {

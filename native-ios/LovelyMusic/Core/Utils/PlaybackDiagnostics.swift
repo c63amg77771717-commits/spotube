@@ -8,6 +8,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case webSessionUpdated
         case remotePlay, remotePause, interruptionBegan, interruptionEnded
         case audioSessionConfigured, audioSessionActivated, audioRouteChanged, audioMediaServicesReset
+        case nowPlayingSession
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
@@ -53,6 +54,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let isBuffering: Bool?
         let audioMixingEnabled: Bool?
         let audioActivationSucceeded: Bool?
+        let nowPlayingActive: Bool?
         let playbackRate: Double?
         let manualPause: Bool?
         let routeOutputCount: Int?
@@ -66,7 +68,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
              queueCount: Int? = nil, currentIndex: Int? = nil, autoplayCount: Int? = nil,
               positionSeconds: TimeInterval? = nil, isPlaying: Bool? = nil, isBuffering: Bool? = nil,
               audioMixingEnabled: Bool? = nil, audioActivationSucceeded: Bool? = nil,
-              playbackRate: Double? = nil, manualPause: Bool? = nil, routeOutputCount: Int? = nil,
+              nowPlayingActive: Bool? = nil, playbackRate: Double? = nil, manualPause: Bool? = nil, routeOutputCount: Int? = nil,
               interruptionShouldResume: Bool? = nil, timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
@@ -95,6 +97,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.isBuffering = isBuffering
             self.audioMixingEnabled = audioMixingEnabled
             self.audioActivationSucceeded = audioActivationSucceeded
+            self.nowPlayingActive = nowPlayingActive
             self.playbackRate = playbackRate.flatMap { $0.isFinite && (0...4).contains($0) ? $0 : nil }
             self.manualPause = manualPause
             self.routeOutputCount = routeOutputCount.flatMap { (0...16).contains($0) ? $0 : nil }
@@ -111,7 +114,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 currentIndex: currentIndex, autoplayCount: autoplayCount,
                 positionSeconds: positionSeconds, isPlaying: isPlaying, isBuffering: isBuffering,
                 audioMixingEnabled: audioMixingEnabled, audioActivationSucceeded: audioActivationSucceeded,
-                playbackRate: playbackRate, manualPause: manualPause, routeOutputCount: routeOutputCount,
+                nowPlayingActive: nowPlayingActive, playbackRate: playbackRate, manualPause: manualPause, routeOutputCount: routeOutputCount,
                 interruptionShouldResume: interruptionShouldResume, timestamp: timestamp)
         }
     }

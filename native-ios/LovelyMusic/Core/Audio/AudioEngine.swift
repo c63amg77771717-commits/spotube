@@ -81,7 +81,13 @@ final class AudioEngine {
             // every code path (interruption resume, stall recovery, end of
             // track, autoplay) without scattering manual sync calls.
             guard oldValue != isPlaying else { return }
-            if !isPlaying { PersonalMusicTaste.shared.suspend() }
+            if !isPlaying {
+                PersonalMusicTaste.shared.suspend()
+                // Playback failures and interruptions also update the system
+                // controls; never leave a stale "playing" state behind.
+                nowPlayingManager.updatePlaybackState(
+                    isPlaying: false, currentTime: currentTime, rate: 0)
+            }
             videoManager.setIsPlaying(isPlaying)
         }
     }
