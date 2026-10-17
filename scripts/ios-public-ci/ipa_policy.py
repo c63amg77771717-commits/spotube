@@ -7,11 +7,11 @@ import re
 import struct
 
 VERSION = '1.0.1'
-BUILD = '28'
-IPA_NAME = 'EvanTube-iOS-1.0.1-build28-unsigned.ipa'
+BUILD = '29'
+IPA_NAME = 'EvanTube-iOS-1.0.1-build29-unsigned.ipa'
 MANIFEST_NAME = 'ipa-manifest.json'
 EXPECTED_MAIN = json.loads("{\"name\":\"EvanTube public synthetic native tests\",\"on\":{\"workflow_dispatch\":{},\"push\":{\"branches\":[\"codex/ios-neonoir-20260930\"],\"paths\":[\"native-ios/**\",\"scripts/ios-public-ci/**\",\"scripts/ios-source-replacement/**\",\".github/workflows/evantube-native-ios-ipa.yml\",\".github/workflows/evantube-public-unsigned-ipa.yml\"]}},\"permissions\":{\"contents\":\"read\"},\"concurrency\":{\"group\":\"evantube-public-synthetic-${{ github.ref }}\",\"cancel-in-progress\":true},\"jobs\":{\"public_synthetic_validation\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"name\":\"Reject live input and unreviewed public test resources\",\"run\":\"python3 scripts/ios-public-ci/boundary.py preflight\"},{\"name\":\"Verify synthetic leak guards and strict receipt checks\",\"run\":\"python3 scripts/ios-public-ci/boundary_tests.py\"},{\"name\":\"Verify IPA workflow and output privacy guards\",\"run\":\"python3 scripts/ios-public-ci/ipa_policy_tests.py\"},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Prepare simulator test dependencies\",\"working-directory\":\"native-ios\",\"run\":\"brew install xcodegen\\ncp Secrets.plist.example LovelyMusic/Resources/Secrets.plist\\n/usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true\\npython3 - <<'PY'\\nimport os, pathlib, plistlib\\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\\n    'application-identifier': 'com.c63amg77771717.evantube',\\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\\nPY\"},{\"name\":\"Source replacement synthetic tests\",\"run\":\"python3 scripts/ios-source-replacement/run_native.py\"}]},\"unsigned_ipa\":{\"needs\":\"public_synthetic_validation\",\"uses\":\"./.github/workflows/evantube-public-unsigned-ipa.yml\",\"permissions\":{\"contents\":\"read\"}}}}")
-EXPECTED_CHILD = json.loads("{\"name\":\"EvanTube public unsigned IPA\",\"on\":{\"workflow_call\":{}},\"permissions\":{\"contents\":\"read\"},\"jobs\":{\"unsigned_ipa\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"uses\":\"actions/setup-python@v5\",\"with\":{\"python-version\":\"3.12\"}},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Compile and validate credential-free unsigned IPA\",\"run\":\"python3 scripts/ios-public-ci/build_ipa.py\"},{\"name\":\"Upload only validated unsigned IPA and safe manifest\",\"uses\":\"actions/upload-artifact@v4\",\"with\":{\"name\":\"EvanTube-iOS-1.0.1-build28-unsigned-${{ github.sha }}\",\"path\":\"${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build28-unsigned.ipa\\n${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json\",\"if-no-files-found\":\"error\",\"retention-days\":3}}]}}}")
+EXPECTED_CHILD = json.loads("{\"name\":\"EvanTube public unsigned IPA\",\"on\":{\"workflow_call\":{}},\"permissions\":{\"contents\":\"read\"},\"jobs\":{\"unsigned_ipa\":{\"runs-on\":\"macos-14\",\"timeout-minutes\":60,\"steps\":[{\"uses\":\"actions/checkout@v4\",\"with\":{\"persist-credentials\":false}},{\"uses\":\"actions/setup-python@v5\",\"with\":{\"python-version\":\"3.12\"}},{\"uses\":\"maxim-lobanov/setup-xcode@v1\",\"with\":{\"xcode-version\":\"16.2\"}},{\"name\":\"Compile and validate credential-free unsigned IPA\",\"run\":\"python3 scripts/ios-public-ci/build_ipa.py\"},{\"name\":\"Upload only validated unsigned IPA and safe manifest\",\"uses\":\"actions/upload-artifact@v4\",\"with\":{\"name\":\"EvanTube-iOS-1.0.1-build29-unsigned-${{ github.sha }}\",\"path\":\"${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build29-unsigned.ipa\\n${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json\",\"if-no-files-found\":\"error\",\"retention-days\":3}}]}}}")
 MANIFEST_KEYS = {'file', 'bytes', 'sha256', 'sourceSHA', 'version', 'build', 'bundleID',
                  'architecture', 'unsigned', 'archiveIntegrity', 'deviceCompilation',
                  'sourceReplacementTests', 'lyricsRegressionTests', 'lyricsEnabled', 'liveQueries',
@@ -29,6 +29,31 @@ def validate_workflow_values(main, child):
     # wildcard uploads, diagnostic artifacts and any additional output.
     require(json.dumps(main, sort_keys=True) == json.dumps(EXPECTED_MAIN, sort_keys=True))
     require(json.dumps(child, sort_keys=True) == json.dumps(EXPECTED_CHILD, sort_keys=True))
+
+def validate_system_player_controls(repo):
+    """The actual AVPlayer, metadata, and transport must share one iOS media session."""
+    paths = {
+        'now': 'native-ios/LovelyMusic/Core/Audio/NowPlayingManager.swift',
+        'remote': 'native-ios/LovelyMusic/Core/Audio/RemoteCommandManager.swift',
+        'engine': 'native-ios/LovelyMusic/Core/Audio/AudioEngine.swift',
+        'audio': 'native-ios/LovelyMusic/Core/Audio/AudioSessionManager.swift',
+        'diagnostics': 'native-ios/LovelyMusic/Core/Utils/PlaybackDiagnostics.swift',
+        'synthetic': 'native-ios/EvanTubeTests/PlaybackSourceReplacementTests.swift',
+    }
+    try:
+        source = {name: (repo / rel).read_text(encoding='utf8') for name, rel in paths.items()}
+    except OSError:
+        raise PolicyBlocked('PUBLIC_IPA_NOW_PLAYING_SESSION_BLOCKED') from None
+    require('MPNowPlayingSession(players: [player])' in source['now'])
+    require('session.automaticallyPublishesNowPlayingInfo = false' in source['now'])
+    require('nowPlayingSession?.nowPlayingInfoCenter' in source['now'])
+    require('nowPlayingSession?.becomeActiveIfPossible' in source['now'])
+    require('boundSession?.remoteCommandCenter' in source['remote'])
+    require('remoteCommandManager.bind(session: session)' in source['engine'])
+    require('nowPlayingManager.activateForCurrentPlayback()' in source['engine'])
+    require('nowPlayingActive: Bool?' in source['diagnostics'])
+    require('mixingEnabledByPreference ? [.mixWithOthers] : []' in source['audio'])
+    require('session.remoteCommandCenter.playCommand.isEnabled' in source['synthetic'])
 
 def validate_verification_recovery(repo):
     """Require signed, in-app native playback before optional fallback clients."""
@@ -95,6 +120,7 @@ def validate_workflows(repo):
         validate_workflow_values(main, child)
         validate_no_lyrics_application(repo)
         validate_verification_recovery(repo)
+        validate_system_player_controls(repo)
     except (OSError, ValueError, KeyError):
         raise PolicyBlocked('PUBLIC_IPA_WORKFLOW_BLOCKED') from None
 
