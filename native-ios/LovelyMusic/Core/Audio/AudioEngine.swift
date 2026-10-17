@@ -1391,6 +1391,11 @@ final class AudioEngine {
             return
         }
         player?.rate = playbackSpeed
+        nowPlayingManager.updatePlaybackState(
+            isPlaying: isPlaying, currentTime: currentTime,
+            rate: Double(player?.rate ?? 0)
+        )
+        nowPlayingManager.activateForCurrentPlayback()
     }
 
     /// Persist current playback state (called on significant state changes)
@@ -3345,6 +3350,11 @@ final class AudioEngine {
                         song: self.currentTrack,
                         duration: self.duration
                     )
+                    self.nowPlayingManager.updatePlaybackState(
+                        isPlaying: self.isPlaying, currentTime: self.currentTime,
+                        rate: Double(self.player?.rate ?? 0)
+                    )
+                    if self.isPlaying { self.nowPlayingManager.activateForCurrentPlayback() }
 
                     // Raw fMP4 cannot seek; keep the target for the seekable remux handoff.
                     if let seekTime = self.pendingSeekTime, !self.isStreamingMode {
@@ -4286,6 +4296,10 @@ final class AudioEngine {
             setupPlayerObservers()
         }
         player?.automaticallyWaitsToMinimizeStalling = false
+        if let player {
+            let session = nowPlayingManager.attachPlayer(player)
+            remoteCommandManager.bind(session: session)
+        }
 
         // Attach real-time EQ processing tap to the audio pipeline
         if let audioMix = eqProcessor.createAudioMix(for: playerItem.asset) {

@@ -1,3 +1,4 @@
+import AVFoundation
 import MediaPlayer
 import XCTest
 
@@ -127,6 +128,32 @@ final class NowPlayingManagerTests: XCTestCase {
         XCTAssertEqual(info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 1.0)
         // Title preserved (proves we didn't blow away the dictionary).
         XCTAssertEqual(info?[MPMediaItemPropertyTitle] as? String, "Test Title")
+    }
+
+    func testMetadataRefreshPreservesPausedRateAndElapsedPosition() {
+        let manager = NowPlayingManager()
+        let song = makeSong()
+        manager.updateNowPlayingInfo(song: song, duration: 240)
+        manager.updatePlaybackState(isPlaying: false, currentTime: 42, rate: 1)
+        manager.updateNowPlayingInfo(song: song, duration: 240)
+        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        XCTAssertEqual(info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 0)
+        XCTAssertEqual(info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? TimeInterval, 42)
+    }
+
+    func testRealAVPlayerSessionUsesExplicitMetadataPublishing() {
+        let manager = NowPlayingManager()
+        let player = AVPlayer()
+        let session = manager.attachPlayer(player)
+        XCTAssertTrue(manager.attachPlayer(player) === session)
+        XCTAssertTrue(session.players.first === player)
+        XCTAssertFalse(session.automaticallyPublishesNowPlayingInfo)
+        manager.updateNowPlayingInfo(song: makeSong(), duration: 240)
+        XCTAssertEqual(
+            session.nowPlayingInfoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String,
+            "Test Title"
+        )
+        session.nowPlayingInfoCenter.nowPlayingInfo = nil
     }
 
     // MARK: - Clearing

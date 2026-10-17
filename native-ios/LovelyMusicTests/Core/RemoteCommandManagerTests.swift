@@ -1,5 +1,6 @@
 import XCTest
 import MediaPlayer
+import AVFoundation
 @testable import LovelyMusic
 
 @MainActor
@@ -17,6 +18,19 @@ final class RemoteCommandManagerTests: XCTestCase {
 
         // Verify we can call setup again (re-entrant) without leaking targets
         manager.setup()
+        manager.tearDown()
+    }
+
+    func testBindRealAVPlayerSessionRegistersItsOwnTransport() {
+        let manager = RemoteCommandManager()
+        manager.setup()
+        let session = MPNowPlayingSession(players: [AVPlayer()])
+        manager.bind(session: session)
+        XCTAssertTrue(session.remoteCommandCenter.playCommand.isEnabled)
+        XCTAssertTrue(session.remoteCommandCenter.pauseCommand.isEnabled)
+        XCTAssertTrue(session.remoteCommandCenter.nextTrackCommand.isEnabled)
+        XCTAssertTrue(session.remoteCommandCenter.previousTrackCommand.isEnabled)
+        manager.bind(session: session)
         manager.tearDown()
     }
 

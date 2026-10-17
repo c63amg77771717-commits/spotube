@@ -1,3 +1,4 @@
+import AVFoundation
 import MediaPlayer
 import UIKit
 
@@ -6,6 +7,10 @@ final class NowPlayingManager {
     private var artworkTask: Task<Void, Never>?
     private var currentSongId: String?
     private var artwork: MPMediaItemArtwork?
+    private weak var attachedPlayer: AVPlayer?
+    private(set) var nowPlayingSession: MPNowPlayingSession?
+    private var reportedTime: TimeInterval = 0
+    private var reportedRate: Double = 0
 
     /// Pre-rendered fallback artwork created at init time so iOS never receives
     /// a 0×0 `UIImage()` from a closure that races SF-symbol rendering on cold
@@ -37,28 +42,63 @@ final class NowPlayingManager {
         return MPMediaItemArtwork(boundsSize: rendered.size) { _ in rendered }
     }
 
-    func updateNowPlayingInfo(song: Song?, duration: TimeInterval) {
-        artworkTask?.cancel()
-        artworkTask = nil
+    private var infoCenter: MPNowPlayingInfoCenter {
+        nowPlayingSession?.nowPlayingInfoCenter ?? MPNowPlayingInfoCenter.default()
+    }
 
+    /// Match iOS media ownership to the actual audio AVPlayer, not a mock
+    /// playback flag or the separate muted video player.
+    @discardableResult
+    func attachPlayer(_ player: AVPlayer) -> MPNowPlayingSession {
+        if attachedPlayer === player, let nowPlayingSession { return nowPlayingSession }
+        nowPlayingSession?.nowPlayingInfoCenter.nowPlayingInfo = nil
+        attachedPlayer = player
+        let session = MPNowPlayingSession(players: [player])
+        // We own the title, artist, artwork, position and playback rate.
+        session.automaticallyPublishesNowPlayingInfo = false
+        nowPlayingSession = session
+        // The old app-wide dictionary no longer represents our player.
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        return session
+    }
+
+    func activateForCurrentPlayback() {
+        guard currentSongId != nil, attachedPlayer?.currentItem != nil else { return }
+        nowPlayingSession?.becomeActiveIfPossible()
+    }
+
+    func updateNowPlayingInfo(song: Song?, duration: TimeInterval) {
         guard let song else {
+            artworkTask?.cancel()
+            artworkTask = nil
             currentSongId = nil
             artwork = nil
-            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            reportedTime = 0
+            reportedRate = 0
+            infoCenter.nowPlayingInfo = nil
             return
         }
 
-        currentSongId = song.id
-        artwork = nil
+        if currentSongId != song.id {
+            artworkTask?.cancel()
+            artworkTask = nil
+            currentSongId = song.id
+            artwork = nil
+            reportedTime = 0
+            reportedRate = 0
+        }
 
-        setNowPlayingInfo(song: song, duration: duration, artwork: fallbackArtwork)
-
-        guard let thumbnailURL = song.thumbnailURL, let url = URL(string: thumbnailURL) else {
+        setNowPlayingInfo(song: song, duration: duration, artwork: artwork ?? fallbackArtwork)
+        // Ready-to-play and metadata callbacks often repeat for the same song.
+        // Do not restart a thumbnail fetch or reset playback status each time.
+        guard artwork == nil, artworkTask == nil,
+              let thumbnailURL = song.thumbnailURL, let url = URL(string: thumbnailURL) else {
             return
         }
 
         let songId = song.id
         artworkTask = Task {
+            defer { artworkTask = nil }
             do {
                 let (data, _) = try await URLSession.shared.data(from: url)
                 guard !Task.isCancelled, currentSongId == songId else { return }
@@ -76,12 +116,14 @@ final class NowPlayingManager {
         // Guard against writing playback-state-only updates before the first
         // full `setNowPlayingInfo`. iOS rejects/garbles dictionaries that lack
         // title/artist (F7).
-        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo,
+        reportedTime = currentTime.isFinite ? max(0, currentTime) : 0
+        reportedRate = isPlaying && rate.isFinite ? max(0, rate) : 0
+        guard var info = infoCenter.nowPlayingInfo,
               info[MPMediaItemPropertyTitle] != nil
         else { return }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = reportedTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = reportedRate
+        infoCenter.nowPlayingInfo = info
     }
 
     private func setNowPlayingInfo(song: Song, duration: TimeInterval, artwork: MPMediaItemArtwork?) {
@@ -95,12 +137,12 @@ final class NowPlayingManager {
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = 0
-        info[MPNowPlayingInfoPropertyPlaybackRate] = 1.0
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = reportedTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = reportedRate
         // Deterministic media-type classification so CarPlay picks the right
         // template behavior (F6).
         info[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
         info[MPMediaItemPropertyArtwork] = artwork
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        infoCenter.nowPlayingInfo = info
     }
 }

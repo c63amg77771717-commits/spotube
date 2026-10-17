@@ -7,9 +7,21 @@ final class RemoteCommandManager {
     var onNext: (@MainActor () -> Void)?
     var onPrevious: (@MainActor () -> Void)?
     var onSeek: (@MainActor (TimeInterval) -> Void)?
+    private var boundSession: MPNowPlayingSession?
+
+    private var commandCenter: MPRemoteCommandCenter {
+        boundSession?.remoteCommandCenter ?? MPRemoteCommandCenter.shared()
+    }
+
+    func bind(session: MPNowPlayingSession) {
+        guard boundSession !== session else { return }
+        tearDown()
+        boundSession = session
+        setup()
+    }
 
     func setup() {
-        let commandCenter = MPRemoteCommandCenter.shared()
+        let commandCenter = commandCenter
 
         // Remove any previously registered targets to prevent accumulation
         // when setup() is called multiple times.
@@ -71,7 +83,7 @@ final class RemoteCommandManager {
     /// Removes all command center targets. Call on deallocation or when the
     /// manager is no longer needed to prevent leaked handler closures.
     func tearDown() {
-        let commandCenter = MPRemoteCommandCenter.shared()
+        let commandCenter = commandCenter
         commandCenter.playCommand.removeTarget(nil)
         commandCenter.pauseCommand.removeTarget(nil)
         commandCenter.nextTrackCommand.removeTarget(nil)
