@@ -210,10 +210,12 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         }
         XCTAssertEqual(PlaybackErrorCategory.classify("LOGIN_REQUIRED"), .authRequired)
         XCTAssertEqual(PlaybackErrorCategory.classify("sourceNotConfigured"), .sourceNotConfigured)
+        XCTAssertEqual(PlaybackErrorCategory.classify("HTTP error: 400"), .requestRejected)
+        XCTAssertEqual(PlaybackErrorCategory.classify("HTTP 錯誤：400"), .requestRejected)
         for message in ["HTTP 429", "quota exceeded", "rate limit", "server 503"] {
             XCTAssertEqual(PlaybackErrorCategory.classify(message), .serverError)
         }
-        for category in [PlaybackErrorCategory.noInternet, .serverError, .authRequired, .verificationRequired, .sourceNotConfigured] {
+        for category in [PlaybackErrorCategory.noInternet, .serverError, .requestRejected, .authRequired, .verificationRequired, .sourceNotConfigured] {
             XCTAssertFalse(category.permitsReplacementSearch)
         }
         XCTAssertTrue(PlaybackErrorCategory.songRemoved.permitsReplacementSearch)
