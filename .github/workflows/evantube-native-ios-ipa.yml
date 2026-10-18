@@ -54,11 +54,15 @@
         {
           "name": "Prepare simulator test dependencies",
           "working-directory": "native-ios",
-          "run": "brew install xcodegen\ncp Secrets.plist.example LovelyMusic/Resources/Secrets.plist\n/usr/libexec/PlistBuddy -c 'Delete :YOUTUBE_DATA_API_KEY' LovelyMusic/Resources/Secrets.plist || true\npython3 - <<'PY'\nimport os, pathlib, plistlib\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\n    'application-identifier': 'com.c63amg77771717.evantube',\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\nPY"
+          "run": "brew install xcodegen\nprintf '<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict/></plist>\\n' > LovelyMusic/Resources/Secrets.plist\npython3 - <<'PY'\nimport os, pathlib, plistlib\npathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(plistlib.dumps({\n    'application-identifier': 'com.c63amg77771717.evantube',\n    'keychain-access-groups': ['com.c63amg77771717.evantube'], 'get-task-allow': True}))\nPY"
         },
         {
           "name": "Source replacement synthetic tests",
           "run": "python3 scripts/ios-source-replacement/run_native.py"
+        },
+        {
+          "name": "Playlist source native and core regression tests",
+          "run": "python3 scripts/ios-playlist-source/run_native.py"
         }
       ]
     },
