@@ -26,16 +26,17 @@ final class PlaylistSourceOverrideStore {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("EvanTube/playlist-source-overrides-v2.json")
     }
-    init(fileURL: URL = PlaylistSourceOverrideStore.defaultFileURL,
+    init(fileURL: URL? = nil,
          writer: @escaping (Data, URL) throws -> Void = { data, url in
              try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
              try data.write(to: url, options: .atomic)
          }) {
-        self.fileURL = fileURL
+        let resolvedURL = fileURL ?? Self.defaultFileURL
+        self.fileURL = resolvedURL
         self.writer = writer
-        guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+        guard FileManager.default.fileExists(atPath: resolvedURL.path) else { return }
         do {
-            let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: fileURL))
+            let snapshot = try JSONDecoder().decode(Snapshot.self, from: Data(contentsOf: resolvedURL))
             guard snapshot.schema == 2 else { throw StoreError.corruptStorage }
             for record in snapshot.records {
                 let key = Key(playlist: record.playlistID, original: record.originalID)
