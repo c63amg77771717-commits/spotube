@@ -188,12 +188,36 @@ final class AudioEngine {
 
     var streamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
     var playbackSourceIDResolver: (String) -> String = { $0 }
+    var playlistSourceIDResolver: ((Song) -> String)?
+    var contextualStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?))?
+    var contextualVideoStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?)?)? {
+        didSet { videoManager.contextualVideoStreamURLResolver = contextualVideoStreamURLResolver }
+    }
+    private(set) var sourceInteractionRevision: UInt64 = 0
+    var sourcePreviewCancellation: (() -> Void)?
+
+    func playbackSourceID(for song: Song) -> String {
+        playlistSourceIDResolver?(song) ?? playbackSourceIDResolver(song.id)
+    }
+    private func streamResolver(for song: Song) -> ((String) async throws -> (url: String, contentLength: Int64?))? {
+        if let contextualStreamURLResolver {
+            return { _ in try await contextualStreamURLResolver(song) }
+        }
+        return streamURLResolver
+    }
+    private func noteSourceInteraction() {
+        sourceInteractionRevision &+= 1
+        let cancel = sourcePreviewCancellation
+        sourcePreviewCancellation = nil
+        cancel?()
+    }
+
     var playbackSelectionGeneration: UInt64 { loadGeneration }
 
     /// Change media source while retaining playlist/lyrics/Now Playing identity.
     func sourcePreparedSong(_ song: Song) -> Song {
         var prepared = song
-        let sourceID = playbackSourceIDResolver(song.id)
+        let sourceID = playbackSourceID(for: song)
         if prepared.resolvedSourceID != sourceID,
            prepared.resolvedSourceID != nil || sourceID != song.id {
             prepared.streamURL = nil
@@ -909,6 +933,7 @@ final class AudioEngine {
     }
 
     func play(song: Song, fromQueue: [Song] = [], seekTo: TimeInterval? = nil) {
+        noteSourceInteraction()
         let song = sourcePreparedSong(song)
         hasReportedPlaybackStart = false
         let continuingCurrentSong = fromQueue.isEmpty && currentTrack?.id == song.id
@@ -972,7 +997,119 @@ final class AudioEngine {
         loadAndPlay(song: song, seekTo: position)
     }
 
+    struct SourcePreviewToken {
+        let selection: UInt64
+        let interaction: UInt64
+        let song: Song?
+        let item: AVPlayerItem?
+        let position: TimeInterval
+        let wasPlaying: Bool
+    }
+    func beginSourcePreview() -> SourcePreviewToken {
+        let originalSong = currentTrack
+        let originalItem = player?.currentItem
+        let position = currentTime
+        let playing = isPlaying
+        pause()
+        return SourcePreviewToken(selection: loadGeneration, interaction: sourceInteractionRevision,
+                                  song: originalSong, item: originalItem, position: position, wasPlaying: playing)
+    }
+    func sourcePreviewIsCurrent(_ token: SourcePreviewToken) -> Bool {
+        token.selection == loadGeneration && token.interaction == sourceInteractionRevision && !isInterrupted
+            && token.song?.id == currentTrack?.id
+            && token.song?.playbackPlaylistID == currentTrack?.playbackPlaylistID
+    }
+    func finishSourcePreview(_ token: SourcePreviewToken, resume: Bool = true) {
+        sourcePreviewCancellation = nil
+        guard sourcePreviewIsCurrent(token) else { return }
+        nowPlayingManager.updateNowPlayingInfo(song: currentTrack, duration: duration)
+        if resume && token.wasPlaying { setPlaybackIntent(true) }
+        else { nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0) }
+    }
+    func invalidatePlaylistSource(playlistID: String, originalID: String) {
+        prefetchManager.cancelPrefetch()
+        invalidateCrossfadePreparation(clearReservation: true)
+        for i in queue.indices where queue[i].id == originalID && queue[i].playbackPlaylistID == playlistID {
+            queue[i].streamURL = nil
+            queue[i].streamContentLength = nil
+            queue[i].resolvedSourceID = nil
+        }
+        savePlaybackState()
+    }
+    /// Prepare a fresh item from the already auditioned asset. Never associate
+    /// one AVPlayerItem with two players. Retain the old item for rollback.
+    func handoffPlaylistSource(asset: AVAsset, original: Song, sourceID: String,
+                               token: SourcePreviewToken) async -> Bool {
+        guard sourcePreviewIsCurrent(token), currentTrack?.id == original.id,
+              currentTrack?.playbackPlaylistID == original.playbackPlaylistID else { return false }
+        sourcePreviewCancellation = nil
+        let item = AVPlayerItem(asset: asset)
+        resolveTask?.cancel(); resolveTask = nil
+        streamRecoveryTask?.cancel(); streamRecoveryTask = nil
+        backgroundRemuxTask?.cancel(); backgroundRemuxTask = nil
+        downloadTask?.cancel(); downloadTask = nil
+        invalidatePlaylistSource(playlistID: original.playbackPlaylistID ?? "", originalID: original.id)
+        cleanupPlayer()
+        var preparedSong = original
+        preparedSong.streamURL = nil
+        preparedSong.streamContentLength = nil
+        preparedSong.resolvedSourceID = sourceID
+        currentTrack = preparedSong
+        isPlaying = false
+        userInitiatedPause = true
+        isBuffering = true
+        configurePlayer(with: item)
+        setupPlayerItemObserver(item)
+        duration = TimeInterval(original.duration ?? 0)
+        nowPlayingManager.updateNowPlayingInfo(song: original, duration: duration)
+        do {
+            for _ in 0..<150 where item.status == .unknown {
+                try await Task.sleep(nanoseconds: 100_000_000)
+                guard sourcePreviewIsCurrent(token), player?.currentItem === item else { return false }
+            }
+            guard !Task.isCancelled, sourcePreviewIsCurrent(token), item.status == .readyToPlay,
+                  let activePlayer = player else { throw CancellationError() }
+            let sought = await withCheckedContinuation { continuation in
+                activePlayer.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) {
+                    continuation.resume(returning: $0)
+                }
+            }
+            guard sought, !Task.isCancelled, sourcePreviewIsCurrent(token), player?.currentItem === item else {
+                throw CancellationError()
+            }
+            currentTime = 0
+            isBuffering = false
+            userInitiatedPause = !token.wasPlaying
+            isPlaying = token.wasPlaying
+            lastError = nil
+            lastFailedSongId = nil
+            if token.wasPlaying {
+                resumePlayer()
+                guard isPlaying else { throw CancellationError() }
+            }
+            savePlaybackState()
+            return true
+        } catch {
+            guard sourcePreviewIsCurrent(token), player?.currentItem === item else { return false }
+            cleanupPlayer()
+            currentTrack = token.song
+            if let old = token.item {
+                configurePlayer(with: old)
+                setupPlayerItemObserver(old)
+            }
+            currentTime = token.position
+            duration = TimeInterval(token.song?.duration ?? 0)
+            isBuffering = false
+            isPlaying = false
+            userInitiatedPause = true
+            nowPlayingManager.updateNowPlayingInfo(song: token.song, duration: duration)
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: token.position, rate: 0)
+            return false
+        }
+    }
+
     private func setPlaybackIntent(_ shouldPlay: Bool, explicitUserAction: Bool = false) {
+        noteSourceInteraction()
         guard !shouldPlay || currentTrack != nil else { return }
         // iOS may omit interruption-ended while the process is suspended.
         // Only an explicit play can challenge that stale state; activation failure
@@ -1111,7 +1248,7 @@ final class AudioEngine {
         // Use pre-fetched item if available for this song
         if let prefetched = prefetchManager.prefetchedPlayerItem,
             prefetchManager.prefetchedSongId == song.id,
-            prefetchManager.prefetchedSourceID == playbackSourceIDResolver(song.id)
+            prefetchManager.prefetchedSourceID == playbackSourceID(for: song)
         {
             recordPlaybackDiagnostic(.playbackSelection)
             let fileURL = prefetchManager.prefetchedLocalFileURL
@@ -1583,6 +1720,7 @@ final class AudioEngine {
         prefetchManager.audioCacheManager = audioCacheManager
         prefetchManager.downloadManager = downloadManager
         prefetchManager.playbackSourceIDResolver = playbackSourceIDResolver
+        prefetchManager.songSourceIDResolver = playlistSourceIDResolver
     }
 
     // MARK: - Private
@@ -1591,7 +1729,7 @@ final class AudioEngine {
         guard let index = queue.firstIndex(where: { $0.id == songID }) else { return }
         queue[index].streamURL = streamURL
         queue[index].streamContentLength = contentLength
-        queue[index].resolvedSourceID = playbackSourceIDResolver(songID)
+        queue[index].resolvedSourceID = playbackSourceID(for: queue[index])
     }
 
     private func recordPlaybackDiagnostic(_ phase: PlaybackDiagnostics.Phase, interruptionShouldResume: Bool? = nil) {
@@ -1611,6 +1749,7 @@ final class AudioEngine {
                              isLoadingRecovery: Bool = false) {
         requiresManualPlaybackRecovery = false
         if !isLoadingRecovery { loadingRecoveryAttemptCount = 0 }
+        noteSourceInteraction()
         loadGeneration &+= 1
         let generation = loadGeneration
         streamRecoveryTask?.cancel()
@@ -1648,14 +1787,14 @@ final class AudioEngine {
         // exists. `performLoadAndPlay` already prefers these branches, so we
         // bypass the resolver entirely and let it handle local playback.
         // This restores playback while offline (no resolver call required).
-        let hasDownloadedFile = downloadManager?.localFileURL(songId: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id)) != nil
+        let hasDownloadedFile = downloadManager?.localFileURL(songId: playbackSourceID(for: songToPlay)) != nil
         let hasCachedFile =
             !hasDownloadedFile
-            && (audioCacheManager?.getFile(for: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id)) != nil)
+            && (audioCacheManager?.getFile(for: playbackSourceID(for: songToPlay)) != nil)
         let hasBundledFile =
             !hasDownloadedFile
             && !hasCachedFile
-            && (Bundle.main.url(forResource: songToPlay.resolvedSourceID ?? playbackSourceIDResolver(songToPlay.id), withExtension: "m4a") != nil)
+            && (Bundle.main.url(forResource: playbackSourceID(for: songToPlay), withExtension: "m4a") != nil)
 
         if hasDownloadedFile || hasCachedFile || hasBundledFile {
             // Cancel any in-flight resolver task (re-entrancy guard).
@@ -1673,7 +1812,7 @@ final class AudioEngine {
             return
         }
 
-        if songToPlay.streamURL == nil, let resolver = streamURLResolver {
+        if songToPlay.streamURL == nil, let resolver = streamResolver(for: songToPlay) {
             resolveTask?.cancel()
             isBuffering = true
             recoveryService.startLoadingDetection()
@@ -2670,7 +2809,7 @@ final class AudioEngine {
         }
 
         // Check for downloaded file first (offline playback)
-        if let downloadedURL = downloadManager?.localFileURL(songId: song.resolvedSourceID ?? playbackSourceIDResolver(song.id)) {
+        if let downloadedURL = downloadManager?.localFileURL(songId: playbackSourceID(for: song)) {
             Log.audio.info(
                 "Playing from downloaded file: \(downloadedURL.lastPathComponent, privacy: .public)"
             )
@@ -2680,7 +2819,7 @@ final class AudioEngine {
         }
 
         // Check LRU cache for a previously remuxed file (seekable local playback)
-        if let cachedURL = audioCacheManager?.getFile(for: song.resolvedSourceID ?? playbackSourceIDResolver(song.id)) {
+        if let cachedURL = audioCacheManager?.getFile(for: playbackSourceID(for: song)) {
             Log.audio.info(
                 "Playing from cached remuxed file: \(cachedURL.lastPathComponent, privacy: .public)"
             )
@@ -2690,7 +2829,7 @@ final class AudioEngine {
         }
 
         // Check for bundled audio file (demo/review mode)
-        if let bundledURL = Bundle.main.url(forResource: song.resolvedSourceID ?? playbackSourceIDResolver(song.id), withExtension: "m4a") {
+        if let bundledURL = Bundle.main.url(forResource: playbackSourceID(for: song), withExtension: "m4a") {
             Log.audio.info(
                 "Playing from bundled file: \(bundledURL.lastPathComponent, privacy: .public)"
             )
@@ -2901,7 +3040,7 @@ final class AudioEngine {
         url: URL, headers: [String: String], song: Song, seekTo initialSeek: TimeInterval? = nil
     ) {
         let generation = loadGeneration
-        let sourceID = song.resolvedSourceID ?? playbackSourceIDResolver(song.id)
+        let sourceID = playbackSourceID(for: song)
         backgroundRemuxTask = Task { [weak self] in
             guard let self else { return }
             defer { if !Task.isCancelled, self.loadGeneration == generation { self.backgroundRemuxTask = nil } }
@@ -2994,7 +3133,7 @@ final class AudioEngine {
                     for segSize in segSizes {
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         if segsThisURL >= 5,
-                           let resolved = try? await self.streamURLResolver?(song.id),
+                           let resolved = try? await self.streamResolver(for: song)?(song.id),
                            let freshURL = URL(string: resolved.url) {
                             var refreshed = URLRequest(url: freshURL)
                             refreshed.timeoutInterval = 60
@@ -3597,7 +3736,7 @@ final class AudioEngine {
             isBuffering = false
             return
         }
-        guard let resolver = streamURLResolver else {
+        guard let resolver = streamResolver(for: song) else {
             Log.audio.error("Stream recovery: no resolver available")
             lastError = "Cannot reconnect — no stream resolver"
             return
@@ -3802,7 +3941,7 @@ final class AudioEngine {
 
     private func validatedLocalCrossfadeFile(for song: Song) -> CrossfadeLocalFile? {
         // Speculative next-track lookup uses its current mapping, not an old queue source.
-        let sourceID = playbackSourceIDResolver(song.id)
+        let sourceID = playbackSourceID(for: song)
         let candidateURL = audioCacheManager?.getFile(for: sourceID)
             ?? downloadManager?.localFileURL(songId: sourceID)
             ?? Bundle.main.url(forResource: sourceID, withExtension: "m4a")
@@ -4001,7 +4140,7 @@ final class AudioEngine {
         if case .queue(let nextIndex) = reservation.destination,
             let prefetchedItem = prefetchManager.prefetchedPlayerItem,
             prefetchManager.prefetchedSongId == nextSong.id,
-            prefetchManager.prefetchedSourceID == playbackSourceIDResolver(nextSong.id)
+            prefetchManager.prefetchedSourceID == playbackSourceID(for: nextSong)
         {
             let fileURL = prefetchManager.prefetchedLocalFileURL
             prefetchManager.cancelPrefetch()
@@ -4501,6 +4640,7 @@ final class AudioEngine {
 
         switch type {
         case .began:
+            noteSourceInteraction()
             recordPlaybackDiagnostic(.interruptionBegan)
             resumeAfterInterruption = isPlaying && !userInitiatedPause
             isInterrupted = true
@@ -4575,7 +4715,7 @@ extension AudioEngine: PlaybackRecoveryDelegate {
             isBuffering = false
             isPlaying = false
             lastError =
-                streamURLResolver == nil
+                streamURLResolver == nil && contextualStreamURLResolver == nil
                 ? "No stream URL resolver available for retry"
                 : "Retry failed"
         } else {

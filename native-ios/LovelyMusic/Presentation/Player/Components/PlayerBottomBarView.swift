@@ -14,7 +14,7 @@ struct PlayerBottomBarView: View {
     let onShowQueue: () -> Void
 
     var body: some View {
-        HStack(spacing: Theme.Spacing.lg) {
+        HStack(spacing: 0) {
             // Playback speed
             Button {
                 onCycleSpeed()
@@ -34,6 +34,8 @@ struct PlayerBottomBarView: View {
                             .fill(Theme.Colors.surfaceCard.opacity(0.5))
                     )
             }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .accessibilityLabel("Playback speed")
             .accessibilityValue(playbackSpeedLabel)
             .sensoryFeedback(.impact(weight: .light), trigger: playbackSpeed)
@@ -60,7 +62,8 @@ struct PlayerBottomBarView: View {
                         )
                 }
             }
-            .frame(minWidth: 56, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .accessibilityLabel("Autoplay")
             .accessibilityValue(isAutoplayEnabled ? "On" : "Off")
 
@@ -86,7 +89,8 @@ struct PlayerBottomBarView: View {
                         )
                 }
             }
-            .frame(minWidth: 56, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .disabled(!isVideoPlaybackEnabled)
             .opacity(isVideoPlaybackEnabled ? 1.0 : 0.3)
             .accessibilityLabel(isVideoMode ? "Switch to audio" : "Switch to video")
@@ -105,9 +109,11 @@ struct PlayerBottomBarView: View {
                         .foregroundStyle(Theme.Colors.textTertiary)
                 }
             }
-            .frame(minWidth: 56, minHeight: 52)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .contentShape(Rectangle())
             .accessibilityLabel("Queue")
             .accessibilityHint("Double tap to view play queue")
         }
+        .frame(maxWidth: .infinity)
     }
 }

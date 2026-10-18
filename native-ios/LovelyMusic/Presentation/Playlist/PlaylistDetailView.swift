@@ -8,6 +8,8 @@ struct PlaylistDetailView: View {
     @State private var searchText = ""
     @State private var editMode: EditMode = .inactive
     @State private var selectedSongs: Set<String> = []
+    @State private var sourceEditor: PlaylistSourceEditorModel?
+    @State private var restoreSourceError = false
     @State private var topSafeAreaInset: CGFloat = 0
     @Environment(PlayerViewModel.self) private var playerVM
     @Environment(DownloadManager.self) private var downloadManager
@@ -44,6 +46,14 @@ struct PlaylistDetailView: View {
             }
             .background(Theme.Colors.backgroundPrimary)
             .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
+            .sheet(item: $sourceEditor) { editor in
+                PlaylistSourceEditorSheet(editor: editor)
+            }
+            .alert("無法恢復來源", isPresented: $restoreSourceError) {
+                Button("好", role: .cancel) {}
+            } message: {
+                Text("來源保存失敗；原本播放來源保持不變。")
+            }
             .confirmationDialog(
                 "要從此歌單移除 \(songsToRemove.count) 首歌曲嗎？",
                 isPresented: $showRemoveSongsConfirmation,
@@ -166,6 +176,8 @@ struct PlaylistDetailView: View {
                 }
             }
             .onChange(of: playlistId) { _, _ in
+                sourceEditor?.cancel()
+                sourceEditor = nil
                 selectedPhoto = nil
                 photoPlaylistId = nil
                 showPhotoPicker = false
@@ -184,6 +196,7 @@ struct PlaylistDetailView: View {
                 viewModel.searchText = newValue
             }
             .onDisappear {
+                sourceEditor?.cancel()
                 if playerVM.isDockHidden {
                     withAnimation(Theme.AnimationPresets.smooth) {
                         playerVM.isDockHidden = false
@@ -229,13 +242,15 @@ struct PlaylistDetailView: View {
                         PlayShuffleButtons(
                             onPlay: {
                                 if let first = playlist.songs.first {
-                                    playerVM.play(song: first, fromQueue: playlist.songs)
+                                    playerVM.play(song: first.inPlaylist(playlist.id),
+                                        fromQueue: playlist.songs.map { $0.inPlaylist(playlist.id) })
                                 }
                             },
                             onShuffle: {
                                 if let random = playlist.songs.randomElement() {
                                     playerVM.play(
-                                        song: random, fromQueue: playlist.songs.shuffled())
+                                        song: random.inPlaylist(playlist.id),
+                                        fromQueue: playlist.songs.shuffled().map { $0.inPlaylist(playlist.id) })
                                 }
                             }
                         )
@@ -271,11 +286,28 @@ struct PlaylistDetailView: View {
                                 if editMode == .active {
                                     toggleSelection(song.id)
                                 } else if let playlist = viewModel.playlist {
-                                    playerVM.play(song: song, fromQueue: playlist.songs)
+                                    playerVM.play(song: song.inPlaylist(playlist.id),
+                                        fromQueue: playlist.songs.map { $0.inPlaylist(playlist.id) })
                                 }
                             },
-                            onPlayNext: { playerVM.playNext(song) },
-                            onAddToQueue: { playerVM.addToQueue(song) },
+                            onPlayNext: { playerVM.playNext(song.inPlaylist(playlist.id)) },
+                            onAddToQueue: { playerVM.addToQueue(song.inPlaylist(playlist.id)) },
+                            isSourceReplaced: playerVM.hasPlaylistSourceReplacement(song: song, playlistID: playlist.id),
+                            onChangeSource: {
+                                sourceEditor?.cancel()
+                                sourceEditor = playerVM.makePlaylistSourceEditor(
+                                    song: song, playlistID: playlist.id,
+                                    stillAvailable: { [weak viewModel] in
+                                        viewModel?.playlist?.id == playlist.id
+                                        && viewModel?.playlist?.songs.contains(where: { $0.id == song.id }) == true
+                                    }
+                                )
+                            },
+                            onRestoreSource: {
+                                if !playerVM.restorePlaylistSource(song: song, playlistID: playlist.id) {
+                                    restoreSourceError = true
+                                }
+                            },
                             canMove: playlist.isLocal && searchText.isEmpty,
                             onMoveUp: { Task { await viewModel.moveSong(song, direction: -1) } },
                             onMoveDown: { Task { await viewModel.moveSong(song, direction: 1) } },
@@ -438,6 +470,9 @@ private struct PlaylistSongRowView: View {
     let onTap: () -> Void
     let onPlayNext: () -> Void
     let onAddToQueue: () -> Void
+    let isSourceReplaced: Bool
+    let onChangeSource: () -> Void
+    let onRestoreSource: () -> Void
     let canMove: Bool
     let onMoveUp: () -> Void
     let onMoveDown: () -> Void
@@ -469,6 +504,11 @@ private struct PlaylistSongRowView: View {
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.Colors.textSecondary)
                             .lineLimit(1)
+                        if isSourceReplaced {
+                            Label("已替換來源", systemImage: "arrow.triangle.2.circlepath")
+                                .font(Theme.Typography.caption2)
+                                .foregroundStyle(Theme.Colors.brandGradientStart)
+                        }
                     }
 
                     Spacer()
@@ -479,6 +519,17 @@ private struct PlaylistSongRowView: View {
 
                     if editMode == .inactive {
                         Menu {
+                            if song.hasYouTubeOrigin {
+                                Button(action: onChangeSource) {
+                                    Label("更換播放來源", systemImage: "arrow.triangle.2.circlepath")
+                                }
+                                if isSourceReplaced {
+                                    Button(action: onRestoreSource) {
+                                        Label("恢復原來源", systemImage: "arrow.uturn.backward")
+                                    }
+                                }
+                                Divider()
+                            }
                             if canRemove {
                                 Button(role: .destructive, action: onRemove) {
                                     Label("從此歌單移除", systemImage: "trash")

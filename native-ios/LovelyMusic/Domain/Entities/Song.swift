@@ -24,12 +24,22 @@ struct Song: Identifiable, Hashable, Codable {
     var streamContentLength: Int64?
     /// Transient source identity; playlist persistence retains the original Song.id.
     var resolvedSourceID: String?
+    var playbackPlaylistID: String? = nil
 
     // Exclude transient stream data from persistence — URLs expire after ~6h.
     private enum CodingKeys: String, CodingKey {
         case id, title, artistName, artistId, albumName, albumId, artistNameSource
         case duration, thumbnailURL, isExplicit, musicVideoType
-        case isEpisode, episodeOf
+        case isEpisode, episodeOf, playbackPlaylistID
+    }
+
+    func inPlaylist(_ playlistID: String) -> Song {
+        var copy = self
+        copy.playbackPlaylistID = playlistID
+        copy.resolvedSourceID = nil
+        copy.streamURL = nil
+        copy.streamContentLength = nil
+        return copy
     }
 
     var isVideo: Bool {

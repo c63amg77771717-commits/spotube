@@ -15,6 +15,7 @@ final class GaplessPreFetchManager {
     private(set) var prefetchedSongId: String?
     private(set) var prefetchedSourceID: String?
     var playbackSourceIDResolver: (String) -> String = { $0 }
+    var songSourceIDResolver: ((Song) -> String)?
     /// Local file URL of the pre-fetched (remuxed) audio.
     private(set) var prefetchedLocalFileURL: URL?
 
@@ -83,7 +84,7 @@ final class GaplessPreFetchManager {
         }
 
         let nextSong = queue[nextIndex]
-        let sourceID = playbackSourceIDResolver(nextSong.id)
+        let sourceID = songSourceIDResolver?(nextSong) ?? playbackSourceIDResolver(nextSong.id)
         guard prefetchedSongId != nextSong.id || prefetchedSourceID != sourceID else { return }
 
         cancelPrefetch()
@@ -109,7 +110,7 @@ final class GaplessPreFetchManager {
         item.preferredForwardBufferDuration = 0
         prefetchedPlayerItem = item
         prefetchedSongId = song.id
-        prefetchedSourceID = playbackSourceIDResolver(song.id)
+        prefetchedSourceID = songSourceIDResolver?(song) ?? playbackSourceIDResolver(song.id)
         prefetchedLocalFileURL = fileURL
         Log.audio.info("Pre-fetched from \(source, privacy: .public): \(song.title, privacy: .public)")
     }

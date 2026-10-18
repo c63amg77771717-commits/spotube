@@ -47,6 +47,15 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(result.map(\.id), [verified.id, uploader.id])
         XCTAssertEqual(result.first?.match, .sameIdentity)
         XCTAssertEqual(result.last?.match, .needsReview)
+        // Playlist-specific search never auto-applies and filters songs with
+        // known different artists or titles.
+        let scoped = PlaylistSourceIdentityPolicy.candidates([
+            uploader, verified, song("DDDDDDDDDDD", title: "Different Song"),
+            song("EEEEEEEEEEE", artist: "Wrong Artist")
+        ], original: song(), excluding: [])
+        XCTAssertEqual(scoped.map(\.id), [verified.id, uploader.id])
+        XCTAssertEqual(scoped.first?.match, .sameIdentity)
+        XCTAssertEqual(scoped.last?.match, .needsReview)
     }
 
     func testCoverLiveAndRemixAreNeverRankedAsConfirmedIdentity() {
@@ -76,6 +85,24 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(reload.sourceID(for: "AAAAAAAAAAA"), "BBBBBBBBBBB")
         try reload.restore(originalID: "AAAAAAAAAAA")
         XCTAssertEqual(PlaybackSourceReplacementStore(defaults: defaults).sourceID(for: "AAAAAAAAAAA"), "AAAAAAAAAAA")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("evantube-scoped-" + UUID().uuidString)
+        let file = root.appendingPathComponent("overrides.json")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let scoped = PlaylistSourceOverrideStore(fileURL: file)
+        let original = song().inPlaylist("playlist-A")
+        let candidate = song("BBBBBBBBBBB")
+        XCTAssertEqual(try scoped.save(candidate: candidate, playlistID: "playlist-A",
+                                       originalID: original.id, expectedRevision: 0).revision, 1)
+        XCTAssertEqual(scoped.sourceID(for: original, legacy: { _ in original.id }), candidate.id)
+        XCTAssertEqual(scoped.sourceID(for: song().inPlaylist("playlist-B"),
+                                      legacy: { _ in original.id }), original.id)
+        XCTAssertThrowsError(try scoped.save(candidate: song("CCCCCCCCCCC"),
+                                            playlistID: "playlist-A", originalID: original.id,
+                                            expectedRevision: 0))
+        let reloaded = PlaylistSourceOverrideStore(fileURL: file)
+        XCTAssertEqual(reloaded.sourceID(for: original, legacy: { _ in original.id }), candidate.id)
+        try reloaded.restore(playlistID: "playlist-A", originalID: original.id, expectedRevision: 1)
+        XCTAssertEqual(reloaded.sourceID(for: original, legacy: { _ in candidate.id }), original.id)
     }
 
     func testStoreRejectsURLsUnicodeIDsAndSelfReplacement() throws {
@@ -97,6 +124,18 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(requested, ["BBBBBBBBBBB"])
         XCTAssertEqual(result, "synthetic-result")
         XCTAssertEqual(store.sourceID(for: "CCCCCCCCCCC"), "CCCCCCCCCCC")
+        let scopedFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+        defer { try? FileManager.default.removeItem(at: scopedFile) }
+        let scoped = PlaylistSourceOverrideStore(fileURL: scopedFile)
+        let entry = song().inPlaylist("playlist-A")
+        try scoped.save(candidate: song("DDDDDDDDDDD"), playlistID: "playlist-A",
+                        originalID: entry.id, expectedRevision: 0)
+        let value = try await scoped.resolve(song: entry, legacy: { store.sourceID(for: $0) }) { source in
+            XCTAssertEqual(source, "DDDDDDDDDDD")
+            return source
+        }
+        XCTAssertEqual(value, "DDDDDDDDDDD")
+        XCTAssertEqual(entry.id, "AAAAAAAAAAA")
     }
 
     func testChangingSourceAwayAndBackRejectsLateResolution() async throws {

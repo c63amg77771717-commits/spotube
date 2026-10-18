@@ -37,8 +37,8 @@
           "name": "Upload only validated unsigned IPA and safe manifest",
           "uses": "actions/upload-artifact@v4",
           "with": {
-            "name": "EvanTube-iOS-1.0.1-build29-unsigned-${{ github.sha }}",
-            "path": "${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build29-unsigned.ipa\n${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json",
+            "name": "EvanTube-iOS-1.0.1-build30-unsigned-${{ github.sha }}",
+            "path": "${{ runner.temp }}/evantube-public-ipa/out/EvanTube-iOS-1.0.1-build30-unsigned.ipa\n${{ runner.temp }}/evantube-public-ipa/out/ipa-manifest.json",
             "if-no-files-found": "error",
             "retention-days": 3
           }

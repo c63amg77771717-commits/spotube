@@ -102,13 +102,6 @@ final class SettingsViewModel {
         }
     }
 
-    var allowAudioMixing: Bool = true {
-        didSet {
-            UserDefaults.standard.set(allowAudioMixing, forKey: AudioSessionManager.mixWithOthersKey)
-            _ = AudioSessionManager.setCategory()
-        }
-    }
-
     var persistentQueue: Bool = true {
         didSet { UserDefaults.standard.set(persistentQueue, forKey: "persistentQueue") }
     }
@@ -185,7 +178,6 @@ final class SettingsViewModel {
             ?? .off
         self.skipSilence = UserDefaults.standard.bool(forKey: "skipSilence")
         self.audioNormalization = UserDefaults.standard.bool(forKey: "audioNormalization")
-        self.allowAudioMixing = AudioSessionManager.mixingEnabledByPreference
         self.persistentQueue = UserDefaults.standard.object(forKey: "persistentQueue") as? Bool ?? true
         self.autoSkipOnError =
             UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
@@ -344,7 +336,7 @@ final class SettingsViewModel {
         sleepTimer = .off
         skipSilence = false
         audioNormalization = false
-        allowAudioMixing = true
+        AudioSessionManager.migrateSystemPlayerPolicy()
         persistentQueue = true
         autoSkipOnError = true
         autoplayRelatedSongs = true

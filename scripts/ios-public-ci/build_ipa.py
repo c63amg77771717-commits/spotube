@@ -72,7 +72,7 @@ def main():
         validate_manifest(manifest)
         (output / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf8')
         require({path.name for path in output.iterdir()} == {IPA_NAME, MANIFEST_NAME})
-        print('PUBLIC_UNSIGNED_IPA_PASS version=1.0.1 build=29 sourceTests=17 regressionTests=0 lyricsEnabled=false physicalDevice=NOT_RUN')
+        print('PUBLIC_UNSIGNED_IPA_PASS version=1.0.1 build=30 sourceTests=17 regressionTests=0 lyricsEnabled=false physicalDevice=NOT_RUN')
         return 0
     except Exception:
         print('PUBLIC_UNSIGNED_IPA_BLOCKED_OR_FAILED; detailed output stays runner-local', file=sys.stderr)

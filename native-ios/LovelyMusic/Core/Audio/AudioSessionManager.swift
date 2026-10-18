@@ -5,10 +5,18 @@ enum AudioSessionManager {
     static var onResume: (@MainActor @Sendable () -> Void)?
     static let mixWithOthersKey = "evantube.audio.mixWithOthers"
 
-    /// Mixing permits navigation / speed-alert speech to coexist. Ducking is
-    /// requested by the speaking app; we do not duck that app continuously.
-    static var mixingEnabledByPreference: Bool {
-        UserDefaults.standard.object(forKey: mixWithOthersKey) as? Bool ?? true
+    static let systemPlayerPolicyKey = "evantube.audio.systemPlayerPolicy.v2"
+    static var mixingEnabledByPreference: Bool { false }
+
+    /// Migrate before category activation, including prior installations that
+    /// explicitly stored true. Do not change any unrelated preference.
+    static func migrateSystemPlayerPolicy(_ defaults: UserDefaults = .standard) {
+        if defaults.object(forKey: mixWithOthersKey) as? Bool != false {
+            defaults.set(false, forKey: mixWithOthersKey)
+        }
+        if defaults.integer(forKey: systemPlayerPolicyKey) != 2 {
+            defaults.set(2, forKey: systemPlayerPolicyKey)
+        }
     }
 
     /// Configure the audio session category at app launch.
@@ -20,10 +28,11 @@ enum AudioSessionManager {
     /// `nowplaying-investigation.md`).
     @discardableResult
     static func setCategory() -> Bool {
+        migrateSystemPlayerPolicy()
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default,
-                options: mixingEnabledByPreference ? [.mixWithOthers] : [])
+                options: [])
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionConfigured,
                 audioMixingEnabled: session.categoryOptions.contains(.mixWithOthers)))
             return true

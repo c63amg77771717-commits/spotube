@@ -27,6 +27,7 @@ final class VideoPlaybackManager {
     // MARK: - Dependencies (injected by AudioEngine)
 
     /// Resolves a song ID to a video stream URL + optional content length.
+    var contextualVideoStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?)?)?
     var videoStreamURLResolver: ((String) async throws -> (url: String, contentLength: Int64?)?)?
 
     /// HTTP headers to attach to the video stream request.
@@ -67,7 +68,12 @@ final class VideoPlaybackManager {
     }
 
     func loadVideoStream(for song: Song) {
-        guard isVideoMode, let resolver = videoStreamURLResolver else { return }
+        guard isVideoMode else { return }
+        let resolver: ((String) async throws -> (url: String, contentLength: Int64?)?)?
+        if let contextualVideoStreamURLResolver {
+            resolver = { _ in try await contextualVideoStreamURLResolver(song) }
+        } else { resolver = videoStreamURLResolver }
+        guard let resolver else { return }
         loadToken &+= 1
         let token = loadToken
         currentTask?.cancel()

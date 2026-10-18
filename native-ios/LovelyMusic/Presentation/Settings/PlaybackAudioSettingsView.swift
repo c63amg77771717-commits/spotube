@@ -17,7 +17,7 @@ struct PlaybackAudioSettingsView: View {
                 // MARK: - Audio
                 SettingsGroup(
                     header: "Audio",
-                    footer: "Audio quality and normalization control the music stream. 同時播放允許其他 App 的語音提示；音量降低與恢復由提示 App 及 iOS 控制。"
+                    footer: "支援系統播放控制；導航播報依系統與播報 App 音訊設定處理。"
                 ) {
                     SettingsRow(
                         icon: "music.note",
@@ -74,15 +74,6 @@ struct PlaybackAudioSettingsView: View {
                         CustomToggle(isOn: $viewModel.audioNormalization)
                     }
 
-                    SettingsDivider()
-
-                    SettingsRow(
-                        icon: "waveform.path",
-                        iconColor: .teal,
-                        title: "與神盾等 App 同時播放"
-                    ) {
-                        CustomToggle(isOn: $viewModel.allowAudioMixing)
-                    }
                 }
                 .staggeredAppear(index: 0)
 

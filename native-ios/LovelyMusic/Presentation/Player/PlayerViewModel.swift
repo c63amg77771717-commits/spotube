@@ -136,6 +136,8 @@ final class PlayerViewModel {
     private weak var adManager: AdManager?
     private let telemetryManager: TelemetryManager
     private let sourceReplacementStore: PlaybackSourceReplacementStore
+    private let playlistSourceStore: PlaylistSourceOverrideStore
+    private let previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
     private let replacementSearcher: ((String) async throws -> [Song])?
     private(set) var sourceReplacementSession: ReplacementSourceSearchModel?
 
@@ -267,6 +269,8 @@ final class PlayerViewModel {
         adManager: AdManager? = nil,
         telemetryManager: TelemetryManager = .shared,
         sourceReplacementStore: PlaybackSourceReplacementStore? = nil,
+        playlistSourceOverrideStore: PlaylistSourceOverrideStore? = nil,
+        previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))? = nil,
         replacementSearcher: ((String) async throws -> [Song])? = nil
     ) {
         self.audioEngine = audioEngine
@@ -279,6 +283,8 @@ final class PlayerViewModel {
         self.adManager = adManager
         self.telemetryManager = telemetryManager
         self.sourceReplacementStore = sourceReplacementStore ?? PlaybackSourceReplacementStore()
+        self.playlistSourceStore = playlistSourceOverrideStore ?? PlaylistSourceOverrideStore()
+        self.previewStreamResolver = previewStreamResolver
         self.replacementSearcher = replacementSearcher
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
@@ -643,6 +649,38 @@ final class PlayerViewModel {
         streamErrorCategory = nil
     }
 
+
+    // MARK: - Playlist-only alternative sources
+
+    func hasPlaylistSourceReplacement(song: Song, playlistID: String) -> Bool {
+        playlistSourceStore.hasReplacement(playlistID: playlistID, originalID: song.id,
+            legacy: { sourceReplacementStore.sourceID(for: $0) })
+    }
+
+    func makePlaylistSourceEditor(song: Song, playlistID: String,
+                                  stillAvailable: @escaping () -> Bool) -> PlaylistSourceEditorModel? {
+        guard let searcher = replacementSearcher, let previewStreamResolver,
+              PlaybackSourceReplacementPolicy.isVideoID(song.id),
+              !playlistID.isEmpty, stillAvailable() else { return nil }
+        return PlaylistSourceEditorModel(
+            original: song.inPlaylist(playlistID), store: playlistSourceStore,
+            legacySource: { [sourceReplacementStore] in sourceReplacementStore.sourceID(for: $0) },
+            searcher: searcher, streamResolver: previewStreamResolver,
+            audioEngine: audioEngine, stillAvailable: stillAvailable
+        )
+    }
+
+    @discardableResult
+    func restorePlaylistSource(song: Song, playlistID: String) -> Bool {
+        guard !playlistID.isEmpty, PlaybackSourceReplacementPolicy.isVideoID(song.id) else { return false }
+        do {
+            try playlistSourceStore.restore(playlistID: playlistID, originalID: song.id,
+                expectedRevision: playlistSourceStore.revision(playlistID: playlistID, originalID: song.id))
+            audioEngine.invalidatePlaylistSource(playlistID: playlistID, originalID: song.id)
+            // The current audio keeps playing until the next explicit playback.
+            return true
+        } catch { return false }
+    }
 
     // MARK: - Per-song alternative playback sources
 

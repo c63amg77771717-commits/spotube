@@ -35,23 +35,25 @@ final class Build20AudioSessionTests: XCTestCase {
         let session = AVAudioSession.sharedInstance()
         XCTAssertEqual(session.category, .playback)
         XCTAssertEqual(session.mode, .default)
-        XCTAssertTrue(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
         XCTAssertFalse(session.categoryOptions.contains(.duckOthers))
         XCTAssertFalse(session.categoryOptions.contains(.interruptSpokenAudioAndMixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionConfigured }
         XCTAssertEqual(event?.audioMixingEnabled, true)
-        UserDefaults.standard.set(false, forKey: AudioSessionManager.mixWithOthersKey)
+        UserDefaults.standard.set(true, forKey: AudioSessionManager.mixWithOthersKey)
         XCTAssertTrue(AudioSessionManager.setCategory())
         XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertEqual(UserDefaults.standard.object(forKey: AudioSessionManager.mixWithOthersKey) as? Bool, false)
         UserDefaults.standard.removeObject(forKey: AudioSessionManager.mixWithOthersKey)
         XCTAssertTrue(AudioSessionManager.setCategory())
-        XCTAssertTrue(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertFalse(session.categoryOptions.contains(.mixWithOthers))
+        XCTAssertEqual(UserDefaults.standard.object(forKey: AudioSessionManager.mixWithOthersKey) as? Bool, false)
     }
 
     func testLazyActivationReportsActualSuccessAndPreservesNowPlayingPolicy() {
         AudioSessionManager.setCategory()
         XCTAssertTrue(AudioSessionManager.activate())
-        XCTAssertTrue(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
+        XCTAssertFalse(AVAudioSession.sharedInstance().categoryOptions.contains(.mixWithOthers))
         let event = PlaybackDiagnostics.shared.events.last { $0.phase == .audioSessionActivated }
         XCTAssertEqual(event?.audioActivationSucceeded, true)
         XCTAssertEqual(event?.audioMixingEnabled, true)

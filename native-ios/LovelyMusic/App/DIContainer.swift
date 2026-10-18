@@ -28,6 +28,7 @@ final class DIContainer {
     // MARK: - Use Cases
     let searchMusicUseCase: SearchMusicUseCase
     let playbackSourceReplacementStore: PlaybackSourceReplacementStore
+    let playlistSourceOverrideStore: PlaylistSourceOverrideStore
     let browseHomeUseCase: BrowseHomeUseCase
     let getArtistUseCase: GetArtistUseCase
     let getAlbumUseCase: GetAlbumUseCase
@@ -85,6 +86,8 @@ final class DIContainer {
         PlaybackStatePersistence.registerBuild9Defaults()
         let sourceStore = PlaybackSourceReplacementStore()
         self.playbackSourceReplacementStore = sourceStore
+        let scopedSourceStore = PlaylistSourceOverrideStore()
+        self.playlistSourceOverrideStore = scopedSourceStore
         // Feature flags — must be populated BEFORE repository & theme selection.
         let flagManager = featureFlagManager ?? FeatureFlagManager()
         self.featureFlagManager = flagManager
@@ -189,6 +192,9 @@ final class DIContainer {
             ? [:]
             : AppConstants.youtubeStreamHeaders
         self.audioEngine.playbackSourceIDResolver = { [sourceStore] in sourceStore.sourceID(for: $0) }
+        self.audioEngine.playlistSourceIDResolver = { [sourceStore, scopedSourceStore] song in
+            scopedSourceStore.sourceID(for: song, legacy: { sourceStore.sourceID(for: $0) })
+        }
         let basePlaybackResolver = PlaybackQualityWiring.makePlaybackResolver(
             useCase: resolveStreamUseCase,
             settings: qualitySettings,
@@ -196,8 +202,17 @@ final class DIContainer {
             isPremium: { premiumManager.isPremium },
             requestHeaders: playbackHeaders
         )
+        self.audioEngine.contextualStreamURLResolver = { [sourceStore, scopedSourceStore] song in
+            try await scopedSourceStore.resolve(song: song, legacy: { sourceStore.sourceID(for: $0) },
+                                                using: basePlaybackResolver)
+        }
         self.audioEngine.streamURLResolver = { [sourceStore] originalID in
             try await sourceStore.resolve(originalID: originalID, using: basePlaybackResolver)
+        }
+        self.audioEngine.contextualVideoStreamURLResolver = { [playerRepo, sourceStore, scopedSourceStore] song in
+            try await scopedSourceStore.resolve(song: song, legacy: { sourceStore.sourceID(for: $0) }) { sourceID in
+                try await playerRepo.resolveVideoStreamURL(videoId: sourceID)
+            }
         }
         self.audioEngine.videoStreamURLResolver = { [playerRepo, sourceStore] originalID in
             try await sourceStore.resolve(originalID: originalID) { sourceID in
@@ -252,6 +267,8 @@ final class DIContainer {
             adManager: adManager,
             telemetryManager: telemetryManager,
             sourceReplacementStore: sourceStore,
+            playlistSourceOverrideStore: scopedSourceStore,
+            previewStreamResolver: basePlaybackResolver,
             replacementSearcher: { [searchMusicUseCase] query in
                 try await searchMusicUseCase.executeOnline(query: query, filter: .songs).songs
             }
