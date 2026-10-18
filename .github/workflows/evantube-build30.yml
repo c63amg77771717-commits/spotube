@@ -1,0 +1,32 @@
+name: EvanTube Build30 integration
+on:
+  push:
+    branches: [codex/ios-build30-playlist-spacing]
+    paths: [.github/workflows/evantube-build30.yml, scripts/build30/**]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: evantube-build30-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  source_workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Export pinned tracked native sources only
+        run: |
+          git merge-base --is-ancestor b5fe74244d9738a321bcf62750d2b965a489a038 HEAD
+          git archive --format=zip --output="${RUNNER_TEMP}/build30-source-workspace.zip" HEAD -- native-ios scripts .github
+          printf '%s\n' "${GITHUB_SHA}" > "${RUNNER_TEMP}/source-commit.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evantube-build30-source-workspace
+          path: |
+            ${{ runner.temp }}/build30-source-workspace.zip
+            ${{ runner.temp }}/source-commit.txt
+          retention-days: 1
+          if-no-files-found: error
