@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Export pinned tracked native sources only
         run: |
           git merge-base --is-ancestor b5fe74244d9738a321bcf62750d2b965a489a038 HEAD
