@@ -113,10 +113,16 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             // This HLS source previously resolved successfully in EvanTube.
             // It needs no optional app-embedded client key, so try it before
             // claiming the online source is unconfigured.
-            if let hlsDesc = try? await extractHLSDescriptor(videoId: videoId) {
-                PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
-                    videoID: videoId, hlsAvailable: true))
-                return hlsDesc
+            do {
+                if let hlsDesc = try await extractHLSDescriptor(videoId: videoId) {
+                    PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
+                        videoID: videoId, hlsAvailable: true))
+                    return hlsDesc
+                }
+            } catch let failure as PlayabilityFailure {
+                // A definitive VisionOS content result beats an earlier
+                // transport-level IOS HTTP 400.
+                lastPlayabilityReason = failure.reason
             }
 
             // No configured alternate client: retain the real server response,
@@ -441,8 +447,12 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
     private func extractHLSDescriptor(videoId: String) async throws -> StreamDescriptor? {
         let data = try await api.playerWithVisionOS(videoId: videoId)
         let response = try decoder.decode(PlayerResponse.self, from: data)
-        guard response.playabilityStatus?.status == "OK",
-              let hlsString = response.streamingData?.hlsManifestUrl,
+        let status = response.playabilityStatus?.status ?? "UNKNOWN"
+        if status != "OK" {
+            let reason = response.playabilityStatus?.reason ?? ""
+            throw PlayabilityFailure(reason: reason.isEmpty ? status : "\(status): \(reason)")
+        }
+        guard let hlsString = response.streamingData?.hlsManifestUrl,
               let hlsURL = URL(string: hlsString),
               hlsURL.scheme?.lowercased() == "https",
               hlsURL.host?.isEmpty == false else {
