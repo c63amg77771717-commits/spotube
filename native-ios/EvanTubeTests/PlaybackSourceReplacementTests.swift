@@ -320,15 +320,15 @@ final class PlaybackSourceReplacementTests: XCTestCase {
         XCTAssertEqual(hlsRecovered.remoteURL.absoluteString, "https://cdn.example/audio.m3u8")
         XCTAssertEqual(hlsRecovered.mimeType, "application/x-mpegURL")
 
-        // If no HLS is available either, the original HTTP 400 is the real
-        // error. The UI must not receive sourceNotConfigured instead.
+        // If VisionOS reaches YouTube but the content itself is UNPLAYABLE,
+        // that song-level result must beat the earlier IOS HTTP 400.
         do {
             _ = try await PlayerRepository(api: NativeSessionHTTP400HLSFixture(
                 hlsAvailable: false
             )).resolveStreamDescriptor(videoId: "AAAAAAAAAAA", quality: .medium, requestHeaders: [:])
-            XCTFail("Original IOS HTTP 400 must be preserved")
-        } catch InnerTubeError.httpError(let status) {
-            XCTAssertEqual(status, 400)
+            XCTFail("VisionOS UNPLAYABLE must be preserved over IOS HTTP 400")
+        } catch InnerTubeError.videoUnavailable(let reason) {
+            XCTAssertTrue(reason.lowercased().contains("unavailable"))
         }
     }
 
@@ -416,7 +416,7 @@ private struct NativeSessionHTTP400HLSFixture: PlayerAPIClient {
         if hlsAvailable {
             return Data(#"{"playabilityStatus":{"status":"OK"},"streamingData":{"hlsManifestUrl":"https://cdn.example/audio.m3u8"}}"#.utf8)
         }
-        return Data(#"{"playabilityStatus":{"status":"ERROR"}}"#.utf8)
+        return Data(#"{"playabilityStatus":{"status":"UNPLAYABLE","reason":"unavailable"}}"#.utf8)
     }
     func resetSession() async {}
 }
