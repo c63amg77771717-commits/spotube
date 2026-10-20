@@ -31,6 +31,19 @@ jobs:
         run: |
           brew install xcodegen
           cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          # Build exactly the two audio regression files, not the unrelated
+          # legacy test catalog; xcodebuild -only-testing alone still compiles
+          # every Swift source in the full LovelyMusicTests target.
+          python3 - <<'PY'
+          from pathlib import Path
+          spec = Path("project.yml")
+          content = spec.read_text()
+          old = "      - path: LovelyMusicTests\\n"
+          new = ("      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift\\n"
+                 "      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift\\n")
+          assert content.count(old) == 1, "Unexpected native test target configuration"
+          spec.write_text(content.replace(old, new))
+          PY
           xcodegen generate
           python3 - <<'PY'
           import os, plistlib, pathlib
