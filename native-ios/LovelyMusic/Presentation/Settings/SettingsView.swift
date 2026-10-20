@@ -1,10 +1,15 @@
 import SwiftUI
 
+/// One active sheet at a time prevents conflicting presentations on Settings.
+private enum SettingsDestination: String, Identifiable {
+    case account, youtubeLogin, playlistImport, driveSync
+    var id: String { rawValue }
+}
+
 struct SettingsView: View {
     @Bindable var viewModel: SettingsViewModel
     @Environment(DIContainer.self) private var container
-    @State private var showPlaylistImport = false
-    @State private var showDriveSync = false
+    @State private var activeSheet: SettingsDestination?
     @Bindable var themeManager: ThemeManager
     @Environment(SleepTimerManager.self) private var sleepTimerManager
     @Environment(EqualizerManager.self) private var equalizerManager
@@ -155,14 +160,17 @@ struct SettingsView: View {
                 CustomBackButton(style: .plain)
             }
         }
-        .sheet(isPresented: $showPlaylistImport) {
-            MB3ImportView(viewModel: container.libraryViewModel)
-        }
-        .sheet(isPresented: $showDriveSync) {
-            GoogleDriveSyncView()
-        }
-        .sheet(isPresented: $viewModel.showingLogin) {
-            YouTubeLoginView(authManager: viewModel.authManager) {}
+        .sheet(item: $activeSheet) { destination in
+            switch destination {
+            case .account:
+                YouTubeAccountDetailView(authManager: viewModel.authManager)
+            case .youtubeLogin:
+                YouTubeLoginView(authManager: viewModel.authManager) {}
+            case .playlistImport:
+                MB3ImportView(viewModel: container.libraryViewModel)
+            case .driveSync:
+                GoogleDriveSyncView()
+            }
         }
         .onChange(of: viewModel.sleepTimer) { _, newValue in
             sleepTimerManager.start(option: newValue)
@@ -203,7 +211,7 @@ struct SettingsView: View {
     private var playlistSettingsSection: some View {
         SettingsGroup(header: "歌單與同步") {
             Button {
-                showPlaylistImport = true
+                activeSheet = .playlistImport
             } label: {
                 HStack(spacing: Theme.Spacing.md) {
                     Label("匯入歌單", systemImage: "square.and.arrow.down")
@@ -212,14 +220,16 @@ struct SettingsView: View {
                     Image(systemName: "chevron.right")
                         .foregroundStyle(Theme.Colors.textTertiary)
                 }
+                .frame(maxWidth: .infinity)
                 .frame(minHeight: 52)
                 .padding(.horizontal, Theme.Spacing.lg)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("settings_playlist_import")
             SettingsDivider()
             Button {
-                showDriveSync = true
+                activeSheet = .driveSync
             } label: {
                 HStack(spacing: Theme.Spacing.md) {
                     Label("Google Drive 歌單同步", systemImage: "arrow.triangle.2.circlepath.icloud")
@@ -228,8 +238,10 @@ struct SettingsView: View {
                     Image(systemName: "chevron.right")
                         .foregroundStyle(Theme.Colors.textTertiary)
                 }
+                .frame(maxWidth: .infinity)
                 .frame(minHeight: 52)
                 .padding(.horizontal, Theme.Spacing.lg)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("settings_drive_sync")
@@ -327,6 +339,7 @@ struct SettingsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
                 .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
+                .allowsHitTesting(false)
         )
         .shadow(
             color: Theme.Shadows.small.color,
@@ -469,7 +482,10 @@ struct SettingsView: View {
     private var accountCard: some View {
         VStack(spacing: 0) {
             if viewModel.isLoggedIn {
-                HStack(spacing: Theme.Spacing.lg) {
+                Button {
+                    activeSheet = .account
+                } label: {
+                    HStack(spacing: Theme.Spacing.lg) {
                     // Avatar with animated gradient ring
                     ZStack {
                         Circle()
@@ -504,9 +520,16 @@ struct SettingsView: View {
                                 .foregroundStyle(Theme.Colors.textSecondary)
                     }
                     Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(Theme.Colors.textTertiary)
                 }
                 .padding(.horizontal, Theme.Spacing.xl)
                 .padding(.vertical, Theme.Spacing.xl)
+                .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings_youtube_account")
+                .accessibilityLabel("YouTube 帳號")
                 .transition(.scale.combined(with: .opacity))
 
                 Rectangle().fill(Theme.Colors.divider).frame(height: 0.5)
@@ -528,7 +551,7 @@ struct SettingsView: View {
                 }
             } else {
                 Button {
-                    viewModel.showingLogin = true
+                    activeSheet = .youtubeLogin
                 } label: {
                     HStack(spacing: Theme.Spacing.lg) {
                         // Avatar placeholder with subtle gradient ring
@@ -571,6 +594,7 @@ struct SettingsView: View {
         .overlay(
             RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
                 .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
+                .allowsHitTesting(false)
         )
         .shadow(
             color: Theme.Shadows.small.color,
