@@ -64,10 +64,9 @@ final class SearchMusicUseCase {
     }
 
     func executeOnline(query: String, filter: SearchFilter? = nil) async throws -> SearchResult {
-        if let key = try youtubeKey() {
-            guard filter == nil || filter == .songs else {
-                throw YouTubeSearchError.unsupportedFilter
-            }
+        // The user-provided Data API key only implements song search.
+        // Browse videos and mixed results through anonymous YouTube Music InnerTube.
+        if filter == .songs, let key = try youtubeKey() {
             return try await youtubeService.search(query: query, key: key)
         }
         return try await repository.search(query: query, filter: filter)
