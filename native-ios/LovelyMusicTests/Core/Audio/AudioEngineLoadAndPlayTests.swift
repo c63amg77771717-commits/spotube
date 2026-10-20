@@ -481,6 +481,23 @@ final class AudioTransferIntegrityTests: XCTestCase {
         ))
     }
 
+
+    func testSixtyNineSecondHLSWindowCannotMasqueradeAsFourMinuteSong() {
+        XCTAssertTrue(AudioTrackDurationIntegrity.isIncomplete(
+            measuredSeconds: 69,
+            expectedSeconds: 240
+        ))
+        XCTAssertFalse(AudioTrackDurationIntegrity.isIncomplete(
+            measuredSeconds: 238,
+            expectedSeconds: 240
+        ))
+        // A genuinely short song is not falsely rejected.
+        XCTAssertFalse(AudioTrackDurationIntegrity.isIncomplete(
+            measuredSeconds: 69,
+            expectedSeconds: 69
+        ))
+    }
+
     private var twoSegmentIndex: Data {
         Data([
             0, 0, 0, 56, 0x73, 0x69, 0x64, 0x78, // 56-byte sidx box
