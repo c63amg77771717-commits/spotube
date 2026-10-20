@@ -88,6 +88,12 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             var lastPlayabilityReason: String?
             var lastDescriptorError: StreamDescriptorError?
             var lastSessionFailure: InnerTubeError?
+            // A clean unsigned install ships no private player API keys.
+            // Google Drive OAuth is independent of the YouTube session and
+            // must not disable public, anonymous music playback attempts.
+            let needsPublicWebFallback = api is InnerTubeAPI
+                && !SecretsProvider.hasPlayerSourceConfiguration
+            var pendingHLS: StreamDescriptor?
 
             // Start with this user's own iOS session. Preserve the exact HTTP
             // failure; a missing optional alternate-client key is not the cause.
@@ -123,23 +129,48 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                         videoID: videoId,
                         hlsAvailable: descriptor.mimeType == "application/x-mpegURL"
                     ))
-                    return descriptor
+                    if needsPublicWebFallback &&
+                        descriptor.mimeType == "application/x-mpegURL" {
+                        // This may be a 69-second live DVR window. Keep it only
+                        // as a last resort while we try the full public AAC source.
+                        pendingHLS = descriptor
+                    } else {
+                        return descriptor
+                    }
                 }
             } catch let failure as PlayabilityFailure {
                 // A definitive VisionOS content result beats an earlier
                 // transport-level IOS HTTP 400.
                 lastPlayabilityReason = failure.reason
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // One unavailable client must not prevent the public web
+                // fallback from being attempted on a signed-out device.
+                Log.player.warning("VisionOS source unavailable; trying other public sources")
             }
 
-            // No configured alternate client: retain the real server response,
-            // rather than misleadingly relabeling HTTP 400 as configuration.
-            if api is InnerTubeAPI, !SecretsProvider.hasPlayerSourceConfiguration {
+            if needsPublicWebFallback {
+                // Use the same runtime public WEB_REMIX configuration as
+                // anonymous search. No Google Drive OAuth credentials or
+                // hardcoded private keys are used for this player request.
+                if let result = try await attemptClientWithRetries(
+                    label: "WEB_REMIX(public)", videoId: videoId,
+                    cpn: cpn, client: .webRemix, quality: quality,
+                    playabilityReason: &lastPlayabilityReason,
+                    descriptorError: &lastDescriptorError
+                ) {
+                    return result
+                }
+                // Preserve the Build31-34 HLS duration check if no complete
+                // source is available: never claim a short DVR window is full.
+                if let pendingHLS { return pendingHLS }
                 if let reason = lastPlayabilityReason {
                     throw InnerTubeError.videoUnavailable(reason: reason)
                 }
                 if let lastDescriptorError { throw lastDescriptorError }
                 if let lastSessionFailure { throw lastSessionFailure }
-                throw InnerTubeError.sourceNotConfigured
+                throw InnerTubeError.noStreamAvailable
             }
 
             // Reset session before trying fallback clients
