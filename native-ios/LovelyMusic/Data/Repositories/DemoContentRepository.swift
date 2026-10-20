@@ -69,6 +69,9 @@ final class DemoContentRepository: InnerTubeRepositoryProtocol {
         case .songs:
             return SearchResult(
                 songs: matchedSongs, albums: [], artists: [], playlists: [], continuation: nil)
+        case .videos:
+            // Demo catalogue contains songs only, no video entries.
+            return .empty
         case .albums:
             return SearchResult(
                 songs: [], albums: matchedAlbums, artists: [], playlists: [], continuation: nil)
