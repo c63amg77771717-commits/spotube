@@ -1,9 +1,9 @@
-name: EvanTube Build31 verified unsigned IPA
+name: EvanTube Build32 verified unsigned IPA (registered workflow)
 
 on:
   push:
     branches:
-      - codex/evantube-build31-audio-integrity-20261020
+      - codex/evantube-build32-audio-integrity-20261020
     paths:
       - native-ios/**
       - .github/workflows/evantube-build31-unsigned-ipa.yml
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: evantube-build31-unsigned-ipa-${{ github.ref }}
+  group: evantube-build32-unsigned-ipa-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -40,17 +40,18 @@ jobs:
           assert data.count(old) == 1
           new = (
               '      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift' + chr(10) +
-              '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10)
+              '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10)
           )
           spec.write_text(data.replace(old, new))
-          pathlib.Path(os.environ['RUNNER_TEMP'], 'build31-simulator.entitlements').write_bytes(plistlib.dumps({
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'build32-simulator.entitlements').write_bytes(plistlib.dumps({
               'application-identifier': 'com.c63amg77771717.evantube',
               'keychain-access-groups': ['com.c63amg77771717.evantube'],
               'get-task-allow': True,
           }))
           PY
           xcodegen generate
-      - name: Verify incomplete-CDN and VisionOS 69-second regressions
+      - name: Verify keyless online search plus 69-second playback regressions
         working-directory: native-ios
         run: |
           xcodebuild \
@@ -60,10 +61,11 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
             -only-testing:LovelyMusicTests/AudioTransferIntegrityTests \
+            -only-testing:LovelyMusicTests/KeylessOnlineSearchTests \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSUsesHLSOnlyWhenNoValidAACExists \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build31-simulator.entitlements" test
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build32-simulator.entitlements" test
 
   unsigned-ipa:
     needs: audio-regression
@@ -76,7 +78,7 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.2'
-      - name: Prepare clean Build31 device project without credentials
+      - name: Prepare clean Build32 device project without credentials
         working-directory: native-ios
         run: |
           brew install xcodegen
@@ -88,20 +90,20 @@ jobs:
           assert all(spec['targets'][name]['settings']['base']['CURRENT_PROJECT_VERSION'] == '30'
                      for name in spec['targets'])
           for name in spec['targets']:
-              spec['targets'][name]['settings']['base']['CURRENT_PROJECT_VERSION'] = '31'
+              spec['targets'][name]['settings']['base']['CURRENT_PROJECT_VERSION'] = '32'
           assert spec['targets']['LovelyMusic']['settings']['base']['MARKETING_VERSION'] == '1.0.1'
           project.write_text(json.dumps(spec, ensure_ascii=False, indent=2))
           pathlib.Path('LovelyMusic/Resources/Secrets.plist').write_bytes(plistlib.dumps({}))
           PY
           xcodegen generate --spec public-ipa-project.json
-      - name: Compile unsigned arm64 iPhone Build31
+      - name: Compile unsigned arm64 iPhone Build32
         working-directory: native-ios
         run: |
           xcodebuild \
             -project LovelyMusic.xcodeproj -scheme LovelyMusic \
             -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/evantube-build31-device" \
+            -derivedDataPath "$RUNNER_TEMP/evantube-build32-device" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             CODE_SIGNING_ALLOWED=NO build
       - name: Verify app contents and package IPA
@@ -109,9 +111,9 @@ jobs:
           python3 - <<'PY'
           import hashlib, json, os, pathlib, plistlib, struct, subprocess, zipfile
           t=pathlib.Path(os.environ['RUNNER_TEMP'])
-          app=t/'evantube-build31-device/Build/Products/Release-iphoneos/LovelyMusic.app'
+          app=t/'evantube-build32-device/Build/Products/Release-iphoneos/LovelyMusic.app'
           assert app.is_dir()
-          output=t/'evantube-build31-out'
+          output=t/'evantube-build32-out'
           output.mkdir(exist_ok=False)
           payload=output/'Payload'
           payload.mkdir()
@@ -129,7 +131,7 @@ jobs:
           bundles.append((ext[0],'com.c63amg77771717.evantube.NotificationService'))
           for bundle, expectedID in bundles:
               info=plistlib.loads((bundle/'Info.plist').read_bytes())
-              assert info['CFBundleVersion']=='31'
+              assert info['CFBundleVersion']=='32'
               assert info['CFBundleShortVersionString']=='1.0.1'
               assert info['CFBundleIdentifier']==expectedID
               exe=(bundle/info['CFBundleExecutable']).read_bytes()
@@ -152,7 +154,7 @@ jobs:
           secretFiles=list(dest.rglob('Secrets.plist'))
           assert len(secretFiles)==1 and plistlib.loads(secretFiles[0].read_bytes())=={}
           assert not list(dest.rglob('embedded.mobileprovision'))
-          ipa=output/'EvanTube-iOS-1.0.1-build31-unsigned.ipa'
+          ipa=output/'EvanTube-iOS-1.0.1-build32-unsigned.ipa'
           subprocess.run(['ditto','-c','-k','--sequesterRsrc','--keepParent',str(payload),str(ipa)],check=True)
           with zipfile.ZipFile(ipa) as archive:
               assert archive.testzip() is None
@@ -163,18 +165,18 @@ jobs:
           with ipa.open('rb') as stream:
               digest=hashlib.file_digest(stream,'sha256').hexdigest()
           manifest={'file':ipa.name,'bytes':ipa.stat().st_size,'sha256':digest,'sourceSHA':os.environ['GITHUB_SHA'],
-                    'version':'1.0.1','build':31,'unsigned':True,'architecture':'arm64',
+                    'version':'1.0.1','build':32,'unsigned':True,'architecture':'arm64',
                     'deviceCompilation':'PASS','archiveIntegrity':'PASS','audioRegression':'PASS',
                     'lyricsEnabled':False,'physicalDevice':'NOT_RUN','credentialsEmbedded':False}
-          (output/'build31-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          print('BUILD31_UNSIGNED_IPA_PASS')
+          (output/'build32-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('BUILD32_UNSIGNED_IPA_PASS')
           PY
-      - name: Upload validated unsigned Build31 IPA
+      - name: Upload validated unsigned Build32 IPA
         uses: actions/upload-artifact@v4
         with:
-          name: EvanTube-iOS-1.0.1-build31-unsigned-${{ github.sha }}
+          name: EvanTube-iOS-1.0.1-build32-unsigned-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/evantube-build31-out/EvanTube-iOS-1.0.1-build31-unsigned.ipa
-            ${{ runner.temp }}/evantube-build31-out/build31-manifest.json
+            ${{ runner.temp }}/evantube-build32-out/EvanTube-iOS-1.0.1-build32-unsigned.ipa
+            ${{ runner.temp }}/evantube-build32-out/build32-manifest.json
           if-no-files-found: error
           retention-days: 7
