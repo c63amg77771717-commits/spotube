@@ -2903,7 +2903,7 @@ final class RangePlaybackDriverTests: XCTestCase {
         )
 
         let initializationAndIndexUnionBytes: Int64 = 8_192
-        let mediaBytes = Int64(128_000 / 8 * (2 + 15))
+        let mediaBytes: Int64 = 16_000 * 17
         let baseBudget = initializationAndIndexUnionBytes + mediaBytes
         let expectedBudget = (baseBudget * 110 + 99) / 100
         XCTAssertEqual(
