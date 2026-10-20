@@ -3082,21 +3082,27 @@ final class AudioEngine {
             do {
                 let startTime = Date()
 
-                // Step 1: Download header (first 4KB covers all fMP4 init boxes).
-                var headerReq = baseRequest
-                headerReq.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
-                let (headerData, headerResp) = try await URLSession.shared.data(for: headerReq)
+
+                // A partial HTTP response is NOT a playable song. Derive the
+                // authoritative resource length from Content-Range and verify
+                // each subsequent byte transfer before writing any playback item.
+                var headerRequest = baseRequest
+                headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
+                let (headerData, headerResponse) = try await URLSession.shared.data(for: headerRequest)
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                if !headerData.isEmpty { self.recoveryService.recordLoadingProgress() }
-                guard (headerResp as? HTTPURLResponse)?.statusCode ?? -1 == 206 else {
-                    throw URLError(.badServerResponse)
-                }
+                let expectedTotal = try AudioTransferIntegrity.validate(
+                    response: headerResponse,
+                    receivedBytes: Int64(headerData.count),
+                    requestedRange: 0..<4096,
+                    expectedTotal: song.streamContentLength
+                )
+                self.recoveryService.recordLoadingProgress()
 
-                // Step 2: Parse sidx to find segment boundaries.
-                let (headerEnd, segSizes) = parseSIDX(headerData)
-                Log.audio.info("Segments: header=\(headerEnd)B segs=\(segSizes.count)")
+                let (headerEnd, segmentSizes) = parseSIDX(headerData)
+                Log.audio.info(
+                    "Audio index: header=\(headerEnd)B segments=\(segmentSizes.count) total=\(expectedTotal)B"
+                )
 
-                // Write incrementally to FileHandle to avoid buffering full song in memory.
                 try? FileManager.default.removeItem(at: rawURL)
                 guard FileManager.default.createFile(atPath: rawURL.path, contents: nil) else {
                     throw URLError(.cannotCreateFile)
@@ -3104,69 +3110,153 @@ final class AudioEngine {
                 let fileHandle = try FileHandle(forWritingTo: rawURL)
                 defer { fileHandle.closeFile() }
 
-                if segSizes.isEmpty {
-                    // No sidx — non-segmented fMP4, try large single request.
-                    var fallbackReq = baseRequest
-                    fallbackReq.setValue("bytes=0-399999", forHTTPHeaderField: "Range")
-                    let (d, _) = try await URLSession.shared.data(for: fallbackReq)
+                if segmentSizes.isEmpty {
+                    // Some formats have no sidx. Download the whole resource,
+                    // never the former 400 KB preview-sized fallback.
+                    // URLSession.download keeps the whole response off-heap.
+                    let (temporaryURL, fullResponse) = try await URLSession.shared.download(for: baseRequest)
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                    if !d.isEmpty { self.recoveryService.recordLoadingProgress() }
-                    fileHandle.write(d)
+                    let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
+                    guard let actualSize = (attributes[.size] as? NSNumber)?.int64Value else {
+                        throw AudioTransferIntegrityError.incompleteResource
+                    }
+                    _ = try AudioTransferIntegrity.validate(
+                        response: fullResponse,
+                        receivedBytes: actualSize,
+                        requestedRange: nil,
+                        expectedTotal: expectedTotal
+                    )
+                    let sourceHandle = try FileHandle(forReadingFrom: temporaryURL)
+                    defer { sourceHandle.closeFile() }
+                    while true {
+                        try Task.checkCancellation()
+                        let chunk = sourceHandle.readData(ofLength: 1024 * 1024)
+                        if chunk.isEmpty { break }
+                        fileHandle.write(chunk)
+                        self.recoveryService.recordLoadingProgress()
+                    }
                 } else {
-                    // Full header may be > 4096 bytes — re-request if needed.
-                    if headerEnd <= 4096 {
+                    guard headerEnd > 0, Int64(headerEnd) < expectedTotal else {
+                        throw AudioTransferIntegrityError.invalidIndex
+                    }
+
+                    // Download and verify the complete initialization/index
+                    // prefix, including any first_offset recorded by sidx.
+                    if headerEnd <= headerData.count {
                         fileHandle.write(headerData.prefix(headerEnd))
                     } else {
-                        var fullHeaderReq = baseRequest
-                        fullHeaderReq.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
-                        let (hd, _) = try await URLSession.shared.data(for: fullHeaderReq)
+                        var prefixRequest = baseRequest
+                        prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
+                        let (prefixData, prefixResponse) = try await URLSession.shared.data(for: prefixRequest)
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                        if !hd.isEmpty { self.recoveryService.recordLoadingProgress() }
-                        fileHandle.write(hd)
+                        _ = try AudioTransferIntegrity.validate(
+                            response: prefixResponse,
+                            receivedBytes: Int64(prefixData.count),
+                            requestedRange: 0..<Int64(headerEnd),
+                            expectedTotal: expectedTotal
+                        )
+                        fileHandle.write(prefixData)
                     }
-                    // Step 3: Download each segment by exact byte range.
-                    // YouTube CDN allows ~5 segments per URL before returning 403.
-                    // Refresh via streamURLResolver every 5 segments.
-                    var segOffset = headerEnd
-                    var currentSegRequest = baseRequest
-                    var segsThisURL = 0
-                    for segSize in segSizes {
-                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                        if segsThisURL >= 5,
-                           let resolved = try? await self.streamResolver(for: song)?(song.id),
-                           let freshURL = URL(string: resolved.url) {
-                            var refreshed = URLRequest(url: freshURL)
-                            refreshed.timeoutInterval = 60
-                            for (k, v) in headers { refreshed.setValue(v, forHTTPHeaderField: k) }
-                            if !merged.isEmpty { refreshed.setValue(merged, forHTTPHeaderField: "Cookie") }
-                            currentSegRequest = refreshed
-                            segsThisURL = 0
+
+                    // Every sidx reference must be present. Also include a
+                    // trailing box if the index doesn't reach the HTTP EOF.
+                    var segmentStart = Int64(headerEnd)
+                    var requiredRanges: [Range<Int64>] = []
+                    for size in segmentSizes {
+                        let segmentLength = Int64(size)
+                        guard segmentLength > 0, segmentLength <= expectedTotal - segmentStart else {
+                            throw AudioTransferIntegrityError.invalidIndex
                         }
+                        let segmentEnd = segmentStart + segmentLength
+                        requiredRanges.append(segmentStart..<segmentEnd)
+                        segmentStart = segmentEnd
+                    }
+                    if segmentStart < expectedTotal {
+                        requiredRanges.append(segmentStart..<expectedTotal)
+                    }
+
+                    // A CDN can retire signed media URLs mid-transfer. Refresh
+                    // the same song/quality, but reject changed resource length.
+                    let refreshSignedRequest: () async throws -> URLRequest = {
+                        guard let resolver = self.streamResolver(for: song) else {
+                            throw AudioTransferIntegrityError.incompleteResource
+                        }
+                        let refreshed = try await resolver(song.id)
+                        guard let refreshedURL = URL(string: refreshed.url),
+                              ["http", "https"].contains(refreshedURL.scheme?.lowercased() ?? "")
+                        else {
+                            throw AudioTransferIntegrityError.invalidResponse
+                        }
+                        if let declared = refreshed.contentLength, declared != expectedTotal {
+                            throw AudioTransferIntegrityError.resourceChanged
+                        }
+                        var refreshedRequest = baseRequest
+                        refreshedRequest.url = refreshedURL
+                        return refreshedRequest
+                    }
+
+                    var currentRequest = baseRequest
+                    var rangesOnCurrentURL = 0
+                    for requiredRange in requiredRanges {
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                        let segEnd = segOffset + segSize - 1
-                        var segReq = currentSegRequest
-                        segReq.setValue("bytes=\(segOffset)-\(segEnd)", forHTTPHeaderField: "Range")
-                        let (segData, segResp) = try await URLSession.shared.data(for: segReq)
-                        guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                        if !segData.isEmpty { self.recoveryService.recordLoadingProgress() }
-                        let code = (segResp as? HTTPURLResponse)?.statusCode ?? -1
-                        if code == 206 || code == 200 {
-                            fileHandle.write(segData)
-                        } else {
-                            // CDN per-session limit reached — play partial file (first N segments).
-                            let written = (try? fileHandle.seekToEndOfFile()) ?? 0
-                            Log.audio.info("CDN limit at seg \(segOffset): playing \(written)B partial")
+                        if rangesOnCurrentURL >= 5 {
+                            currentRequest = try await refreshSignedRequest()
+                            rangesOnCurrentURL = 0
+                        }
+
+                        var received: Data?
+                        for retry in 0..<2 {
+                            var segmentRequest = currentRequest
+                            segmentRequest.setValue(
+                                "bytes=\(requiredRange.lowerBound)-\(requiredRange.upperBound - 1)",
+                                forHTTPHeaderField: "Range"
+                            )
+                            let (bytes, response) = try await URLSession.shared.data(for: segmentRequest)
+                            guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                            if let http = response as? HTTPURLResponse,
+                               [403, 410, 429].contains(http.statusCode),
+                               retry == 0 {
+                                currentRequest = try await refreshSignedRequest()
+                                rangesOnCurrentURL = 0
+                                continue
+                            }
+                            _ = try AudioTransferIntegrity.validate(
+                                response: response,
+                                receivedBytes: Int64(bytes.count),
+                                requestedRange: requiredRange,
+                                expectedTotal: expectedTotal
+                            )
+                            received = bytes
                             break
                         }
-                        segOffset += segSize
-                        segsThisURL += 1
-                        guard !Task.isCancelled else { fileHandle.closeFile(); return }
+                        guard let received else {
+                            throw AudioTransferIntegrityError.incompleteResource
+                        }
+                        fileHandle.write(received)
+                        rangesOnCurrentURL += 1
+                        self.recoveryService.recordLoadingProgress()
                     }
                 }
 
                 fileHandle.closeFile()
                 let writtenBytes = (try? FileManager.default.attributesOfItem(atPath: rawURL.path)[.size] as? Int64) ?? 0
                 Log.audio.info("Download complete for \(song.id, privacy: .public): \(writtenBytes)B in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
+
+                // Never install, remux or cache an incomplete audio artifact.
+                // Otherwise AVPlayer reports its shortened duration (e.g. 1:09)
+                // and fires DidPlayToEnd as though the song really finished.
+                guard writtenBytes == expectedTotal else {
+                    throw AudioTransferIntegrityError.incompleteResource
+                }
+                if let songSeconds = song.duration, songSeconds >= 90,
+                   let assetDuration = try? await AVURLAsset(url: rawURL).load(.duration) {
+                    let measuredSeconds = assetDuration.seconds
+                    if measuredSeconds.isFinite, measuredSeconds > 0,
+                       measuredSeconds < Double(songSeconds) * 0.7 {
+                        throw AudioTransferIntegrityError.durationMismatch
+                    }
+                }
+
 
                 guard !Task.isCancelled else {
                     try? FileManager.default.removeItem(at: rawURL)
@@ -3213,10 +3303,14 @@ final class AudioEngine {
                 }
             } catch {
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                // Broken downloads must not survive into a later playback/cache hit.
+                try? FileManager.default.removeItem(at: rawURL)
                 self.recoveryService.stopStallDetection()
                 self.isBuffering = false
                 self.isPlaying = false
-                self.lastError = "Download failed"
+                self.lastError = error is AudioTransferIntegrityError
+                    ? "Incomplete audio stream. Please retry."
+                    : "Download failed"
                 Log.audio.error(
                     "Download failed, code=\((error as NSError).code)"
                 )
@@ -4729,40 +4823,139 @@ extension AudioEngine: PlaybackRecoveryDelegate {
     }
 }
 
-/// Parse the fMP4 `sidx` (Segment Index) box from a data buffer.
-/// Returns (headerEnd, segmentSizes) where headerEnd is the byte offset where
-/// audio segments begin, and segmentSizes contains each segment's byte count.
-/// Returns (0, []) if no sidx box is found.
-private func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
-    let sidxTag = Data([0x73, 0x69, 0x64, 0x78])  // "sidx"
-    guard let tagRange = data.range(of: sidxTag) else { return (0, []) }
-
-    let boxStart = tagRange.lowerBound - 4
-    // Minimum sidx box (version=0, 0 entries) = 32 bytes; guard full parse depth.
-    guard boxStart >= 0, boxStart + 32 <= data.count else { return (0, []) }
-
-    let boxSize = Int(data[boxStart]) << 24 | Int(data[boxStart + 1]) << 16 |
-                  Int(data[boxStart + 2]) << 8 | Int(data[boxStart + 3])
-    let headerEnd = boxStart + boxSize
-
-    var p = tagRange.upperBound  // right after "sidx" tag
-    let ver = data[p]; p += 1  // version
-    p += 3                     // flags
-    p += 4                     // reference_id
-    p += 4                     // timescale
-    if ver == 0 { p += 4 + 4 } else { p += 8 + 8 }  // earliest_pt + first_offset
-    p += 2                     // reserved
-    guard p + 2 <= data.count else { return (0, []) }
-    let refCount = Int(data[p]) << 8 | Int(data[p + 1]); p += 2
+/// Parse a fully present sidx table. A truncated table must NOT be treated
+/// as the end of the track. first_offset is relative to the end of sidx.
+func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
+    let sidxTag = Data([0x73, 0x69, 0x64, 0x78])
+    guard let tag = data.range(of: sidxTag), tag.lowerBound >= 4 else { return (0, []) }
+    let boxStart = tag.lowerBound - 4
+    func word(at offset: Int) -> UInt64 {
+        UInt64(data[offset]) << 24 | UInt64(data[offset + 1]) << 16 |
+        UInt64(data[offset + 2]) << 8 | UInt64(data[offset + 3])
+    }
+    let boxSize = word(at: boxStart)
+    guard boxSize >= 32, boxSize <= UInt64(data.count - boxStart) else { return (0, []) }
+    let boxEnd = boxStart + Int(boxSize)
+    var cursor = tag.upperBound
+    guard cursor + 4 <= boxEnd else { return (0, []) }
+    let version = data[cursor]
+    guard version == 0 || version == 1 else { return (0, []) }
+    cursor += 4 // version and flags
+    cursor += 8 // reference_id and timescale
+    let firstOffset: UInt64
+    if version == 0 {
+        guard cursor + 8 <= boxEnd else { return (0, []) }
+        cursor += 4 // earliest presentation time
+        firstOffset = word(at: cursor)
+        cursor += 4
+    } else {
+        guard cursor + 16 <= boxEnd else { return (0, []) }
+        cursor += 8 // earliest presentation time
+        firstOffset = (word(at: cursor) << 32) | word(at: cursor + 4)
+        cursor += 8
+    }
+    guard firstOffset <= UInt64(Int.max - boxEnd), cursor + 4 <= boxEnd else {
+        return (0, [])
+    }
+    cursor += 2 // reserved
+    let count = Int(data[cursor]) << 8 | Int(data[cursor + 1])
+    cursor += 2
+    guard count > 0, count <= (boxEnd - cursor) / 12 else { return (0, []) }
 
     var sizes: [Int] = []
-    for _ in 0..<refCount {
-        guard p + 4 <= data.count else { break }
-        let raw = Int(data[p]) << 24 | Int(data[p + 1]) << 16 |
-                  Int(data[p + 2]) << 8 | Int(data[p + 3])
-        sizes.append(raw & 0x7FFF_FFFF)  // clear reference_type bit
-        p += 12  // size(4) + duration(4) + SAP(4)
+    for _ in 0..<count {
+        let entry = word(at: cursor)
+        // Hierarchical references require another index; they aren't media.
+        guard (entry & 0x8000_0000) == 0 else { return (0, []) }
+        let size = Int(entry & 0x7FFF_FFFF)
+        guard size > 0 else { return (0, []) }
+        sizes.append(size)
+        cursor += 12
+    }
+    return (boxEnd + Int(firstOffset), sizes)
+}
+
+enum AudioTransferIntegrityError: Error, Equatable {
+    case invalidResponse
+    case incompleteResource
+    case resourceChanged
+    case invalidIndex
+    case durationMismatch
+}
+
+/// Authoritative HTTP body/range checks for full-track playback. On
+/// incomplete or untrusted responses the caller cannot create a player item.
+enum AudioTransferIntegrity {
+    struct ContentRange: Equatable {
+        let start: Int64
+        let endExclusive: Int64
+        let total: Int64
     }
 
-    return (headerEnd, sizes)
+    static func parseContentRange(_ raw: String?) -> ContentRange? {
+        guard let raw else { return nil }
+        let tokens = raw.split(separator: " ")
+        guard tokens.count == 2, tokens[0].lowercased() == "bytes" else { return nil }
+        let halves = tokens[1].split(separator: "/", omittingEmptySubsequences: false)
+        guard halves.count == 2, let total = Int64(halves[1]), total > 0 else {
+            return nil
+        }
+        let bounds = halves[0].split(separator: "-", omittingEmptySubsequences: false)
+        guard bounds.count == 2,
+              let start = Int64(bounds[0]), let inclusiveEnd = Int64(bounds[1]),
+              start >= 0, inclusiveEnd >= start, inclusiveEnd < total
+        else { return nil }
+        return ContentRange(start: start, endExclusive: inclusiveEnd + 1, total: total)
+    }
+
+    @discardableResult
+    static func validate(
+        response: URLResponse,
+        receivedBytes: Int64,
+        requestedRange: Range<Int64>?,
+        expectedTotal: Int64?
+    ) throws -> Int64 {
+        guard let http = response as? HTTPURLResponse, receivedBytes > 0 else {
+            throw AudioTransferIntegrityError.invalidResponse
+        }
+        switch http.statusCode {
+        case 206:
+            guard let range = parseContentRange(
+                http.value(forHTTPHeaderField: "Content-Range")
+            ), range.endExclusive - range.start == receivedBytes else {
+                throw AudioTransferIntegrityError.incompleteResource
+            }
+            if let requestedRange {
+                guard range.start == requestedRange.lowerBound,
+                      range.endExclusive <= requestedRange.upperBound,
+                      (range.endExclusive == requestedRange.upperBound ||
+                       range.endExclusive == range.total)
+                else { throw AudioTransferIntegrityError.incompleteResource }
+            } else {
+                guard range.start == 0, range.endExclusive == range.total else {
+                    throw AudioTransferIntegrityError.incompleteResource
+                }
+            }
+            if let expectedTotal, range.total != expectedTotal {
+                throw AudioTransferIntegrityError.resourceChanged
+            }
+            return range.total
+        case 200:
+            guard requestedRange == nil else {
+                throw AudioTransferIntegrityError.invalidResponse
+            }
+            let advertisedLength = http.value(forHTTPHeaderField: "Content-Length")
+                .flatMap(Int64.init)
+            if let advertisedLength, advertisedLength != receivedBytes {
+                throw AudioTransferIntegrityError.incompleteResource
+            }
+            guard let authoritativeLength = expectedTotal ?? advertisedLength,
+                  authoritativeLength > 0, receivedBytes == authoritativeLength else {
+                throw AudioTransferIntegrityError.incompleteResource
+            }
+            return authoritativeLength
+        default:
+            throw AudioTransferIntegrityError.invalidResponse
+        }
+    }
 }
