@@ -13,10 +13,6 @@ final class SearchViewModel {
 
     var availableFilters: [SearchFilter] {
         if searchesLibrary { return [.songs, .playlists] }
-        if !SecretsProvider.youtubeDataAPIKey.isEmpty
-            || !((try? YouTubeSearchKeyStore().read()) ?? "").isEmpty {
-            return [.songs]
-        }
         return SearchFilter.allCases
     }
 
@@ -104,8 +100,6 @@ final class SearchViewModel {
     @ObservationIgnored
     private var requestGeneration = 0
     @ObservationIgnored
-    private var shouldApplyDefaultFilter = true
-    @ObservationIgnored
     private var exploreTask: Task<Void, Never>?
 
     init(searchUseCase: SearchMusicUseCase, browseHomeUseCase: BrowseHomeUseCase,
@@ -131,9 +125,6 @@ final class SearchViewModel {
         guard !submittedQuery.isEmpty else { return }
 
         searchTask?.cancel()
-        if selectedFilter == nil, shouldApplyDefaultFilter {
-            selectedFilter = .songs
-        }
         let submittedFilter = selectedFilter
         let submittedLibraryScope = searchesLibrary
 
@@ -221,7 +212,6 @@ final class SearchViewModel {
 
     func selectFilter(_ filter: SearchFilter?) {
         selectedFilter = filter
-        shouldApplyDefaultFilter = false
     }
 
     func selectLibraryScope(_ library: Bool) {
@@ -234,7 +224,6 @@ final class SearchViewModel {
 
     func resetFilterToDefault() {
         selectedFilter = nil
-        shouldApplyDefaultFilter = true
     }
 
     func clearSearch() {
