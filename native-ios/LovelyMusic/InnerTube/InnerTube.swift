@@ -47,6 +47,12 @@ actor InnerTubeAPI {
     private var inFlightBrowse: [String: Task<Data, Error>] = [:]
     private var inFlightSearch: [String: Task<Data, Error>] = [:]
 
+    /// Anonymous WEB_REMIX credentials supplied by YouTube Music's public
+    /// homepage. This is a non-secret web client bootstrap, not the user's
+    /// YouTube Data API key. Keep it only in actor memory for at most 30 min.
+    private var publicWebBootstrap: (value: PublicMusicWebBootstrap, fetchedAt: Date)?
+
+
     func setLocale(_ newLocale: YouTubeLocale) {
         self.locale = newLocale
         applyLocaleCookies(newLocale)
@@ -212,6 +218,68 @@ actor InnerTubeAPI {
         return try decoder.decode(T.self, from: data)
     }
 
+
+    // MARK: - Anonymous YouTube Music web search/browse
+
+    private func resolvedPublicWebClient(
+        for requestedClient: YouTubeClient
+    ) async throws -> YouTubeClient {
+        guard requestedClient.clientName == "WEB_REMIX",
+              requestedClient.apiKey.isEmpty else {
+            return requestedClient
+        }
+
+        let bootstrap: PublicMusicWebBootstrap
+        if let cached = publicWebBootstrap,
+           Date().timeIntervalSince(cached.fetchedAt) < 30 * 60 {
+            bootstrap = cached.value
+        } else {
+            guard let url = URL(string: "https://music.youtube.com/") else {
+                throw InnerTubeError.searchBootstrapUnavailable
+            }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue(YouTubeClient.userAgentWeb, forHTTPHeaderField: "User-Agent")
+            request.setValue("text/html", forHTTPHeaderField: "Accept")
+            request.setValue("\(locale.hl),en;q=0.8", forHTTPHeaderField: "Accept-Language")
+
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw InnerTubeError.searchBootstrapUnavailable
+            }
+            guard let http = response as? HTTPURLResponse,
+                  http.statusCode == 200,
+                  response.url?.scheme == "https",
+                  response.url?.host == "music.youtube.com",
+                  data.count > 0, data.count <= 4 * 1024 * 1024,
+                  let html = String(data: data, encoding: .utf8),
+                  let parsed = PublicMusicWebBootstrap.parse(html)
+            else {
+                throw InnerTubeError.searchBootstrapUnavailable
+            }
+            bootstrap = parsed
+            publicWebBootstrap = (value: parsed, fetchedAt: Date())
+        }
+
+        // Do not leak the temporary web-client key to UI logs, persisted
+        // storage, crash reports, or the app's own YouTube Data API setting.
+        return YouTubeClient(
+            clientName: "WEB_REMIX",
+            clientId: "67",
+            clientVersion: bootstrap.clientVersion,
+            apiKey: bootstrap.apiKey,
+            userAgent: YouTubeClient.userAgentWeb,
+            referer: YouTubeClient.refererYouTubeMusic,
+            platform: "DESKTOP"
+        )
+    }
+
     // MARK: - API Methods
 
     func search(
@@ -244,16 +312,20 @@ actor InnerTubeAPI {
         params: String?,
         continuation: String?
     ) async throws -> Data {
-        // Ensure visitorData is fresh before making search requests
+        // Use YouTube Music's own public web-client configuration for anonymous
+        // search when this installation has no embedded InnerTube key.
+        // The configuration is fetched over HTTPS at runtime, not shipped in
+        // the app or persisted as a user credential.
         await ensureFreshVisitorData()
+        let activeClient = try await resolvedPublicWebClient(for: client)
 
         let body = SearchBody(
-            context: client.toContext(locale: locale, visitorData: effectiveVisitorData()),
+            context: activeClient.toContext(locale: locale, visitorData: effectiveVisitorData()),
             query: query,
             params: params,
             continuation: continuation
         )
-        var request = try buildRequest(endpoint: "search", client: client, body: body)
+        var request = try buildRequest(endpoint: "search", client: activeClient, body: body)
 
         if let continuation, let requestURL = request.url,
             var components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false)
@@ -358,16 +430,15 @@ actor InnerTubeAPI {
         params: String?,
         continuation: String?
     ) async throws -> Data {
-        // Ensure visitorData is fresh before making browse requests
         await ensureFreshVisitorData()
-
+        let activeClient = try await resolvedPublicWebClient(for: client)
         let body = BrowseBody(
-            context: client.toContext(locale: locale, visitorData: effectiveVisitorData()),
+            context: activeClient.toContext(locale: locale, visitorData: effectiveVisitorData()),
             browseId: browseId,
             params: params,
             continuation: continuation
         )
-        var request = try buildRequest(endpoint: "browse", client: client, body: body)
+        var request = try buildRequest(endpoint: "browse", client: activeClient, body: body)
 
         if let continuation, let requestURL = request.url,
             var components = URLComponents(url: requestURL, resolvingAgainstBaseURL: false)
@@ -430,12 +501,13 @@ actor InnerTubeAPI {
         input: String
     ) async throws -> Data {
         await ensureFreshVisitorData()
+        let activeClient = try await resolvedPublicWebClient(for: client)
         let body = GetSearchSuggestionsBody(
-            context: client.toContext(locale: locale, visitorData: effectiveVisitorData()),
+            context: activeClient.toContext(locale: locale, visitorData: effectiveVisitorData()),
             input: input
         )
         let request = try buildRequest(
-            endpoint: "music/get_search_suggestions", client: client, body: body)
+            endpoint: "music/get_search_suggestions", client: activeClient, body: body)
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse,
             (200...299).contains(httpResponse.statusCode)
@@ -1083,8 +1155,46 @@ private struct IOSPlayerBody: Encodable {
     }
 }
 
+/// The public WEB_REMIX settings shipped inside YouTube Music's own HTML.
+/// No static keys, OAuth tokens or user credentials are required or stored.
+/// This is an unofficial web endpoint and can change without notice.
+struct PublicMusicWebBootstrap: Equatable, Sendable {
+    let apiKey: String
+    let clientVersion: String
+
+    static func parse(_ html: String) -> Self? {
+        guard let key = capture(
+            #""INNERTUBE_API_KEY"\s*:\s*"(AIza[A-Za-z0-9_-]{35})""#,
+            from: html
+        ),
+        let version = capture(
+            #""INNERTUBE_CONTEXT_CLIENT_VERSION"\s*:\s*"(1\.[A-Za-z0-9._-]{6,48})""#,
+            from: html
+        ) ?? capture(
+            #""INNERTUBE_CLIENT_VERSION"\s*:\s*"(1\.[A-Za-z0-9._-]{6,48})""#,
+            from: html
+        )
+        else { return nil }
+
+        return Self(apiKey: key, clientVersion: version)
+    }
+
+    private static func capture(_ pattern: String, from html: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(
+                  in: html,
+                  range: NSRange(html.startIndex..<html.endIndex, in: html)
+              ),
+              match.numberOfRanges > 1,
+              let range = Range(match.range(at: 1), in: html)
+        else { return nil }
+        return String(html[range])
+    }
+}
+
 enum InnerTubeError: Error, LocalizedError {
     case sourceNotConfigured
+    case searchBootstrapUnavailable
     case httpError(statusCode: Int)
     case decodingError(Error)
     case invalidURL
@@ -1097,6 +1207,8 @@ enum InnerTubeError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .sourceNotConfigured: return LocalizationManager.text("Online source is not configured")
+        case .searchBootstrapUnavailable:
+            return "無法取得 YouTube Music 搜尋設定，請稍後再試。也可於搜尋設定使用自己的 Data API 金鑰。"
         case .httpError(let code): return LocalizationManager.text("HTTP error: \(code)")
         case .decodingError(let err): return LocalizationManager.text("Decoding error: \(err.localizedDescription)")
         case .invalidURL: return LocalizationManager.text("Invalid URL")
