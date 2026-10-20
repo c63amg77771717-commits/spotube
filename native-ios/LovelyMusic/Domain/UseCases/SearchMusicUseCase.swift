@@ -21,12 +21,10 @@ final class SearchMusicUseCase {
         self.youtubeKeyStore = youtubeKeyStore
     }
 
-    var isOnlineConfigured: Bool {
-        let storedKey = (try? youtubeKeyStore.read()) ?? ""
-        return !storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !SecretsProvider.youtubeDataAPIKey.isEmpty
-            || !SecretsProvider.innerTubeKeyWebRemix.isEmpty
-    }
+    /// Online search is available without a user-supplied Data API key:
+    /// the repository loads YouTube Music's public web-client configuration
+    /// on demand. A custom Data API key remains optional.
+    var isOnlineConfigured: Bool { true }
 
     func execute(query: String, filter: SearchFilter? = nil) async throws -> SearchResult {
         do {
