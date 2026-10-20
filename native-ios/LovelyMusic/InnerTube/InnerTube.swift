@@ -353,16 +353,29 @@ actor InnerTubeAPI {
         videoId: String,
         playlistId: String? = nil
     ) async throws -> Data {
-        let body = PlayerBody(
-            context: client.toContext(locale: locale, visitorData: effectiveVisitorData()),
-            videoId: videoId,
-            playlistId: playlistId
-        )
         let diagnosticClient: PlaybackDiagnostics.Client = client.clientName == "IOS" ? .ios
             : client.clientName == "WEB_REMIX" ? .webRemix : .other
         let request: URLRequest
         do {
-            request = try buildRequest(endpoint: "player", client: client, body: body, setLogin: true)
+            // The public web-client bootstrap is already used for anonymous
+            // search. Apply the same runtime configuration to the fallback
+            // player; a missing embedded key must not prevent an attempt to
+            // play public tracks when YouTube cookies are absent.
+            let activeClient: YouTubeClient
+            if client.clientName == "WEB_REMIX" {
+                await ensureFreshVisitorData()
+                activeClient = try await resolvedPublicWebClient(for: client)
+            } else {
+                activeClient = client
+            }
+            let body = PlayerBody(
+                context: activeClient.toContext(locale: locale, visitorData: effectiveVisitorData()),
+                videoId: videoId,
+                playlistId: playlistId
+            )
+            request = try buildRequest(
+                endpoint: "player", client: activeClient, body: body, setLogin: true
+            )
         } catch {
             let reason: PlaybackDiagnostics.Reason
             if case InnerTubeError.sourceNotConfigured = error { reason = .sourceNotConfigured }
