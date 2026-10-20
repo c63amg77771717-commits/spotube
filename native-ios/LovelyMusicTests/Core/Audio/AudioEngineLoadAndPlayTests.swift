@@ -401,3 +401,109 @@ private final class ResolverCounter: @unchecked Sendable {
         _value += 1
     }
 }
+
+
+/// Regression coverage for the Build 30 1:09 song-truncation failure.
+/// Tests only deterministic HTTP and sidx metadata; no live YouTube calls.
+final class AudioTransferIntegrityTests: XCTestCase {
+    private func http(
+        _ status: Int,
+        _ headers: [String: String]
+    ) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: URL(string: "https://media.example.test/song.m4a")!,
+            statusCode: status,
+            httpVersion: "HTTP/1.1",
+            headerFields: headers
+        )!
+    }
+
+    func testRangeProbeRevealsEntireResourceLength() throws {
+        let response = http(206, ["Content-Range": "bytes 0-4095/3000000"])
+        let total = try AudioTransferIntegrity.validate(
+            response: response,
+            receivedBytes: 4096,
+            requestedRange: 0..<4096,
+            expectedTotal: nil
+        )
+        XCTAssertEqual(total, 3_000_000)
+    }
+
+    func testShortPreviewMustNotBeAcceptedAsFullSong() {
+        let response = http(206, ["Content-Range": "bytes 0-399999/3000000"])
+        XCTAssertThrowsError(try AudioTransferIntegrity.validate(
+            response: response,
+            receivedBytes: 400_000,
+            requestedRange: nil,
+            expectedTotal: 3_000_000
+        ))
+    }
+
+    func testShortBodyMustNotPassRangeValidation() {
+        let response = http(206, ["Content-Range": "bytes 4096-8191/3000000"])
+        XCTAssertThrowsError(try AudioTransferIntegrity.validate(
+            response: response,
+            receivedBytes: 2048,
+            requestedRange: 4096..<8192,
+            expectedTotal: 3_000_000
+        ))
+    }
+
+    func testChangedSignedResourceCannotBeConcatenated() {
+        let response = http(206, ["Content-Range": "bytes 4096-8191/2000000"])
+        XCTAssertThrowsError(try AudioTransferIntegrity.validate(
+            response: response,
+            receivedBytes: 4096,
+            requestedRange: 4096..<8192,
+            expectedTotal: 3_000_000
+        )) { error in
+            XCTAssertEqual(error as? AudioTransferIntegrityError, .resourceChanged)
+        }
+    }
+
+    func testHTTP200MustMatchEntireExpectedResource() throws {
+        let full = http(200, ["Content-Length": "3000000"])
+        XCTAssertEqual(
+            try AudioTransferIntegrity.validate(
+                response: full,
+                receivedBytes: 3_000_000,
+                requestedRange: nil,
+                expectedTotal: 3_000_000
+            ),
+            3_000_000
+        )
+        let short = http(200, ["Content-Length": "400000"])
+        XCTAssertThrowsError(try AudioTransferIntegrity.validate(
+            response: short,
+            receivedBytes: 400_000,
+            requestedRange: nil,
+            expectedTotal: 3_000_000
+        ))
+    }
+
+    private var twoSegmentIndex: Data {
+        Data([
+            0, 0, 0, 56, 0x73, 0x69, 0x64, 0x78, // 56-byte sidx box
+            0, 0, 0, 0, // version/flags
+            0, 0, 0, 1, // reference_id
+            0, 0, 3, 232, // timescale
+            0, 0, 0, 0, // earliest presentation time
+            0, 0, 0, 4, // first_offset = 4
+            0, 0, 0, 2, // reserved + reference_count = 2
+            0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0, // first segment
+            0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0  // second segment
+        ])
+    }
+
+    func testSidxIndexIncludesFirstOffsetAndEveryReference() {
+        let parsed = parseSIDX(twoSegmentIndex)
+        XCTAssertEqual(parsed.headerEnd, 60)
+        XCTAssertEqual(parsed.segmentSizes, [5, 7])
+    }
+
+    func testTruncatedSidxIndexCannotSilentlyDropLaterReferences() {
+        let parsed = parseSIDX(Data(twoSegmentIndex.dropLast(4)))
+        XCTAssertEqual(parsed.headerEnd, 0)
+        XCTAssertTrue(parsed.segmentSizes.isEmpty)
+    }
+}
