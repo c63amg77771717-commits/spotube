@@ -1,0 +1,60 @@
+name: EvanTube Build31 audio regression
+on:
+  push:
+    branches:
+      - codex/evantube-build31-audio-integrity-20261020
+    paths:
+      - native-ios/**
+      - .github/workflows/evantube-build31-audio-regression.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evantube-build31-audio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audio-regression:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate credential-free iOS simulator project
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          cp Secrets.plist.example LovelyMusic/Resources/Secrets.plist
+          xcodegen generate
+          python3 - <<'PY'
+          import os, plistlib, pathlib
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'evantube-simulator.entitlements').write_bytes(
+              plistlib.dumps({
+                  'application-identifier': 'com.c63amg77771717.evantube',
+                  'keychain-access-groups': ['com.c63amg77771717.evantube'],
+                  'get-task-allow': True,
+              })
+          )
+          PY
+      - name: Build and run focused full-song audio regressions
+        working-directory: native-ios
+        run: |
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme LovelyMusicTests \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -parallel-testing-enabled NO \
+            -only-testing:LovelyMusicTests/AudioTransferIntegrityTests \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSUsesHLSOnlyWhenNoValidAACExists \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/evantube-simulator.entitlements" \
+            test
