@@ -61,6 +61,47 @@ final class KeylessOnlineSearchTests: XCTestCase {
             .queryItems?.first(where: { $0.name == "key" })?.value
         XCTAssertEqual(keyParam, Self.fixtureKey)
     }
+
+    func testVideoFilterUsesOfficialMusicVideoSearchParameter() {
+        XCTAssertEqual(SearchFilterMapper.toParams(.videos),
+                       "EgWKAQIQAWoMEA4QChADEAQQCRAF")
+    }
+
+    func testSearchMapperRetainsDaxRemixInVideoShelf() throws {
+        // Synthetic fixture: exercises video-only results without querying YouTube.
+        let payload = """
+        {
+          "contents": {
+            "sectionListRenderer": {
+              "contents": [{
+                "musicShelfRenderer": {
+                  "title": {"runs": [{"text": "Videos"}]},
+                  "contents": [{
+                    "musicResponsiveListItemRenderer": {
+                      "flexColumns": [
+                        {"musicResponsiveListItemFlexColumnRenderer": {
+                          "text": {"runs": [{"text": "Dax - Still D.R.E. Remix [One Take Video]"}]}
+                        }},
+                        {"musicResponsiveListItemFlexColumnRenderer": {
+                          "text": {"runs": [{"text": "Dax"}]}
+                        }}
+                      ],
+                      "playlistItemData": {"videoId": "67Pylw3Kukc"}
+                    }
+                  }]
+                }
+              }]
+            }
+          }
+        }
+        """
+        let mixed = try SearchResponseMapper.map(Data(payload.utf8))
+        XCTAssertEqual(mixed.songs.map(\.id), ["67Pylw3Kukc"])
+        XCTAssertEqual(mixed.songs.first?.artistName, "Dax")
+
+        let videos = try SearchResponseMapper.map(Data(payload.utf8), filter: .videos)
+        XCTAssertEqual(videos.songs.first?.id, "67Pylw3Kukc")
+    }
 }
 
 /// No credential is sent to any real service in these tests.
