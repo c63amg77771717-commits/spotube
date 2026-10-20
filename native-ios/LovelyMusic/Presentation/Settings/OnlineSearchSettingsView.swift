@@ -13,7 +13,7 @@ struct OnlineSearchSettingsView: View {
                 Label(statusText, systemImage: isConfigured ? "checkmark.circle" : "key")
                     .foregroundStyle(Theme.Colors.brandGradient)
                     .accessibilityIdentifier("search_key_status")
-                Text("用於搜尋 YouTube 的公開音樂資料。歌單同步使用另一組 Google 登入設定。")
+                Text("預設使用 YouTube Music 的匿名公開搜尋，不需要自行申請 API 金鑰。若來源暫時無法連線，可選擇使用自己的 YouTube Data API 金鑰。")
                     .font(.footnote)
                     .foregroundStyle(Theme.Colors.textSecondary)
             }
@@ -33,9 +33,7 @@ struct OnlineSearchSettingsView: View {
                             key = ""
                             hasOverride = false
                             isError = false
-                            message = SecretsProvider.youtubeDataAPIKey.isEmpty
-                                ? "已移除自訂金鑰；媒體庫搜尋仍可使用。"
-                                : "已移除自訂金鑰，改用 EvanTube 內建搜尋。"
+                            message = "已移除自訂金鑰，改用 YouTube Music 匿名線上搜尋。"
                         } catch { showError(error.localizedDescription) }
                     }
                 }
@@ -45,7 +43,7 @@ struct OnlineSearchSettingsView: View {
                         .accessibilityIdentifier("search_api_key_message")
                 }
             } header: {
-                Text("自訂搜尋金鑰")
+                Text("選用：自訂搜尋金鑰")
             } footer: {
                 Text("自訂金鑰只儲存在這台裝置的安全鑰匙圈，不會隨 Google Drive 歌單同步。")
             }
@@ -73,7 +71,7 @@ struct OnlineSearchSettingsView: View {
     private var isConfigured: Bool { hasOverride || !SecretsProvider.youtubeDataAPIKey.isEmpty }
     private var statusText: String {
         if hasOverride { return "已設定自訂搜尋金鑰" }
-        return isConfigured ? "EvanTube 線上搜尋已啟用" : "尚未設定線上搜尋金鑰"
+        return isConfigured ? "已啟用自訂 Data API 搜尋" : "YouTube Music 匿名線上搜尋已啟用"
     }
 
     private func saveKey() {
