@@ -738,6 +738,7 @@ struct SearchView: View {
     private func filterIcon(for filter: SearchFilter) -> String {
         switch filter {
         case .songs: return "music.note"
+        case .videos: return "play.rectangle"
         case .albums: return "square.stack"
         case .artists: return "person.2"
         case .playlists: return "music.note.list"
@@ -797,7 +798,11 @@ struct SearchView: View {
                             .id(song.id)
                         }
                     } header: {
-                        resultSectionHeader("Songs", icon: "music.note")
+                        resultSectionHeader(
+                            viewModel.selectedFilter == .videos ? "Videos"
+                                : viewModel.selectedFilter == .songs ? "Songs" : "Songs & Videos",
+                            icon: viewModel.selectedFilter == .videos ? "play.rectangle" : "music.note"
+                        )
                     }
                 }
 
