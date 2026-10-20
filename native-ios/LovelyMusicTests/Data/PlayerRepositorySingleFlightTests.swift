@@ -942,6 +942,78 @@ final class PlayerRepositorySingleFlightTests: XCTestCase {
         XCTAssertEqual(resetCount, 1, file: file, line: line)
     }
 
+
+    func testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow() async throws {
+        let mock = MockPlayerAPI()
+        let fullAAC = "https://cdn.example.test/full-song.m4a"
+        let hls = "https://cdn.example.test/manifest/hls/short-window.m3u8"
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "playabilityStatus": ["status": "OK"],
+            "streamingData": [
+                "hlsManifestUrl": hls,
+                "adaptiveFormats": [
+                    [
+                        "itag": 140,
+                        "url": fullAAC,
+                        "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+                        "bitrate": 128_000,
+                        "contentLength": "3000000",
+                        "approxDurationMs": "200000",
+                    ]
+                ]
+            ]
+        ] as [String: Any])
+        await mock.setHandler { kind, _ in
+            switch kind {
+            case .session:
+                throw InnerTubeError.httpError(400)
+            case .player("VISIONOS"):
+                return payload
+            case .player:
+                throw InnerTubeError.noStreamAvailable
+            }
+        }
+        let descriptor = try await PlayerRepository(api: mock)
+            .resolveStreamDescriptor(
+                videoId: "FULL-AAC",
+                quality: .medium,
+                requestHeaders: [:]
+            )
+        XCTAssertEqual(descriptor.remoteURL.absoluteString, fullAAC)
+        XCTAssertEqual(descriptor.mimeType, "audio/mp4")
+        XCTAssertEqual(descriptor.contentLength, 3_000_000)
+    }
+
+    func testVisionOSUsesHLSOnlyWhenNoValidAACExists() async throws {
+        let mock = MockPlayerAPI()
+        let hls = "https://cdn.example.test/manifest/hls/fallback.m3u8"
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "playabilityStatus": ["status": "OK"],
+            "streamingData": [
+                "hlsManifestUrl": hls,
+                "adaptiveFormats": []
+            ]
+        ] as [String: Any])
+        await mock.setHandler { kind, _ in
+            switch kind {
+            case .session:
+                throw InnerTubeError.httpError(400)
+            case .player("VISIONOS"):
+                return payload
+            case .player:
+                throw InnerTubeError.noStreamAvailable
+            }
+        }
+        let descriptor = try await PlayerRepository(api: mock)
+            .resolveStreamDescriptor(
+                videoId: "ONLY-HLS",
+                quality: .medium,
+                requestHeaders: [:]
+            )
+        XCTAssertEqual(descriptor.remoteURL.absoluteString, hls)
+        XCTAssertEqual(descriptor.mimeType, "application/x-mpegURL")
+    }
+
     private func multiQualityAudioPlayerJSON() -> Data {
         let payload: [String: Any] = [
             "playabilityStatus": ["status": "OK"],
