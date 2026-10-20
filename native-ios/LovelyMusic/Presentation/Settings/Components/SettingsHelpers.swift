@@ -24,6 +24,7 @@ struct SettingsGroup<Content: View>: View {
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.CornerRadius.large)
                     .stroke(Theme.Colors.divider, lineWidth: Theme.SizeTokens.dividerThick)
+                    .allowsHitTesting(false)
             )
             .shadow(
                 color: Theme.Shadows.small.color,
