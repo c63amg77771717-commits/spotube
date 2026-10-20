@@ -17,6 +17,14 @@ final class YouTubeAuthManager {
 
     init() {
         loadFromKeychain()
+        #if DEBUG
+        // Signed-in UI fixture, never stores cookies or credentials.
+        if ProcessInfo.processInfo.environment["REVIEW_MODE"] == "1"
+            && CommandLine.arguments.contains("-evantubeSignedInSettingsPreview") {
+            isLoggedIn = true
+            accountName = "YouTube User"
+        }
+        #endif
     }
 
     // MARK: - Cookie Management
