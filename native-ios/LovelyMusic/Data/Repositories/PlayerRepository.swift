@@ -110,14 +110,20 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                 }
             }
 
-            // This HLS source previously resolved successfully in EvanTube.
-            // It needs no optional app-embedded client key, so try it before
-            // claiming the online source is unconfigured.
+            // The VisionOS HLS DVR playlist can advertise only a ~69-second
+            // live window for a much longer song. Prefer its full AAC adaptive
+            // resource (if available) before considering HLS playback.
             do {
-                if let hlsDesc = try await extractHLSDescriptor(videoId: videoId) {
-                    PlaybackDiagnostics.shared.record(.init(phase: .streamResolved, client: .visionOS,
-                        videoID: videoId, hlsAvailable: true))
-                    return hlsDesc
+                if let descriptor = try await extractHLSDescriptor(
+                    videoId: videoId,
+                    quality: quality
+                ) {
+                    PlaybackDiagnostics.shared.record(.init(
+                        phase: .streamResolved, client: .visionOS,
+                        videoID: videoId,
+                        hlsAvailable: descriptor.mimeType == "application/x-mpegURL"
+                    ))
+                    return descriptor
                 }
             } catch let failure as PlayabilityFailure {
                 // A definitive VisionOS content result beats an earlier
@@ -442,9 +448,12 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         return String((0..<16).compactMap { _ in chars.randomElement() }.prefix(16))
     }
 
-    /// Call VISIONOS player and return a StreamDescriptor wrapping the hlsManifestUrl.
-    /// Returns nil if VISIONOS fails or doesn't return an HLS manifest.
-    private func extractHLSDescriptor(videoId: String) async throws -> StreamDescriptor? {
+    /// Prefer the full adaptive AAC asset. Only fall back to HLS when no
+    /// validated AAC URL exists; HLS durations are checked by AudioEngine.
+    private func extractHLSDescriptor(
+        videoId: String,
+        quality: AudioQuality
+    ) async throws -> StreamDescriptor? {
         let data = try await api.playerWithVisionOS(videoId: videoId)
         let response = try decoder.decode(PlayerResponse.self, from: data)
         let status = response.playabilityStatus?.status ?? "UNKNOWN"
@@ -452,6 +461,30 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             let reason = response.playabilityStatus?.reason ?? ""
             throw PlayabilityFailure(reason: reason.isEmpty ? status : "\(status): \(reason)")
         }
+
+        let mapped = StreamingDataMapper.map(response.streamingData)
+        let format = mapped.bestAudioFormat(
+            quality: quality,
+            candidateIsPlayable: { candidate in
+                StreamMIMEBaseSyntax.normalizedBase(candidate.mimeType) == "audio/mp4"
+                && (try? StreamDescriptorResolver.resolve(
+                    videoID: videoId, format: candidate,
+                    expiresAt: mapped.expiresAt, requestHeaders: [:]
+                )) != nil
+            }
+        )
+        if let format,
+           StreamMIMEBaseSyntax.normalizedBase(format.mimeType) == "audio/mp4",
+           let fullAudio = try? StreamDescriptorResolver.resolve(
+               videoID: videoId, format: format,
+               expiresAt: mapped.expiresAt, requestHeaders: [:]
+           ) {
+            Log.player.info(
+                "[VISIONOS] Full AAC selected, itag=\(fullAudio.itag) totalBytes=\(fullAudio.contentLength ?? 0)"
+            )
+            return fullAudio
+        }
+
         guard let hlsString = response.streamingData?.hlsManifestUrl,
               let hlsURL = URL(string: hlsString),
               hlsURL.scheme?.lowercased() == "https",
