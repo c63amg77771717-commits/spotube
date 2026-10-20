@@ -966,7 +966,7 @@ final class PlayerRepositorySingleFlightTests: XCTestCase {
         await mock.setHandler { kind, _ in
             switch kind {
             case .session:
-                throw InnerTubeError.httpError(400)
+                throw InnerTubeError.httpError(statusCode: 400)
             case .player("VISIONOS"):
                 return payload
             case .player:
@@ -997,7 +997,7 @@ final class PlayerRepositorySingleFlightTests: XCTestCase {
         await mock.setHandler { kind, _ in
             switch kind {
             case .session:
-                throw InnerTubeError.httpError(400)
+                throw InnerTubeError.httpError(statusCode: 400)
             case .player("VISIONOS"):
                 return payload
             case .player:
