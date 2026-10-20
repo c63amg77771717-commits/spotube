@@ -175,7 +175,17 @@ final class DIContainer {
         self.sleepTimerManager = SleepTimerManager()
         self.downloadManager = DownloadManager()
         self.equalizerManager = EqualizerManager()
-        self.audioCacheManager = AudioCacheManager()
+        let audioCache = AudioCacheManager()
+        // Build 30 could cache a successfully remuxed *partial* track.
+        // Evict that legacy media once so updated installs cannot replay the
+        // same shortened 1:09 file even after the network downloader is fixed.
+        let audioCompletenessCacheResetKey = "evantube_audio_full_resource_cache_reset_v31"
+        if !isReviewMode &&
+           !UserDefaults.standard.bool(forKey: audioCompletenessCacheResetKey) {
+            audioCache.clearAll()
+            UserDefaults.standard.set(true, forKey: audioCompletenessCacheResetKey)
+        }
+        self.audioCacheManager = audioCache
         let settingsViewModel = SettingsViewModel(
             authManager: authManager, playbackQualitySettings: qualitySettings)
         settingsViewModel.audioCacheManager = audioCacheManager
