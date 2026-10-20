@@ -12,6 +12,7 @@ struct SearchResult {
 
 enum SearchFilter: CaseIterable {
     case songs
+    case videos
     case albums
     case artists
     case playlists
@@ -19,6 +20,7 @@ enum SearchFilter: CaseIterable {
     var displayName: String {
         switch self {
         case .songs: return LocalizationManager.text("Songs")
+        case .videos: return LocalizationManager.text("Videos")
         case .albums: return LocalizationManager.text("Albums")
         case .artists: return LocalizationManager.text("Artists")
         case .playlists: return LocalizationManager.text("Playlists")
