@@ -22,9 +22,7 @@ struct SearchView: View {
                 filterChips
             }
 
-            if !viewModel.searchesLibrary && !viewModel.isOnlineConfigured {
-                onlineSearchSetup
-            } else if let errorMessage = viewModel.error {
+            if let errorMessage = viewModel.error {
                 ErrorStateView(errorMessage) {
                     Task { viewModel.search() }
                 }
@@ -108,27 +106,6 @@ struct SearchView: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier)
         .accessibilityAddTraits(viewModel.searchesLibrary == library ? .isSelected : [])
-    }
-
-    private var onlineSearchSetup: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Image(systemName: "magnifyingglass")
-                .font(.largeTitle)
-                .foregroundStyle(Theme.Colors.brandGradient)
-            Text("設定 YouTube 線上搜尋")
-                .font(Theme.Typography.headline)
-            Text("加入 YouTube Data API 金鑰後即可搜尋線上歌曲。已匯入的歌曲與歌單可切換至「媒體庫」搜尋。")
-                .font(Theme.Typography.subheadline)
-                .foregroundStyle(Theme.Colors.textSecondary)
-                .multilineTextAlignment(.center)
-            Button("設定搜尋金鑰") { showSearchSettings = true }
-                .buttonStyle(.borderedProminent)
-                .tint(Theme.Colors.brandGradientStart)
-                .accessibilityIdentifier("search_configure_key")
-        }
-        .padding(Theme.Spacing.xl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .dockSafeBottom()
     }
 
     private var librarySearchIntro: some View {
