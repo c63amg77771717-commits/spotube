@@ -34,7 +34,7 @@ enum SearchResponseMapper {
                 for item in items {
                     guard let renderer = item.musicResponsiveListItemRenderer else { continue }
                     switch category {
-                    case .songs:
+                    case .songs, .videos:
                         guard renderer.isPlayable else { continue }
                         if let song = mapSong(from: renderer) { songs.append(song) }
                     case .albums:
@@ -66,6 +66,7 @@ enum SearchResponseMapper {
                 filter.map { f -> SearchCategory in
                     switch f {
                     case .songs: return .songs
+                    case .videos: return .videos
                     case .albums: return .albums
                     case .artists: return .artists
                     case .playlists: return .playlists
@@ -74,7 +75,7 @@ enum SearchResponseMapper {
             for item in cont.contents ?? [] {
                 guard let renderer = item.musicResponsiveListItemRenderer else { continue }
                 switch contCategory {
-                case .songs, .unknown:
+                case .songs, .videos, .unknown:
                     guard renderer.isPlayable else { continue }
                     if let song = mapSong(from: renderer) { songs.append(song) }
                 case .albums:
@@ -259,7 +260,7 @@ enum SearchResponseMapper {
     // MARK: - Helpers
 
     private enum SearchCategory {
-        case songs, albums, artists, playlists, unknown
+        case songs, videos, albums, artists, playlists, unknown
     }
 
     private static func detectCategory(from title: String?, filter: SearchFilter? = nil)
@@ -267,6 +268,7 @@ enum SearchResponseMapper {
     {
         if let title = title?.lowercased() {
             if title.contains("song") { return .songs }
+            if title.contains("video") || title.contains("影片") || title.contains("视频") { return .videos }
             if title.contains("album") { return .albums }
             if title.contains("artist") { return .artists }
             if title.contains("playlist") || title.contains("community") { return .playlists }
@@ -275,6 +277,7 @@ enum SearchResponseMapper {
         if let filter {
             switch filter {
             case .songs: return .songs
+            case .videos: return .videos
             case .albums: return .albums
             case .artists: return .artists
             case .playlists: return .playlists
