@@ -1677,7 +1677,7 @@ final class GuardedLegacyIntegrationTests: XCTestCase {
         let files = try XCTUnwrap(harness?.files)
         let recordedArtifacts = await files.lastArtifacts
         let artifacts = try XCTUnwrap(recordedArtifacts)
-        weak let weakEngine = harness?.engine
+        weak var weakEngine = harness?.engine
 
         harness = nil
         await waitUntil { weakEngine == nil }
