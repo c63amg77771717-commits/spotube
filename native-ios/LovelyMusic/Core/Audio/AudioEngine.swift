@@ -3251,8 +3251,10 @@ final class AudioEngine {
                 if let songSeconds = song.duration, songSeconds >= 90,
                    let assetDuration = try? await AVURLAsset(url: rawURL).load(.duration) {
                     let measuredSeconds = assetDuration.seconds
-                    if measuredSeconds.isFinite, measuredSeconds > 0,
-                       measuredSeconds < Double(songSeconds) * 0.7 {
+                    if AudioTrackDurationIntegrity.isIncomplete(
+                        measuredSeconds: measuredSeconds,
+                        expectedSeconds: songSeconds
+                    ) {
                         throw AudioTransferIntegrityError.durationMismatch
                     }
                 }
@@ -3580,6 +3582,22 @@ final class AudioEngine {
                     // valid finite value. We may have already populated duration
                     // from Song.duration (D-3) — don't clobber it with NaN/0.
                     let itemDuration = item.duration.seconds
+                    let hlsURL = self.currentTrack?.streamURL ?? ""
+                    let isHLS = hlsURL.contains("/manifest/hls")
+                        || URL(string: hlsURL)?.pathExtension.lowercased() == "m3u8"
+                    if isHLS && AudioTrackDurationIntegrity.isIncomplete(
+                        measuredSeconds: itemDuration,
+                        expectedSeconds: self.currentTrack?.duration
+                    ) {
+                        // The player advertises a short live/DVR window, not the
+                        // full recording. Never report it as a finished song.
+                        self.player?.pause()
+                        self.isPlaying = false
+                        self.isBuffering = false
+                        self.lastError = "Audio source is shorter than the song. Please retry."
+                        Log.audio.error("Rejected incomplete HLS playback window")
+                        return
+                    }
                     if itemDuration.isFinite, itemDuration > 0 {
                         self.duration = itemDuration
                     }
@@ -4957,5 +4975,21 @@ enum AudioTransferIntegrity {
         default:
             throw AudioTransferIntegrityError.invalidResponse
         }
+    }
+}
+
+
+/// Avoid treating a short CDN/HLS window as a completed long recording.
+/// Ignore near matches: catalog times are often rounded to whole seconds.
+enum AudioTrackDurationIntegrity {
+    static func isIncomplete(
+        measuredSeconds: TimeInterval,
+        expectedSeconds: Int?
+    ) -> Bool {
+        guard let expectedSeconds, expectedSeconds >= 90,
+              measuredSeconds.isFinite, measuredSeconds > 0 else {
+            return false
+        }
+        return measuredSeconds < TimeInterval(expectedSeconds) * 0.7
     }
 }
