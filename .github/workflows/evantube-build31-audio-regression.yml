@@ -38,9 +38,9 @@ jobs:
           from pathlib import Path
           spec = Path("project.yml")
           content = spec.read_text()
-          old = "      - path: LovelyMusicTests\\n"
-          new = ("      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift\\n"
-                 "      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift\\n")
+          old = "      - path: LovelyMusicTests" + chr(10)
+          new = ("      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift" + chr(10)
+                 "      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift" + chr(10))
           assert content.count(old) == 1, "Unexpected native test target configuration"
           spec.write_text(content.replace(old, new))
           PY
