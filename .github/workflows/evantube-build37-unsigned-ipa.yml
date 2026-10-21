@@ -1,4 +1,4 @@
-name: EvanTube Build37 verified unsigned IPA
+name: EvanTube Build37 verified guest playback IPA
 
 on:
   push:
