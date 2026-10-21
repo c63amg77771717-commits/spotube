@@ -3222,9 +3222,9 @@ final class AudioEngine {
                             let (bytes, response) = try await URLSession.shared.data(for: segmentRequest)
                             transferHTTPStatus = (response as? HTTPURLResponse)?.statusCode
                             guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                            if let http = response as? HTTPURLResponse,
-                               [403, 410, 429].contains(http.statusCode),
-                               retry == 0 {
+                            if SignedAudioURLRefreshPolicy.shouldRefresh(
+                                httpStatus: transferHTTPStatus, retry: retry
+                            ) {
                                 currentRequest = try await refreshSignedRequest()
                                 continue
                             }
@@ -4924,6 +4924,14 @@ func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
         cursor += 12
     }
     return (boxEnd + Int(firstOffset), sizes)
+}
+
+/// Never proactively rotate the signed CDN URL while a transfer is working.
+/// Refresh once on a definite rejection, then preserve resource-size checks.
+enum SignedAudioURLRefreshPolicy {
+    static func shouldRefresh(httpStatus: Int?, retry: Int) -> Bool {
+        retry == 0 && [403, 410, 429].contains(httpStatus ?? 0)
+    }
 }
 
 enum AudioTransferIntegrityError: Error, Equatable {
