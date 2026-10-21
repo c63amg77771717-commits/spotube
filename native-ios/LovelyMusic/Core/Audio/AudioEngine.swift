@@ -3088,6 +3088,7 @@ final class AudioEngine {
                 // A partial HTTP response is NOT a playable song. Derive the
                 // authoritative resource length from Content-Range and verify
                 // each subsequent byte transfer before writing any playback item.
+                transferHTTPStatus = nil
                 var headerRequest = baseRequest
                 headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
                 let (headerData, headerResponse) = try await URLSession.shared.data(for: headerRequest)
@@ -3118,6 +3119,7 @@ final class AudioEngine {
                     // never the former 400 KB preview-sized fallback.
                     // URLSession.download keeps the whole response off-heap.
                     transferStage = .fullResource
+                    transferHTTPStatus = nil
                     let (temporaryURL, fullResponse) = try await URLSession.shared.download(for: baseRequest)
                     transferHTTPStatus = (fullResponse as? HTTPURLResponse)?.statusCode
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
@@ -3151,6 +3153,7 @@ final class AudioEngine {
                         fileHandle.write(headerData.prefix(headerEnd))
                     } else {
                         transferStage = .initializationPrefix
+                        transferHTTPStatus = nil
                         var prefixRequest = baseRequest
                         prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
                         let (prefixData, prefixResponse) = try await URLSession.shared.data(for: prefixRequest)
@@ -3186,6 +3189,7 @@ final class AudioEngine {
                     // the same song/quality, but reject changed resource length.
                     let refreshSignedRequest: () async throws -> URLRequest = {
                         transferStage = .refreshSource
+                        transferHTTPStatus = nil
                         guard let resolver = self.streamResolver(for: song) else {
                             throw AudioTransferIntegrityError.incompleteResource
                         }
@@ -3214,6 +3218,7 @@ final class AudioEngine {
                         var received: Data?
                         for retry in 0..<2 {
                             transferStage = .segmentRange
+                            transferHTTPStatus = nil
                             var segmentRequest = currentRequest
                             segmentRequest.setValue(
                                 "bytes=\(requiredRange.lowerBound)-\(requiredRange.upperBound - 1)",
