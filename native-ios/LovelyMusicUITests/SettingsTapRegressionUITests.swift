@@ -6,6 +6,19 @@ final class SettingsTapRegressionUITests: XCTestCase {
     @MainActor func testThreeSettingsEntrypointsAreTappableFromCardRightSide() {
         continueAfterFailure = false
         let app = XCUIApplication()
+        addTeardownBlock { [weak self] in
+            await MainActor.run {
+                guard let self, (self.testRun?.totalFailureCount ?? 0) > 0 else { return }
+                let screenshot = XCTAttachment(screenshot: app.screenshot())
+                screenshot.name = "Settings navigation failure"
+                screenshot.lifetime = .keepAlways
+                self.add(screenshot)
+                let hierarchy = XCTAttachment(string: app.debugDescription)
+                hierarchy.name = "Settings navigation failure hierarchy"
+                hierarchy.lifetime = .keepAlways
+                self.add(hierarchy)
+            }
+        }
         app.launchArguments = [
             "-hasCompletedOnboarding", "-appLanguage", "zh-Hant",
             "-AppleLanguages", "(zh-Hant)", "-AppleLocale", "zh_TW",
@@ -34,32 +47,56 @@ final class SettingsTapRegressionUITests: XCTestCase {
         let account = app.buttons["settings_youtube_account"].firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 15))
         XCTAssertTrue(account.isHittable)
-        tapRightSide(account)
+        tapRightSide(account, in: app)
         let accountPage = app.navigationBars["YouTube 帳號"].firstMatch
         XCTAssertTrue(accountPage.waitForExistence(timeout: 12))
         XCTAssertTrue(app.buttons["account_reauthenticate"].exists)
         app.buttons["account_details_done"].tap()
-        XCTAssertTrue(account.waitForExistence(timeout: 10))
 
         let importer = app.buttons["settings_playlist_import"].firstMatch
+        XCTAssertTrue(waitForDismissal(of: accountPage, before: importer, timeout: 10),
+                      "Account sheet must close and the import card must be tappable")
+        XCTAssertTrue(account.exists)
         XCTAssertTrue(importer.isHittable)
-        tapRightSide(importer)
-        XCTAssertTrue(app.navigationBars["匯入歌單"].waitForExistence(timeout: 12),
+        tapRightSide(importer, in: app)
+        let importPage = app.navigationBars["匯入歌單"].firstMatch
+        XCTAssertTrue(importPage.waitForExistence(timeout: 12),
                       "Import ZIP sheet must open from the full card")
         XCTAssertTrue(app.buttons["選取歌單 ZIP"].exists)
         app.buttons["完成"].firstMatch.tap()
 
         let drive = app.buttons["settings_drive_sync"].firstMatch
-        XCTAssertTrue(drive.waitForExistence(timeout: 12))
+        XCTAssertTrue(waitForDismissal(of: importPage, before: drive, timeout: 12),
+                      "Import sheet must close and the Drive card must be tappable")
         XCTAssertTrue(drive.isHittable)
-        tapRightSide(drive)
+        tapRightSide(drive, in: app)
         XCTAssertTrue(app.navigationBars["Google Drive 同步"].waitForExistence(timeout: 12),
                       "Drive sync sheet must open from the full card")
         XCTAssertTrue(app.staticTexts["跨裝置歌單"].exists)
         app.buttons["完成"].firstMatch.tap()
     }
 
-    @MainActor private func tapRightSide(_ card: XCUIElement) {
+    @MainActor private func waitForDismissal(
+        of page: XCUIElement, before button: XCUIElement, timeout: TimeInterval
+    ) -> Bool {
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !page.exists && button.exists && button.isHittable
+        }, object: nil)
+        return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed
+    }
+
+    @MainActor private func tapRightSide(_ card: XCUIElement, in app: XCUIApplication) {
+        let frame = card.frame
+        let target = CGPoint(x: frame.minX + frame.width * 0.90, y: frame.midY)
+        let state = XCTAttachment(string: """
+            card: \(card.identifier)
+            exists: \(card.exists), hittable: \(card.isHittable)
+            frame: \(frame), expected right-side point: \(target)
+            navigation bars: \(app.navigationBars.allElementsBoundByIndex.map(\.identifier))
+            """)
+        state.name = "Before \(card.identifier) right-side tap"
+        state.lifetime = .keepAlways
+        add(state)
         card.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
     }
 }

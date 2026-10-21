@@ -1,4 +1,4 @@
-name: EvanTube Build37 focused anonymous playback regression
+name: EvanTube Build37 focused settings UI regression
 
 on:
   push:
@@ -17,9 +17,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  playback-regression:
+  settings-navigation-ui:
     runs-on: macos-14
-    timeout-minutes: 45
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,63 +27,41 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: '16.2'
-      - name: Generate isolated Build37 anonymous playback target
+      - name: Prepare isolated signed simulator fixture
         working-directory: native-ios
         run: |
           brew install xcodegen
           python3 - <<'PY'
           import pathlib, plistlib, os
           pathlib.Path('LovelyMusic/Resources/Secrets.plist').write_bytes(plistlib.dumps({}))
-          spec=pathlib.Path('project.yml')
-          data=spec.read_text()
-          old='      - path: LovelyMusicTests'+chr(10)
-          assert data.count(old)==1
-          files=[
-              'LovelyMusicTests/Core/Audio/Build36BackgroundPlaybackTests.swift',
-              'LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift',
-              'LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift',
-              'LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift',
-              'LovelyMusicTests/Data/Build37AnonymousSourceSelectionTests.swift',
-              'LovelyMusicTests/InnerTube/InnerTubePlayerSessionTests.swift',
-              'LovelyMusicTests/InnerTube/InnerTubeVisitorDataTests.swift',
-              'LovelyMusicTests/InnerTube/InnerTubeVisitorDataExtraTests.swift',
-              'LovelyMusicTests/Core/Audio/Build37GuestPlaybackIntegrationTests.swift',
-              'LovelyMusicTests/Data/MediaCandidateRecoveryTests.swift',
-              'LovelyMusicTests/Data/KeylessOnlineSearchTests.swift',
-              'LovelyMusicTests/Mocks/MockInnerTubeRepository.swift',
-              'LovelyMusicTests/Mocks/MockPlaylistRepository.swift',
-              'LovelyMusicTests/Mocks/MockFavoritesRepository.swift',
-          ]
-          new=''.join('      - path: '+f+chr(10) for f in files)
-          spec.write_text(data.replace(old,new))
-          pathlib.Path(os.environ['RUNNER_TEMP'],'build37-simulator.entitlements').write_bytes(plistlib.dumps({
-              'application-identifier':'com.c63amg77771717.evantube',
-              'keychain-access-groups':['com.c63amg77771717.evantube'],
-              'get-task-allow':True,
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'build37-ui-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True,
           }))
           PY
           xcodegen generate
-      - name: Verify guest playback, session isolation, and visitor recovery
+      - name: Run failed settings tap regression
         working-directory: native-ios
         run: |
           set -o pipefail
           xcodebuild \
             -project LovelyMusic.xcodeproj \
-            -scheme LovelyMusicTests \
+            -scheme LovelyMusicUITests \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
-            -only-testing:LovelyMusicTests/Build36BackgroundSkipTests/testSuccessfulPlaybackBetweenFailuresRestoresBackgroundSkipBudget \
-            -resultBundlePath "$RUNNER_TEMP/build37-focused-anonymous.xcresult" \
+            -only-testing:LovelyMusicUITests/SettingsTapRegressionUITests/testThreeSettingsEntrypointsAreTappableFromCardRightSide \
+            -resultBundlePath "$RUNNER_TEMP/build37-focused-settings.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build37-simulator.entitlements" test \
-            2>&1 | tee "$RUNNER_TEMP/build37-focused-anonymous.log"
-      - name: Publish readable focused anonymous playback result
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build37-ui-simulator.entitlements" test \
+            2>&1 | tee "$RUNNER_TEMP/build37-focused-settings.log"
+      - name: Publish readable focused settings result
         if: always()
         run: |
           python3 - <<'PY'
           import os, pathlib
-          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build37-focused-anonymous.log')
+          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build37-focused-settings.log')
           lines = file.read_text(errors='replace').splitlines() if file.exists() else []
           for line in lines:
               if ' error: ' in line or 'XCTAssert' in line:
@@ -94,9 +72,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: EvanTube-Build37-focused-anonymous-evidence-${{ github.sha }}
+          name: EvanTube-Build37-focused-settings-evidence-${{ github.sha }}
           path: |
-            ${{ runner.temp }}/build37-focused-anonymous.log
-            ${{ runner.temp }}/build37-focused-anonymous.xcresult
+            ${{ runner.temp }}/build37-focused-settings.log
+            ${{ runner.temp }}/build37-focused-settings.xcresult
           if-no-files-found: error
           retention-days: 7
