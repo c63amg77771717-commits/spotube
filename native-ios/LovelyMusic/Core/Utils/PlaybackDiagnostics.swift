@@ -10,6 +10,28 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case audioSessionConfigured, audioSessionActivated, audioRouteChanged, audioMediaServicesReset
         case nowPlayingSession
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
+        case audioTransferProbe, audioTransferFailure
+        case remoteNext, remotePrevious
+    }
+    enum TransferStage: String, Codable, Sendable {
+        case probe, fullDownload, initializationPrefix, segment, fileComplete, durationCheck
+    }
+    enum TransferFailure: String, Codable, Sendable {
+        case invalidResponse, incompleteResource, resourceChanged, invalidIndex
+        case durationMismatch, network, other
+
+        static func classify(_ error: Error) -> Self {
+            if let integrity = error as? AudioTransferIntegrityError {
+                switch integrity {
+                case .invalidResponse: return .invalidResponse
+                case .incompleteResource: return .incompleteResource
+                case .resourceChanged: return .resourceChanged
+                case .invalidIndex: return .invalidIndex
+                case .durationMismatch: return .durationMismatch
+                }
+            }
+            return error is URLError ? .network : .other
+        }
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
     enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, musicRefresh, persisted, generated, appFallback }
@@ -59,6 +81,10 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let manualPause: Bool?
         let routeOutputCount: Int?
         let interruptionShouldResume: Bool?
+        let transferStage: TransferStage?
+        let transferFailure: TransferFailure?
+        let transferReceivedBytes: Int64?
+        let transferExpectedBytes: Int64?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
@@ -69,7 +95,10 @@ final class PlaybackDiagnostics: @unchecked Sendable {
               positionSeconds: TimeInterval? = nil, isPlaying: Bool? = nil, isBuffering: Bool? = nil,
               audioMixingEnabled: Bool? = nil, audioActivationSucceeded: Bool? = nil,
               nowPlayingActive: Bool? = nil, playbackRate: Double? = nil, manualPause: Bool? = nil, routeOutputCount: Int? = nil,
-              interruptionShouldResume: Bool? = nil, timestamp: Date = Date()) {
+              interruptionShouldResume: Bool? = nil,
+              transferStage: TransferStage? = nil, transferFailure: TransferFailure? = nil,
+              transferReceivedBytes: Int64? = nil, transferExpectedBytes: Int64? = nil,
+              timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
             self.client = client
@@ -102,6 +131,14 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.manualPause = manualPause
             self.routeOutputCount = routeOutputCount.flatMap { (0...16).contains($0) ? $0 : nil }
             self.interruptionShouldResume = interruptionShouldResume
+            self.transferStage = transferStage
+            self.transferFailure = transferFailure
+            self.transferReceivedBytes = transferReceivedBytes.flatMap {
+                (0...1_000_000_000).contains($0) ? $0 : nil
+            }
+            self.transferExpectedBytes = transferExpectedBytes.flatMap {
+                (0...1_000_000_000).contains($0) ? $0 : nil
+            }
         }
 
         var sanitized: Self {
@@ -115,7 +152,10 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 positionSeconds: positionSeconds, isPlaying: isPlaying, isBuffering: isBuffering,
                 audioMixingEnabled: audioMixingEnabled, audioActivationSucceeded: audioActivationSucceeded,
                 nowPlayingActive: nowPlayingActive, playbackRate: playbackRate, manualPause: manualPause, routeOutputCount: routeOutputCount,
-                interruptionShouldResume: interruptionShouldResume, timestamp: timestamp)
+                interruptionShouldResume: interruptionShouldResume,
+                transferStage: transferStage, transferFailure: transferFailure,
+                transferReceivedBytes: transferReceivedBytes,
+                transferExpectedBytes: transferExpectedBytes, timestamp: timestamp)
         }
     }
     struct Report: Codable {
