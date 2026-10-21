@@ -8,11 +8,13 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
     /// Single-flight caches: concurrent callers asking for the same `videoId`
     /// share one underlying `InnerTubeAPI` round-trip. Audio is keyed by id and
-    /// effective quality; video remains keyed by id. The separate caches keep a
+    /// effective quality, YouTube session and rejected-candidate version;
+    /// video remains keyed by id. The separate caches keep a
     /// stuck video resolve from blocking audio for the same id.
     private struct AudioInflightKey: Hashable, Sendable {
         let videoID: String
         let quality: AudioQuality
+        let sessionContext: PlayerSessionContext
         let candidateVersion: UInt64
     }
 
@@ -48,6 +50,7 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
     private let candidateLock = NSLock()
     private var candidateStates: [String: CandidateState] = [:]
+    private var candidateSessionContext: PlayerSessionContext?
     private var candidateVersion: UInt64 = 0
     private let candidateClock: @Sendable () -> Date
     private static let candidateTTL: TimeInterval = 5 * 60
@@ -108,19 +111,29 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         quality: AudioQuality,
         requestHeaders: [String: String]
     ) async throws -> StreamDescriptor {
-        let candidates = candidateSnapshot(videoId: videoId)
+        let sessionContext = await api.playerSessionContext()
+        guard let candidates = candidateSnapshot(videoId: videoId, sessionContext: sessionContext) else {
+            throw CancellationError()
+        }
         let key = AudioInflightKey(
-            videoID: videoId, quality: quality, candidateVersion: candidates.version
+            videoID: videoId, quality: quality, sessionContext: sessionContext,
+            candidateVersion: candidates.version
         )
         let base = try await audioInflight.run(key) { [self] in
             let result = try await resolveStreamDescriptorUncached(
-                videoId: videoId, quality: quality, rejected: candidates.rejected
+                videoId: videoId, quality: quality, rejected: candidates.rejected,
+                sessionContext: sessionContext
             )
+            guard await api.playerSessionContext() == sessionContext else { throw CancellationError() }
             recordPlaybackCandidate(
-                result, videoId: videoId, quality: quality, version: candidates.version
+                result, videoId: videoId, quality: quality, version: candidates.version,
+                sessionContext: sessionContext
             )
             return result.descriptor
         }
+        // A shared task can complete just before logout. Never hand its old
+        // authenticated URL to a caller after the session has changed.
+        guard await api.playerSessionContext() == sessionContext else { throw CancellationError() }
         return base.withRequestHeaders(requestHeaders)
     }
 
@@ -162,10 +175,20 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         candidateStates[videoId] = state
     }
 
-    private func candidateSnapshot(videoId: String) -> CandidateSnapshot {
+    private func candidateSnapshot(
+        videoId: String, sessionContext: PlayerSessionContext
+    ) -> CandidateSnapshot? {
         let now = candidateClock()
         candidateLock.lock()
         defer { candidateLock.unlock() }
+        if candidateSessionContext != sessionContext {
+            // An older suspended caller must not restore exclusions belonging
+            // to the session it observed before another caller saw logout.
+            if let current = candidateSessionContext,
+               sessionContext.generation < current.generation { return nil }
+            candidateSessionContext = sessionContext
+            candidateStates.removeAll()
+        }
         pruneCandidateStates(now: now)
         if var state = candidateStates[videoId] {
             state.lastAccess = now
@@ -185,13 +208,15 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
     }
 
     private func recordPlaybackCandidate(
-        _ result: ResolvedAudioCandidate, videoId: String, quality: AudioQuality, version: UInt64
+        _ result: ResolvedAudioCandidate, videoId: String, quality: AudioQuality, version: UInt64,
+        sessionContext: PlayerSessionContext
     ) {
         let now = candidateClock()
         candidateLock.lock()
         defer { candidateLock.unlock() }
         pruneCandidateStates(now: now)
-        guard var state = candidateStates[videoId], state.version == version else { return }
+        guard candidateSessionContext == sessionContext,
+              var state = candidateStates[videoId], state.version == version else { return }
         state.observed[quality] = ObservedAudioCandidate(
             url: result.descriptor.remoteURL.absoluteString,
             client: result.client, observedAt: now
@@ -215,7 +240,8 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
     private func resolveStreamDescriptorUncached(
         videoId: String,
         quality: AudioQuality,
-        rejected: Set<AudioCandidateClient>
+        rejected: Set<AudioCandidateClient>,
+        sessionContext: PlayerSessionContext
     ) async throws -> ResolvedAudioCandidate {
         guard rejected.count < AudioCandidateClient.allCases.count else {
             throw InnerTubeError.noStreamAvailable
@@ -224,21 +250,23 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         // Do not block the signed-in native playback request before it can run.
         let cpn = generateCPN()
         return try await withTimeout(seconds: 45) { [self] in
-            // First use the real IOS session and its available authenticated cookies.
-            // Optional alternate clients must not supersede the user's account.
+            // Preserve the user's authenticated iOS source. Guests start with
+            // public sources: an iOS 200 descriptor alone does not prove its
+            // media is usable and must not hide an available full AAC source.
+            let isAnonymous = !sessionContext.isAuthenticated
             var lastPlayabilityReason: String?
             var lastDescriptorError: StreamDescriptorError?
             var lastSessionFailure: InnerTubeError?
             // A clean unsigned install ships no private player API keys.
             // Google Drive OAuth is independent of the YouTube session and
             // must not disable public, anonymous music playback attempts.
-            let needsPublicWebFallback = api is InnerTubeAPI
-                && !SecretsProvider.hasPlayerSourceConfiguration
+            let needsPublicWebFallback = isAnonymous || (api is InnerTubeAPI
+                && !SecretsProvider.hasPlayerSourceConfiguration)
             var pendingHLS: StreamDescriptor?
 
             // Start with this user's own iOS session. Preserve the exact HTTP
             // failure; a missing optional alternate-client key is not the cause.
-            if !rejected.contains(.session) {
+            if !isAnonymous && !rejected.contains(.session) {
                 do {
                     if let result = try await attemptClientWithRetries(
                         label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
@@ -283,6 +311,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                         }
                     }
                 } catch let failure as PlayabilityFailure {
+                    if Self.isExplicitAuthenticationFailure(failure.reason) {
+                        throw InnerTubeError.videoUnavailable(reason: failure.reason)
+                    }
                     // A definitive VisionOS content result beats an earlier
                     // transport-level IOS HTTP 400.
                     lastPlayabilityReason = failure.reason
@@ -306,6 +337,28 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                     descriptorError: &lastDescriptorError
                 ) {
                     return ResolvedAudioCandidate(descriptor: result, client: .webRemix)
+                }
+                // Keep guest iOS only as a final compatibility candidate after
+                // both public sources have been tried. It shares the same
+                // bounded rejection history and never supersedes their AAC.
+                if isAnonymous && !rejected.contains(.session) {
+                    do {
+                        if let result = try await attemptClientWithRetries(
+                            label: "IOS(guest)", videoId: videoId, cpn: cpn, useSession: true,
+                            quality: quality,
+                            playabilityReason: &lastPlayabilityReason,
+                            descriptorError: &lastDescriptorError
+                        ) {
+                            return ResolvedAudioCandidate(descriptor: result, client: .session)
+                        }
+                    } catch let error as InnerTubeError {
+                        switch error {
+                        case .httpError, .sourceNotConfigured:
+                            lastSessionFailure = error
+                        default:
+                            throw error
+                        }
+                    }
                 }
                 // Preserve the Build31-34 HLS duration check if no complete
                 // source is available: never claim a short DVR window is full.
@@ -419,10 +472,7 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                 // YouTube is explicitly asking for sign-in or human verification.
                 // Switching client identities cannot complete that verification;
                 // do not retry it on multiple unofficial client endpoints.
-                let lowerReason = failure.reason.lowercased()
-                if lowerReason.contains("login_required") || lowerReason.contains("not a bot")
-                    || lowerReason.contains("不是機器人") || lowerReason.contains("不是机器人")
-                    || lowerReason.contains("verificationrequired") {
+                if Self.isExplicitAuthenticationFailure(failure.reason) {
                     throw InnerTubeError.videoUnavailable(reason: failure.reason)
                 }
                 // Other video-specific failures can still fall through the
@@ -477,6 +527,13 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         Log.player.warning(
             "[\(label, privacy: .public)] All \(Self.maxAttempts) attempts exhausted")
         return nil
+    }
+
+    private static func isExplicitAuthenticationFailure(_ reason: String) -> Bool {
+        let lowerReason = reason.lowercased()
+        return lowerReason.contains("login_required") || lowerReason.contains("not a bot")
+            || lowerReason.contains("不是機器人") || lowerReason.contains("不是机器人")
+            || lowerReason.contains("verificationrequired")
     }
 
     private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T)

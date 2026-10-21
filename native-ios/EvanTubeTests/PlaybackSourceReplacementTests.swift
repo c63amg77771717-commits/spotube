@@ -404,6 +404,10 @@ private final class NativePlaybackAuthFixture: URLProtocol {
 /// Offline-only native playback probe, including an actual HTTP 400 from the
 /// first client and an independently available HLS response. No live traffic.
 private struct NativeSessionHTTP400HLSFixture: PlayerAPIClient {
+    // This fixture exercises the authenticated native-session fallback path.
+    func playerSessionContext() async -> PlayerSessionContext {
+        PlayerSessionContext(isAuthenticated: true, generation: 0)
+    }
     let hlsAvailable: Bool
 
     func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {

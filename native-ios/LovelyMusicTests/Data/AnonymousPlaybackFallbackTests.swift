@@ -2,9 +2,8 @@ import Foundation
 import XCTest
 @testable import LovelyMusic
 
-/// Build35: Google Drive OAuth and the YouTube player are independent.
-/// A clean, keyless installation must try a public web audio source when
-/// the signed-out iOS request fails and VisionOS returns a short HLS window.
+/// Google Drive OAuth and the YouTube player are independent. A clean, keyless
+/// installation tries public audio before the guest iOS compatibility source.
 /// No live login, network request, credential, or Drive mutation is used here.
 final class AnonymousPlaybackFallbackTests: XCTestCase {
     private static let fakeKey = "AIza" + String(repeating: "A", count: 35)
@@ -37,13 +36,16 @@ final class AnonymousPlaybackFallbackTests: XCTestCase {
         XCTAssertEqual(key, Self.fakeKey)
     }
 
-    func testGuestIOSFailureAndShortVisionOSWindowResolveFullPublicAAC() async throws {
+    func testGuestShortVisionOSWindowResolvesFullPublicAACBeforeIOS() async throws {
         AnonymousPlaybackHTTPFixture.reset()
         let (api, session, defaults, name) = try makeAPI()
         defer {
             session.invalidateAndCancel()
             defaults.removePersistentDomain(forName: name)
         }
+        defaults.set("drive-only-test-account", forKey: "evantube_drive_enabled_account")
+        let context = await api.playerSessionContext()
+        XCTAssertFalse(context.isAuthenticated)
         let result = try await PlayerRepository(api: api).resolveStreamDescriptor(
             videoId: "67Pylw3Kukc", quality: .medium, requestHeaders: [:]
         )
@@ -53,8 +55,8 @@ final class AnonymousPlaybackFallbackTests: XCTestCase {
         XCTAssertEqual(result.contentLength, 3_000_000)
         XCTAssertNotNil(AnonymousPlaybackHTTPFixture.publicPlayerRequest(),
                         "No signed-in YouTube session should be needed for a public AAC source")
-        XCTAssertNotNil(AnonymousPlaybackHTTPFixture.sessionPlayerRequest(),
-                        "The original iOS first-choice path must remain intact")
+        XCTAssertNil(AnonymousPlaybackHTTPFixture.sessionPlayerRequest(),
+                     "A guest iOS response must not hide the full public AAC source")
     }
 
     func testGuestHTTPFailureFromVisionOSStillTriesPublicWeb() async throws {
@@ -170,10 +172,10 @@ private final class AnonymousPlaybackHTTPFixture: URLProtocol {
                 """
         } else if url.host == "www.youtube.com", path == "/watch" {
             mime = "text/html"
-            payload = "<html><body>guest watch page</body></html>"
+            payload = "<script>ytcfg.set({\"visitorData\":\"CgtWATCH_VISITOR_TOKEN_BUILD37\"});</script>"
         } else if url.host == "www.youtube.com", path == "/tv" {
             mime = "text/html"
-            payload = "<html><body>guest tv page</body></html>"
+            payload = "<script>ytcfg.set({\"visitorData\":\"CgtTVVZJU0lUT1JfVE9LRU5fMzc=\"});</script>"
         } else if url.host == "www.youtube.com", path == "/youtubei/v1/player" {
             let clientName = request.value(forHTTPHeaderField: "X-Youtube-Client-Name") ?? ""
             if clientName == "101" {

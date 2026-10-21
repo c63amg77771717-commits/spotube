@@ -95,6 +95,14 @@ enum InflightCacheError: Error {
 
 // MARK: - PlayerAPIClient
 
+/// Identity of the current YouTube playback session. Drive OAuth is unrelated.
+/// The generation changes whenever the saved YouTube session changes, including
+/// a switch between two signed-in accounts or a logout/login round trip.
+struct PlayerSessionContext: Hashable, Sendable {
+    let isAuthenticated: Bool
+    let generation: UInt64
+}
+
 /// Minimal API surface that `PlayerRepository` requires from the InnerTube
 /// client. Carved out as a protocol so tests can substitute a mock without
 /// dragging in the full `InnerTubeAPI` actor (URLSession, cookie store,
@@ -103,6 +111,7 @@ enum InflightCacheError: Error {
 /// Conformance is provided for the production `InnerTubeAPI` actor via an
 /// extension below.
 protocol PlayerAPIClient: Sendable {
+    func playerSessionContext() async -> PlayerSessionContext
     func playerWithSession(videoId: String, playlistId: String?) async throws -> Data
     func player(client: YouTubeClient, videoId: String, playlistId: String?) async throws -> Data
     func playerWithVisionOS(videoId: String) async throws -> Data

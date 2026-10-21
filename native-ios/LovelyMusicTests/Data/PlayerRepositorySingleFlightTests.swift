@@ -1347,6 +1347,10 @@ actor MockPlayerAPI: PlayerAPIClient {
 
     // MARK: PlayerAPIClient
 
+    func playerSessionContext() async -> PlayerSessionContext {
+        PlayerSessionContext(isAuthenticated: true, generation: 0)
+    }
+
     func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {
         playerWithSessionCallCount += 1
         callOrder.append("ANDROID_VR(session)")

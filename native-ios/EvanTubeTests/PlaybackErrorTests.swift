@@ -115,6 +115,10 @@ private final class PlaybackAuthProtocol: URLProtocol {
 }
 
 private struct PlayabilityFailureAPI: PlayerAPIClient {
+    // Preserve the account-session playability error exercised by these tests.
+    func playerSessionContext() async -> PlayerSessionContext {
+        PlayerSessionContext(isAuthenticated: true, generation: 0)
+    }
     var reason = "Sign in required"
 
     func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {

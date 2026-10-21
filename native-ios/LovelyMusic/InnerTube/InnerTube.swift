@@ -15,7 +15,9 @@ actor InnerTubeAPI {
     /// token. Hydrated from `UserDefaults` on init; refreshed lazily via
     /// `ensureFreshVisitorData()` from `music.youtube.com/sw.js_data`.
     var visitorData: String = InnerTubeAPI.defaultVisitorData
-    var cookie: String?
+    private(set) var cookie: String?
+    private var authenticationGeneration: UInt64 = 0
+    private var playerSessionGeneration: UInt64 = 0
 
     private var sessionCookies: [HTTPCookie] = []
     private var hasInitializedSession = false
@@ -77,6 +79,16 @@ actor InnerTubeAPI {
     func setCookie(_ cookieString: String?) {
         guard cookie != cookieString else { return }
         self.cookie = cookieString
+        authenticationGeneration &+= 1
+        visitorDataRefreshTask?.cancel()
+        visitorDataRefreshTask = nil
+        visitorData = Self.defaultVisitorData
+        visitorDataTimestamp = nil
+        playerVisitorSource = .generated
+        refreshFailureCount = 0
+        setDegraded(false)
+        userDefaults.removeObject(forKey: Self.visitorDataPersistenceKey)
+        userDefaults.removeObject(forKey: Self.visitorDataPersistenceAtKey)
         PlaybackDiagnostics.shared.record(.init(phase: .authChanged, hasAuth: cookieString?.isEmpty == false))
         resetSession()
         for stored in HTTPCookieStorage.shared.cookies ?? []
@@ -84,6 +96,23 @@ actor InnerTubeAPI {
             && YouTubeAuthManager.authCookieNames.contains(stored.name) {
             HTTPCookieStorage.shared.deleteCookie(stored)
         }
+    }
+
+    func playerSessionContext() -> PlayerSessionContext {
+        // DI supplies only unexpired YouTube cookies from the Keychain. A
+        // Drive OAuth account or a visitor-only cookie is not a YouTube login.
+        let names = Set((cookie ?? "").split(separator: ";").compactMap { part -> String? in
+            let pair = part.trimmingCharacters(in: .whitespaces)
+                .split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            guard pair.count == 2, !pair[1].trimmingCharacters(in: .whitespaces).isEmpty else {
+                return nil
+            }
+            return String(pair[0])
+        })
+        return PlayerSessionContext(
+            isAuthenticated: names.isSuperset(of: ["SAPISID", "SID"]),
+            generation: authenticationGeneration
+        )
     }
 
     init(locale: YouTubeLocale = .default, session: URLSession? = nil,
@@ -239,6 +268,7 @@ actor InnerTubeAPI {
             }
             var request = URLRequest(url: url)
             request.timeoutInterval = 15
+            request.httpShouldHandleCookies = false
             request.cachePolicy = .reloadIgnoringLocalCacheData
             request.setValue(YouTubeClient.userAgentWeb, forHTTPHeaderField: "User-Agent")
             request.setValue("text/html", forHTTPHeaderField: "Accept")
@@ -353,6 +383,7 @@ actor InnerTubeAPI {
         videoId: String,
         playlistId: String? = nil
     ) async throws -> Data {
+        let sessionContext = playerSessionContext()
         let diagnosticClient: PlaybackDiagnostics.Client = client.clientName == "IOS" ? .ios
             : client.clientName == "WEB_REMIX" ? .webRemix : .other
         let request: URLRequest
@@ -364,28 +395,38 @@ actor InnerTubeAPI {
             let activeClient: YouTubeClient
             if client.clientName == "WEB_REMIX" {
                 await ensureFreshVisitorData()
+                guard !Task.isCancelled, sessionContext == playerSessionContext() else {
+                    throw CancellationError()
+                }
                 activeClient = try await resolvedPublicWebClient(for: client)
             } else {
                 activeClient = client
+            }
+            guard !Task.isCancelled, sessionContext == playerSessionContext() else {
+                throw CancellationError()
             }
             let body = PlayerBody(
                 context: activeClient.toContext(locale: locale, visitorData: effectiveVisitorData()),
                 videoId: videoId,
                 playlistId: playlistId
             )
-            request = try buildRequest(
-                endpoint: "player", client: activeClient, body: body, setLogin: true
+            var playerRequest = try buildRequest(
+                endpoint: "player", client: activeClient, body: body,
+                setLogin: sessionContext.isAuthenticated
             )
+            if !sessionContext.isAuthenticated { playerRequest.httpShouldHandleCookies = false }
+            request = playerRequest
         } catch {
             let reason: PlaybackDiagnostics.Reason
-            if case InnerTubeError.sourceNotConfigured = error { reason = .sourceNotConfigured }
+            if error is CancellationError { reason = .cancelled }
+            else if case InnerTubeError.sourceNotConfigured = error { reason = .sourceNotConfigured }
             else { reason = .other }
             PlaybackDiagnostics.shared.record(.init(phase: .playerResponse, client: diagnosticClient,
-                videoID: videoId, reason: reason, hasAuth: cookie?.isEmpty == false))
+                videoID: videoId, reason: reason, hasAuth: sessionContext.isAuthenticated))
             throw error
         }
         return try await executePlayerRequest(request, videoID: videoId, client: diagnosticClient,
-            hasAuth: cookie?.isEmpty == false, visitorSource: effectiveVisitorSource)
+            hasAuth: sessionContext.isAuthenticated, visitorSource: effectiveVisitorSource)
     }
 
     /// Observe the same response used by playback without retaining request or response secrets.
@@ -562,23 +603,30 @@ actor InnerTubeAPI {
     /// visitor_id API, then HTML scraping, then local protobuf generation.
     private func refreshVisitorData() async {
         Log.innerTube.info("Refreshing visitorData from music.youtube.com/sw.js_data")
+        let generation = authenticationGeneration
 
         // Primary: fetch from sw.js_data (same as InnerTune)
-        if let token = try? await fetchVisitorDataFromSwJsData() {
+        let swToken = try? await fetchVisitorDataFromSwJsData()
+        guard !Task.isCancelled, generation == authenticationGeneration else { return }
+        if let token = swToken {
             applyVisitorData(token)
             return
         }
 
         // Secondary: YouTube visitor_id API endpoint (NewPipe approach)
         Log.innerTube.info("sw.js_data failed, trying visitor_id API")
-        if let token = await fetchVisitorDataFromVisitorIdAPI() {
+        let apiToken = await fetchVisitorDataFromVisitorIdAPI()
+        guard !Task.isCancelled, generation == authenticationGeneration else { return }
+        if let token = apiToken {
             applyVisitorData(token)
             return
         }
 
         // Tertiary: scrape music.youtube.com HTML
         Log.innerTube.info("visitor_id API failed, falling back to HTML scrape")
-        if let token = try? await fetchVisitorDataFromMusicHTML() {
+        let htmlToken = try? await fetchVisitorDataFromMusicHTML()
+        guard !Task.isCancelled, generation == authenticationGeneration else { return }
+        if let token = htmlToken {
             applyVisitorData(token)
             return
         }
@@ -624,6 +672,7 @@ actor InnerTubeAPI {
         }
 
         var request = URLRequest(url: url)
+        request.httpShouldHandleCookies = false
         request.setValue(YouTubeClient.userAgentWeb, forHTTPHeaderField: "User-Agent")
         request.setValue(
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -705,6 +754,7 @@ actor InnerTubeAPI {
         }
 
         var request = URLRequest(url: url)
+        request.httpShouldHandleCookies = false
         request.setValue(YouTubeClient.userAgentWeb, forHTTPHeaderField: "User-Agent")
         request.setValue(
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -746,6 +796,7 @@ actor InnerTubeAPI {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(YouTubeClient.userAgentWeb, forHTTPHeaderField: "User-Agent")
         request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -786,13 +837,9 @@ actor InnerTubeAPI {
         return nil
     }
 
-    /// Returns the visitor token to use for outgoing requests. In degraded state
-    /// (after 2+ consecutive refresh failures), returns a freshly generated token
-    /// so requests always include a valid anonymous token with current timestamp.
+    /// A failed refresh already stores a newly generated token. Reuse that token
+    /// for the request body and header so a degraded request has one identity.
     private func effectiveVisitorData() -> String {
-        if degradedVisitorState {
-            return Self.defaultVisitorData
-        }
         return visitorData
     }
 
@@ -824,13 +871,14 @@ actor InnerTubeAPI {
             return
         }
 
+        let generation = authenticationGeneration
         let task = Task<Void, Error> {
             await refreshVisitorData()
         }
 
         visitorDataRefreshTask = task
         try? await task.value
-        visitorDataRefreshTask = nil
+        if generation == authenticationGeneration { visitorDataRefreshTask = nil }
     }
 
     /// Updates `degradedVisitorState` and posts a notification on transition so
@@ -853,13 +901,21 @@ actor InnerTubeAPI {
 
     /// Resets the session so the next playerWithSession call re-fetches cookies.
     func resetSession() {
+        playerSessionGeneration &+= 1
         hasInitializedSession = false
         sessionCookies = []
+        sessionInitTime = nil
     }
 
     /// Visits the YouTube watch page to obtain cookies and extract visitorData.
-    private func initializePlayerSession(for videoId: String) async throws {
+    /// Anonymous VisionOS fallback only borrows the visitor token; it must not
+    /// mark an authenticated IOS session as initialized or send saved cookies.
+    @discardableResult
+    private func initializePlayerSession(
+        for videoId: String, useSavedSession: Bool = true
+    ) async throws -> String {
         Log.innerTube.info("Initializing player session for \(videoId, privacy: .public)")
+        let generation = playerSessionGeneration
 
         // Pre-populate required cookies in the shared cookie storage
         guard let youtubeURL = URL(string: "https://www.youtube.com") else {
@@ -890,6 +946,8 @@ actor InnerTubeAPI {
         }
 
         var watchRequest = URLRequest(url: watchURL)
+        watchRequest.cachePolicy = .reloadIgnoringLocalCacheData
+        watchRequest.httpShouldHandleCookies = useSavedSession
         watchRequest.setValue(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
             forHTTPHeaderField: "User-Agent"
@@ -899,8 +957,9 @@ actor InnerTubeAPI {
             forHTTPHeaderField: "Accept"
         )
         watchRequest.setValue("\(locale.hl),en-US;q=0.9,en;q=0.8", forHTTPHeaderField: "Accept-Language")
-        watchRequest.setValue(cookieHeaderString(), forHTTPHeaderField: "Cookie")
-        let watchHasAuth = cookie?.isEmpty == false
+        watchRequest.setValue(cookieHeaderString(includeAuthentication: useSavedSession),
+                              forHTTPHeaderField: "Cookie")
+        let watchHasAuth = useSavedSession && playerSessionContext().isAuthenticated
 
         let result: (Data, URLResponse)
         do { result = try await session.data(for: watchRequest) }
@@ -912,49 +971,53 @@ actor InnerTubeAPI {
             throw error
         }
         let (data, response) = result
+        guard !Task.isCancelled, generation == playerSessionGeneration else {
+            throw CancellationError()
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode
+        guard let status, (200...299).contains(status) else {
+            PlaybackDiagnostics.shared.record(.init(phase: .watchSession, client: .iosSession,
+                videoID: videoId, httpStatus: status, reason: .other, hasAuth: watchHasAuth))
+            throw InnerTubeError.httpError(statusCode: status ?? -1)
+        }
+        guard response.url?.scheme == "https", response.url?.host == "www.youtube.com",
+              let token = Self.playerVisitorData(from: data) else {
+            PlaybackDiagnostics.shared.record(.init(phase: .watchSession, client: .iosSession,
+                videoID: videoId, httpStatus: status, reason: .other, hasAuth: watchHasAuth))
+            throw InnerTubeError.noStreamAvailable
+        }
 
-        if let httpResponse = response as? HTTPURLResponse {
-            Log.innerTube.info("Watch page HTTP status: \(httpResponse.statusCode)")
+        if useSavedSession {
             // URLSession with httpCookieStorage = .shared automatically stores Set-Cookie headers.
             // Read them back so we can include them in the manual Cookie header.
             if let cookies = HTTPCookieStorage.shared.cookies(for: youtubeURL) {
                 sessionCookies = cookies
-                Log.innerTube.debug(
-                    "Stored \(cookies.count) cookies: \(cookies.map { $0.name }.joined(separator: ", "), privacy: .public)"
-                )
             }
+            self.visitorData = token
+            self.playerVisitorSource = .watchPage
+            self.visitorDataTimestamp = Date()
+            persistVisitorData(token)
+            refreshFailureCount = 0
+            setDegraded(false)
+            hasInitializedSession = true
+            sessionInitTime = Date()
         }
-
-        let searchData = data.prefix(65536)
-        if let html = String(data: searchData, encoding: .utf8) {
-            if let range = html.range(of: "\"visitorData\":\"") {
-                let start = range.upperBound
-                if let endRange = html[start...].range(of: "\"") {
-                    let extracted = String(html[start..<endRange.lowerBound])
-                    self.visitorData = extracted
-                    self.playerVisitorSource = .watchPage
-                    self.visitorDataTimestamp = Date()
-                    persistVisitorData(extracted)
-                    refreshFailureCount = 0
-                    setDegraded(false)
-                    Log.innerTube.debug(
-                        "Extracted visitorData: \(extracted.prefix(30), privacy: .public)...")
-                }
-            } else {
-                Log.innerTube.warning("Could not find visitorData in page HTML")
-            }
-        }
-
-        hasInitializedSession = true
-        sessionInitTime = Date()
         PlaybackDiagnostics.shared.record(.init(phase: .watchSession, client: .iosSession,
-            videoID: videoId, httpStatus: (response as? HTTPURLResponse)?.statusCode,
-            hasAuth: watchHasAuth, visitorSource: playerVisitorSource))
-        Log.innerTube.info("Session initialized successfully")
+            videoID: videoId, httpStatus: status, hasAuth: watchHasAuth, visitorSource: .watchPage))
+        return token
+    }
+
+    private static func playerVisitorData(from data: Data) -> String? {
+        guard !data.isEmpty, data.count <= 4 * 1024 * 1024,
+              let html = String(data: data, encoding: .utf8),
+              let range = html.range(of: "\"visitorData\":\""),
+              let end = html[range.upperBound...].range(of: "\"") else { return nil }
+        let token = String(html[range.upperBound..<end.lowerBound])
+        return isValidVisitorData(token) ? token : nil
     }
 
     /// Builds a Cookie header string merging session cookies + auth cookies (SAPISID, SID…).
-    private func cookieHeaderString() -> String {
+    private func cookieHeaderString(includeAuthentication: Bool = true) -> String {
         guard let youtubeURL = URL(string: "https://www.youtube.com") else { return "" }
         var values = ["PREF": "hl=\(locale.hl)&gl=\(locale.gl)&tz=Asia/Ho_Chi_Minh", "SOCS": "CAI"]
         for stored in (HTTPCookieStorage.shared.cookies(for: youtubeURL) ?? sessionCookies)
@@ -963,7 +1026,7 @@ actor InnerTubeAPI {
             values[stored.name] = stored.value
         }
         // The validated Keychain session overrides stale cookies by name.
-        if let authCookieStr = self.cookie, !authCookieStr.isEmpty {
+        if includeAuthentication, let authCookieStr = self.cookie, !authCookieStr.isEmpty {
             for part in authCookieStr.split(separator: ";") {
                 let pair = part.trimmingCharacters(in: .whitespaces).split(separator: "=", maxSplits: 1)
                 if pair.count == 2 { values[String(pair[0])] = String(pair[1]) }
@@ -974,6 +1037,7 @@ actor InnerTubeAPI {
 
     /// Fetches player data with the current session; source restrictions remain authoritative.
     func playerWithSession(videoId: String, playlistId: String? = nil) async throws -> Data {
+        let context = playerSessionContext()
         // Auto-refresh session if expired (> 4 hours) or cookies missing
         let sessionAge = sessionInitTime.map { Date().timeIntervalSince($0) } ?? .infinity
         if sessionAge > 14400 || sessionCookies.isEmpty {
@@ -982,6 +1046,9 @@ actor InnerTubeAPI {
 
         if !hasInitializedSession {
             try await initializePlayerSession(for: videoId)
+        }
+        guard !Task.isCancelled, context == playerSessionContext() else {
+            throw CancellationError()
         }
 
         let client = YouTubeClient.ios
@@ -1038,23 +1105,37 @@ actor InnerTubeAPI {
 
         Log.innerTube.info("Player request for \(videoId, privacy: .public) with IOS")
         return try await executePlayerRequest(request, videoID: videoId, client: .iosSession,
-            hasAuth: cookie?.isEmpty == false, visitorSource: effectiveVisitorSource)
+            hasAuth: context.isAuthenticated, visitorSource: effectiveVisitorSource)
     }
 
     /// Fetches player data using VISIONOS client — returns hlsManifestUrl + direct URLs
     /// with no byte-range restriction. visitorData is fetched from youtube.com/tv first.
     func playerWithVisionOS(videoId: String) async throws -> Data {
         let client = YouTubeClient.visionOS
+        let context = playerSessionContext()
 
         // Get visitorData from youtube.com/tv (VISIONOS requires TV visitorData)
         let visitorForHeader: String
         let visitorSource: PlaybackDiagnostics.VisitorSource
-        if let tvVisitorData = await fetchTVVisitorData() {
+        if let tvVisitorData = try await fetchTVVisitorData() {
             visitorForHeader = tvVisitorData
             visitorSource = .tvPage
         } else {
-            visitorForHeader = effectiveVisitorData()
-            visitorSource = effectiveVisitorSource
+            // A guest can reach VisionOS before IOS has visited /watch. Keep
+            // this fallback anonymous even when a saved session exists.
+            let watchVisitor: String?
+            do {
+                watchVisitor = try await initializePlayerSession(for: videoId, useSavedSession: false)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                watchVisitor = nil
+            }
+            visitorForHeader = watchVisitor ?? effectiveVisitorData()
+            visitorSource = watchVisitor == nil ? effectiveVisitorSource : .watchPage
+        }
+        guard !Task.isCancelled, context == playerSessionContext() else {
+            throw CancellationError()
         }
 
         guard var components = URLComponents(string: "https://www.youtube.com/youtubei/v1/player")
@@ -1064,6 +1145,7 @@ actor InnerTubeAPI {
 
         var request = URLRequest(url: playerURL)
         request.httpMethod = "POST"
+        request.httpShouldHandleCookies = false
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(client.clientId, forHTTPHeaderField: "X-Youtube-Client-Name")
@@ -1099,25 +1181,35 @@ actor InnerTubeAPI {
     }
 
     /// Fetch visitorData from https://www.youtube.com/tv — required for VISIONOS client.
-    private func fetchTVVisitorData() async -> String? {
+    private func fetchTVVisitorData() async throws -> String? {
         guard let url = URL(string: "https://www.youtube.com/tv") else { return nil }
         var req = URLRequest(url: url)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.httpShouldHandleCookies = false
         req.setValue(YouTubeClient.userAgentVisionOS, forHTTPHeaderField: "User-Agent")
         req.setValue("SOCS=CAI", forHTTPHeaderField: "Cookie")
         req.timeoutInterval = 10
-        guard let (data, response) = try? await URLSession.shared.data(for: req),
-              let html = String(data: data, encoding: .utf8) else {
+        let result: (Data, URLResponse)
+        do {
+            result = try await session.data(for: req)
+        } catch {
+            if Task.isCancelled || error is CancellationError || (error as NSError).code == NSURLErrorCancelled {
+                throw CancellationError()
+            }
             PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
                 reason: .network, hasAuth: false, visitorSource: .appFallback))
             return nil
         }
+        try Task.checkCancellation()
+        let (data, response) = result
         // Extract visitorData from ytInitialData or yt.setConfig
-        if let range = html.range(of: "\"visitorData\":\""),
-           let end = html[range.upperBound...].range(of: "\"") {
+        if let status = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(status),
+           response.url?.scheme == "https", response.url?.host == "www.youtube.com",
+           let token = Self.playerVisitorData(from: data) {
             PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
                 httpStatus: (response as? HTTPURLResponse)?.statusCode,
                 hasAuth: false, visitorSource: .tvPage))
-            return String(html[range.upperBound..<end.lowerBound])
+            return token
         }
         PlaybackDiagnostics.shared.record(.init(phase: .visitor, client: .visionOS,
             httpStatus: (response as? HTTPURLResponse)?.statusCode,

@@ -286,6 +286,10 @@ private actor MediaCandidateAPI: PlayerAPIClient {
     private var sessionObserver: (@Sendable () -> Void)?
     private var sessionContinuations: [CheckedContinuation<Void, Never>] = []
 
+    func playerSessionContext() async -> PlayerSessionContext {
+        PlayerSessionContext(isAuthenticated: true, generation: 0)
+    }
+
     func setSessionRevision(_ revision: Int) { sessionRevision = revision }
     func requireSignIn() { signInRequired = true }
 
