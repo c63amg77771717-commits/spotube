@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UIKit
 import os
 
 // MARK: - Playback Error Categories
@@ -102,6 +103,42 @@ enum PlaybackErrorCategory: Equatable {
     }
 }
 
+/// Decide whether an unavailable recording can advance an existing queue.
+    /// This never attempts to circumvent a provider restriction: the new song
+    /// gets its own independent playability validation.
+enum UnavailablePlaybackRecoveryPolicy {
+    enum Action: Equatable {
+        case offerManualReplacement
+        case skipImmediately
+        case skipAfterDelay
+        case hold
+    }
+
+    static func decide(
+        isPermanent: Bool,
+        category: PlaybackErrorCategory,
+        replacementSearchAvailable: Bool,
+        isAppInteractive: Bool,
+        autoSkipEnabled: Bool,
+        queueHasTracks: Bool
+    ) -> Action {
+        guard isPermanent else { return .hold }
+        // Service/auth/network failures do not establish that a different song
+        // will work. Never churn through a queue or bypass login verification.
+        if [.authRequired, .verificationRequired, .noInternet, .serverError,
+            .requestRejected, .sourceNotConfigured].contains(category) {
+            return .hold
+        }
+        if isAppInteractive, replacementSearchAvailable, category.permitsReplacementSearch {
+            return .offerManualReplacement
+        }
+        guard autoSkipEnabled, queueHasTracks else { return .hold }
+        // A suspended background audio task cannot rely on a delayed timer
+        // to resume the queue: advance synchronously on the actor instead.
+        return isAppInteractive ? .skipAfterDelay : .skipImmediately
+    }
+}
+
 enum TransferEstimateFormatter {
     static func upperBoundString(bytes: Int64) -> String {
         let byteCount = max(0, bytes)
@@ -139,6 +176,7 @@ final class PlayerViewModel {
     private let playlistSourceStore: PlaylistSourceOverrideStore
     private let previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
     private let replacementSearcher: ((String) async throws -> [Song])?
+    private let isAppInteractive: () -> Bool
     private(set) var sourceReplacementSession: ReplacementSourceSearchModel?
 
     // MARK: - Lyrics
@@ -271,7 +309,10 @@ final class PlayerViewModel {
         sourceReplacementStore: PlaybackSourceReplacementStore? = nil,
         playlistSourceOverrideStore: PlaylistSourceOverrideStore? = nil,
         previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))? = nil,
-        replacementSearcher: ((String) async throws -> [Song])? = nil
+        replacementSearcher: ((String) async throws -> [Song])? = nil,
+        isAppInteractive: @escaping () -> Bool = {
+            UIApplication.shared.applicationState == .active
+        }
     ) {
         self.audioEngine = audioEngine
         self.resolveStreamUseCase = resolveStreamUseCase
@@ -286,6 +327,7 @@ final class PlayerViewModel {
         self.playlistSourceStore = playlistSourceOverrideStore ?? PlaylistSourceOverrideStore()
         self.previewStreamResolver = previewStreamResolver
         self.replacementSearcher = replacementSearcher
+        self.isAppInteractive = isAppInteractive
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
         observeAudioEngineErrors()
@@ -294,6 +336,23 @@ final class PlayerViewModel {
         observeStreamRecovery()
         setupAutoplay()
         observeSettingsChanges()
+
+        // System lock-screen next/previous commands bypass PlayerViewModel.next().
+        // Reset the same user-initiated recovery budget on these commands.
+        audioEngine.onRemoteUserNavigation = { [weak self] in
+            guard let self else { return }
+            self.autoSkipTask?.cancel()
+            self.resetConsecutiveFailures()
+            self.retryCount = 0
+            self.streamError = nil
+            self.streamErrorCategory = nil
+        }
+        // Reset the consecutive-failure budget only on confirmed AVPlayer
+        // playback, not on a pending source URL or a merely selected track.
+        audioEngine.onPlaybackConfirmed = { [weak self] song in
+            guard let self, self.currentSong?.id == song.id else { return }
+            self.resetConsecutiveFailures()
+        }
     }
 
     // MARK: - Actions
@@ -812,11 +871,6 @@ final class PlayerViewModel {
                 return
             }
             let isPermanent = audioEngine.lastErrorKind == .permanent
-            // Keep a confirmed single-source failure available for an explicit alternative choice.
-            if isPermanent, replacementSearcher != nil, category.permitsReplacementSearch {
-                autoSkipTask?.cancel()
-                return
-            }
             let autoSkipEnabled =
                 UserDefaults.standard.object(forKey: "autoSkipOnError") as? Bool ?? true
 
@@ -833,26 +887,51 @@ final class PlayerViewModel {
                 return
             }
 
-            // Permanent failure (region-blocked, removed, no stream): retrying
-            // the same song is pointless. Count it against the consecutive
-            // failure budget and either auto-skip immediately or halt the loop.
             if isPermanent {
-                self.consecutiveAutoSkipFailures += 1
-                if self.consecutiveAutoSkipFailures >= maxConsecutiveAutoSkipFailures {
-                    Log.player.error(
-                        "Halting auto-skip after \(self.consecutiveAutoSkipFailures) consecutive unavailable songs"
-                    )
-                    streamError =
-                        "佇列中的多首歌曲無法播放，請選擇其他歌曲。"
+                let action = UnavailablePlaybackRecoveryPolicy.decide(
+                    isPermanent: true,
+                    category: category,
+                    replacementSearchAvailable: replacementSearcher != nil,
+                    isAppInteractive: isAppInteractive(),
+                    autoSkipEnabled: autoSkipEnabled,
+                    queueHasTracks: !queue.isEmpty
+                )
+                // Foreground: allow the user to search for another version.
+                // Background/lock screen: the replacement UI is inaccessible,
+                // so honor autoSkipOnError and advance to a new recording.
+                guard action == .skipImmediately || action == .skipAfterDelay else {
                     autoSkipTask?.cancel()
                     return
                 }
-                if autoSkipEnabled, !queue.isEmpty {
+                consecutiveAutoSkipFailures += 1
+                if consecutiveAutoSkipFailures >= maxConsecutiveAutoSkipFailures {
+                    PlaybackDiagnostics.shared.record(.init(
+                        phase: .autoSkipLimitReached, videoID: videoId,
+                        reason: .unavailable, queueCount: queue.count,
+                        currentIndex: audioEngine.currentIndex))
+                    Log.player.error(
+                        "Halting auto-skip after \(self.consecutiveAutoSkipFailures) consecutive unavailable songs"
+                    )
+                    streamError = "佇列中的多首歌曲無法播放，請選擇其他歌曲。"
                     autoSkipTask?.cancel()
+                    return
+                }
+                PlaybackDiagnostics.shared.record(.init(
+                    phase: .autoSkipUnavailable, videoID: videoId,
+                    reason: .unavailable, queueCount: queue.count,
+                    currentIndex: audioEngine.currentIndex))
+                autoSkipTask?.cancel()
+                if action == .skipImmediately {
+                    // No Task.sleep: iOS can suspend a background app once
+                    // playback stops, before its delayed timer can execute.
+                    autoNext()
+                } else {
                     autoSkipTask = Task { [weak self] in
-                        try? await Task.sleep(for: .milliseconds(500))
+                        do { try await Task.sleep(for: .milliseconds(500)) }
+                        catch { return }
                         guard let self, !Task.isCancelled, self.streamError != nil,
-                              self.currentSong?.id == videoId, self.audioEngine.lastError == error else { return }
+                              self.currentSong?.id == videoId,
+                              self.audioEngine.lastError == error else { return }
                         self.autoNext()
                     }
                 }
