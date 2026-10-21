@@ -3078,6 +3078,8 @@ final class AudioEngine {
             }
 
             Log.audio.info("Downloading audio for \(song.id, privacy: .public)...")
+            var transferStage: PlaybackDiagnostics.TransferStage = .initialRange
+            var transferHTTPStatus: Int?
 
             do {
                 let startTime = Date()
@@ -3089,6 +3091,7 @@ final class AudioEngine {
                 var headerRequest = baseRequest
                 headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
                 let (headerData, headerResponse) = try await URLSession.shared.data(for: headerRequest)
+                transferHTTPStatus = (headerResponse as? HTTPURLResponse)?.statusCode
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
                 let expectedTotal = try AudioTransferIntegrity.validate(
                     response: headerResponse,
@@ -3114,7 +3117,9 @@ final class AudioEngine {
                     // Some formats have no sidx. Download the whole resource,
                     // never the former 400 KB preview-sized fallback.
                     // URLSession.download keeps the whole response off-heap.
+                    transferStage = .fullResource
                     let (temporaryURL, fullResponse) = try await URLSession.shared.download(for: baseRequest)
+                    transferHTTPStatus = (fullResponse as? HTTPURLResponse)?.statusCode
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
                     let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
                     guard let actualSize = (attributes[.size] as? NSNumber)?.int64Value else {
@@ -3145,9 +3150,11 @@ final class AudioEngine {
                     if headerEnd <= headerData.count {
                         fileHandle.write(headerData.prefix(headerEnd))
                     } else {
+                        transferStage = .initializationPrefix
                         var prefixRequest = baseRequest
                         prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
                         let (prefixData, prefixResponse) = try await URLSession.shared.data(for: prefixRequest)
+                        transferHTTPStatus = (prefixResponse as? HTTPURLResponse)?.statusCode
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         _ = try AudioTransferIntegrity.validate(
                             response: prefixResponse,
@@ -3178,6 +3185,7 @@ final class AudioEngine {
                     // A CDN can retire signed media URLs mid-transfer. Refresh
                     // the same song/quality, but reject changed resource length.
                     let refreshSignedRequest: () async throws -> URLRequest = {
+                        transferStage = .refreshSource
                         guard let resolver = self.streamResolver(for: song) else {
                             throw AudioTransferIntegrityError.incompleteResource
                         }
@@ -3195,29 +3203,29 @@ final class AudioEngine {
                         return refreshedRequest
                     }
 
+                    // A signed media URL is normally valid for the full
+                    // transfer. Rotating it after every five segments caused
+                    // repeated resolutions within one second and increased
+                    // the chance of mixing incompatible range resources.
+                    // Refresh ONLY if the server explicitly rejects this URL.
                     var currentRequest = baseRequest
-                    var rangesOnCurrentURL = 0
                     for requiredRange in requiredRanges {
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                        if rangesOnCurrentURL >= 5 {
-                            currentRequest = try await refreshSignedRequest()
-                            rangesOnCurrentURL = 0
-                        }
-
                         var received: Data?
                         for retry in 0..<2 {
+                            transferStage = .segmentRange
                             var segmentRequest = currentRequest
                             segmentRequest.setValue(
                                 "bytes=\(requiredRange.lowerBound)-\(requiredRange.upperBound - 1)",
                                 forHTTPHeaderField: "Range"
                             )
                             let (bytes, response) = try await URLSession.shared.data(for: segmentRequest)
+                            transferHTTPStatus = (response as? HTTPURLResponse)?.statusCode
                             guard !Task.isCancelled, self.loadGeneration == generation else { return }
                             if let http = response as? HTTPURLResponse,
                                [403, 410, 429].contains(http.statusCode),
                                retry == 0 {
                                 currentRequest = try await refreshSignedRequest()
-                                rangesOnCurrentURL = 0
                                 continue
                             }
                             _ = try AudioTransferIntegrity.validate(
@@ -3233,11 +3241,11 @@ final class AudioEngine {
                             throw AudioTransferIntegrityError.incompleteResource
                         }
                         fileHandle.write(received)
-                        rangesOnCurrentURL += 1
                         self.recoveryService.recordLoadingProgress()
                     }
                 }
 
+                transferStage = .integrityCheck
                 fileHandle.closeFile()
                 let writtenBytes = (try? FileManager.default.attributesOfItem(atPath: rawURL.path)[.size] as? Int64) ?? 0
                 Log.audio.info("Download complete for \(song.id, privacy: .public): \(writtenBytes)B in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
@@ -3310,6 +3318,25 @@ final class AudioEngine {
                 self.recoveryService.stopStallDetection()
                 self.isBuffering = false
                 self.isPlaying = false
+                let transferFailure: PlaybackDiagnostics.TransferFailure
+                if let integrityError = error as? AudioTransferIntegrityError {
+                    transferFailure = integrityError.diagnosticFailure
+                } else if error is CancellationError ||
+                            (error as NSError).code == NSURLErrorCancelled {
+                    transferFailure = .cancelled
+                } else if (error as NSError).domain == NSURLErrorDomain {
+                    transferFailure = .network
+                } else {
+                    transferFailure = .other
+                }
+                PlaybackDiagnostics.shared.record(.init(
+                    phase: .transferFailure,
+                    videoID: song.id,
+                    httpStatus: transferHTTPStatus,
+                    transportErrorCode: (error as NSError).code,
+                    transferStage: transferStage,
+                    transferFailure: transferFailure
+                ))
                 self.lastError = error is AudioTransferIntegrityError
                     ? "Incomplete audio stream. Please retry."
                     : "Download failed"
@@ -4591,8 +4618,14 @@ final class AudioEngine {
     private func setupRemoteCommands() {
         remoteCommandManager.onPlay = { [weak self] in self?.handleRemotePlay() }
         remoteCommandManager.onPause = { [weak self] in self?.handleRemotePause() }
-        remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
-        remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
+        remoteCommandManager.onNext = { [weak self] in
+            self?.recordPlaybackDiagnostic(.remoteNext)
+            self?.next(userInitiated: true)
+        }
+        remoteCommandManager.onPrevious = { [weak self] in
+            self?.recordPlaybackDiagnostic(.remotePrevious)
+            self?.previous()
+        }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
         remoteCommandManager.setup()
     }
@@ -4899,6 +4932,16 @@ enum AudioTransferIntegrityError: Error, Equatable {
     case resourceChanged
     case invalidIndex
     case durationMismatch
+
+    var diagnosticFailure: PlaybackDiagnostics.TransferFailure {
+        switch self {
+        case .invalidResponse: .invalidResponse
+        case .incompleteResource: .incompleteResource
+        case .resourceChanged: .resourceChanged
+        case .invalidIndex: .invalidIndex
+        case .durationMismatch: .durationMismatch
+        }
+    }
 }
 
 /// Authoritative HTTP body/range checks for full-track playback. On
