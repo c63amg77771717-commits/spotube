@@ -379,6 +379,7 @@ final class Build36BackgroundSkipTests: XCTestCase {
             let engine = AudioEngine()
             defer { engine.stop() }
             var playedIDs: [String] = []
+            var confirmedIDs: [String] = []
             engine.onPlaybackStarted = { playedIDs.append($0.id) }
             engine.streamURLResolver = { id in
                 if id.hasPrefix("FAIL") {
@@ -387,16 +388,38 @@ final class Build36BackgroundSkipTests: XCTestCase {
                 return (url: playableURL.absoluteString, contentLength: nil)
             }
             let viewModel = model(engine, isForeground: false)
+            let resetFailureBudget = engine.onPlaybackConfirmed
+            engine.onPlaybackConfirmed = { song in
+                // Keep the view model's real budget reset in the exercised path.
+                resetFailureBudget?(song)
+                confirmedIDs.append(song.id)
+            }
             viewModel.play(song: queue[0], fromQueue: queue)
 
             for playableIndex in [1, 3, 5] {
                 let expectedID = queue[playableIndex].id
-                for _ in 0..<300 where !playedIDs.contains(expectedID) {
+                for _ in 0..<300 {
+                    if engine.currentTrack?.id == expectedID && engine.currentTime > 0.25
+                        && playedIDs.contains(expectedID) && confirmedIDs.contains(expectedID) {
+                        break
+                    }
                     try await Task.sleep(for: .milliseconds(20))
                 }
+                let observedState = "expected=\(expectedID), current=\(engine.currentTrack?.id ?? "nil"), "
+                    + "time=\(engine.currentTime), playing=\(engine.isPlaying), buffering=\(engine.isBuffering), "
+                    + "error=\(engine.lastError ?? "nil"), confirmed=\(confirmedIDs), history=\(playedIDs)"
+                guard engine.currentTrack?.id == expectedID && engine.currentTime > 0.25
+                        && playedIDs.contains(expectedID) && confirmedIDs.contains(expectedID) else {
+                    XCTFail("Playback did not both advance and confirm within the existing six-second limit. \(observedState)")
+                    return
+                }
                 XCTAssertTrue(playedIDs.contains(expectedID),
-                              "A successfully played song must break the failure streak")
-                XCTAssertEqual(engine.currentTrack?.id, expectedID)
+                              "A successfully played song must reach history. \(observedState)")
+                XCTAssertTrue(confirmedIDs.contains(expectedID),
+                              "A successfully played song must break the failure streak. \(observedState)")
+                XCTAssertEqual(engine.currentTrack?.id, expectedID, observedState)
+                XCTAssertGreaterThan(engine.currentTime, 0.25,
+                                     "Native playback must advance before the next failure. \(observedState)")
                 if playableIndex != 5 {
                     // A natural queue advance must not perform the user's
                     // manual-skip reset; success itself has to restore budget.
@@ -405,6 +428,8 @@ final class Build36BackgroundSkipTests: XCTestCase {
             }
             XCTAssertEqual(playedIDs, ["GOOD0000001", "GOOD0000002", "GOOD0000003"],
                            "The separate listening-history callback remains intact")
+            XCTAssertEqual(confirmedIDs, ["GOOD0000001", "GOOD0000002", "GOOD0000003"],
+                           "Each real playback must reset the background failure budget exactly once")
             XCTAssertNil(viewModel.streamError)
         }
     }

@@ -73,11 +73,7 @@ jobs:
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
-            -only-testing:LovelyMusicTests/InnerTubeVisitorDataExtraTests/test_visitorDataRefresh_recoversAfterTransientFailure \
-            -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests/test_cachePolicy_isReloadIgnoringLocal_onAllInnerTubePOSTs \
-            -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests/test_visitorDataFallback_usesDefault_whenNoCacheAndRefreshFails \
-            -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests/test_visitorDataHeader_isPlainAscii_neverPercentEncoded \
-            -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests/test_visitorDataPersistence_expires_after24Hours \
+            -only-testing:LovelyMusicTests/Build36BackgroundSkipTests/testSuccessfulPlaybackBetweenFailuresRestoresBackgroundSkipBudget \
             -resultBundlePath "$RUNNER_TEMP/build37-focused-anonymous.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build37-simulator.entitlements" test \

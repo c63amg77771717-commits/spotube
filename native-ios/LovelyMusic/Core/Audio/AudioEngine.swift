@@ -3647,7 +3647,10 @@ final class AudioEngine {
     }
 
     private func setupPlayerItemObserver(_ item: AVPlayerItem) {
-        let diagnosticVideoID = currentTrack?.id
+        let observedPlayer = player
+        let observedSongID = currentTrack?.id
+        let observedGeneration = loadGeneration
+        let diagnosticVideoID = observedSongID
         // Status observer with retry logic.
         // `.initial` ensures we receive the current value at attach time so we
         // don't miss `.readyToPlay` if the item transitioned synchronously
@@ -3716,6 +3719,15 @@ final class AudioEngine {
                         }
                     } else {
                         self.isBuffering = false
+                    }
+                    // Status and time-control KVO can arrive in either order.
+                    // Re-evaluate the installed selection only after the HLS
+                    // integrity check; readiness alone never confirms playback.
+                    if let observedPlayer, let observedSongID {
+                        self.confirmPlaybackStartIfReady(
+                            player: observedPlayer, item: item,
+                            generation: observedGeneration, songID: observedSongID
+                        )
                     }
                 case .failed:
                     let mediaStatus = item.errorLog()?.events.last?.errorStatusCode
@@ -4011,6 +4023,36 @@ final class AudioEngine {
 
     // MARK: - Time Control Status
 
+    private func confirmPlaybackStartIfReady(
+        player observedPlayer: AVPlayer, item observedItem: AVPlayerItem,
+        generation: UInt64, songID: String
+    ) {
+        guard player === observedPlayer, observedPlayer.currentItem === observedItem,
+              loadGeneration == generation, currentTrack?.id == songID,
+              isPlaying, !userInitiatedPause, !isInterrupted,
+              observedItem.status == .readyToPlay,
+              observedPlayer.timeControlStatus == .playing,
+              let song = currentTrack else { return }
+        let streamURL = song.streamURL ?? ""
+        let isHLS = streamURL.contains("/manifest/hls")
+            || URL(string: streamURL)?.pathExtension.lowercased() == "m3u8"
+        // The playing notification may precede the ready handler's HLS check.
+        // An incomplete window must not clear candidate failure or skip budgets.
+        guard !isHLS || !AudioTrackDurationIntegrity.isIncomplete(
+            measuredSeconds: observedItem.duration.seconds, expectedSeconds: song.duration
+        ) else { return }
+
+        isBuffering = false
+        recordPlaybackDiagnostic(.enginePlaying)
+        guard !hasReportedPlaybackStart else { return }
+        hasReportedPlaybackStart = true
+        if let streamURL = song.streamURL {
+            onStreamCandidateSuccess?(playbackSourceID(for: song), streamURL)
+        }
+        onPlaybackConfirmed?(song)
+        onPlaybackStarted?(song)
+    }
+
     private func setupTimeControlObserver() {
         timeControlObserver?.invalidate()
         timeControlObserver = nil
@@ -4059,19 +4101,10 @@ final class AudioEngine {
                     self.isBuffering = true
                     Log.audio.debug("Waiting to play at specified rate")
                 case .playing:
-                    guard self.isPlaying, !self.userInitiatedPause, !self.isInterrupted,
-                          observedItem.status == .readyToPlay,
-                          let song = self.currentTrack else { return }
-                    self.isBuffering = false
-                    self.recordPlaybackDiagnostic(.enginePlaying)
-                    if !self.hasReportedPlaybackStart {
-                        self.hasReportedPlaybackStart = true
-                        if let streamURL = song.streamURL {
-                            self.onStreamCandidateSuccess?(self.playbackSourceID(for: song), streamURL)
-                        }
-                        self.onPlaybackConfirmed?(song)
-                        self.onPlaybackStarted?(song)
-                    }
+                    self.confirmPlaybackStartIfReady(
+                        player: player, item: observedItem,
+                        generation: observedGeneration, songID: observedSongID
+                    )
                 @unknown default:
                     Log.audio.warning("Unexpected state encountered")
                 }
