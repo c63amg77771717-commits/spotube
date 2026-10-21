@@ -41,56 +41,56 @@ final class InnerTubeVisitorDataTests: XCTestCase {
     // MARK: - 1. Header is plain ASCII, never percent-encoded
 
     func test_visitorDataHeader_isPlainAscii_neverPercentEncoded() async throws {
-        // Stubbed sw.js_data returns a valid token with '=' padding characters.
-        // InnerTubeAPI must NOT URL-encode '=' to '%3D' in the X-Goog-Visitor-Id header.
-        let storedToken = "CgtSZXN0VG9rZW5BcmlhbjA9PQ=="
-        let swJsData = ")]}'\n[[0,0,[\"\(storedToken)\"]]]"
-
-        let api = makeAPI { request in
-            if request.url?.path == "/sw.js_data" {
-                let body = Data(swJsData.utf8)
+        // Both values encode the same protobuf shape: an 11-byte visitor ID
+        // and a timestamp. A letter/digit first byte yields Cgt/Cgs respectively.
+        // Preserve '=' padding in the header rather than percent-encoding it.
+        for storedToken in [VisitorDataTestFixtures.letterVisitor, VisitorDataTestFixtures.digitVisitor] {
+            userDefaults.removePersistentDomain(forName: defaultsSuiteName)
+            URLProtocolStub.reset()
+            let swJsData = ")]}'\n[[0,0,[\"\(storedToken)\"]]]"
+            let api = makeAPI { request in
+                if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                    return bootstrap
+                }
+                if request.url?.path == "/sw.js_data" {
+                    let body = Data(swJsData.utf8)
+                    let response = HTTPURLResponse(
+                        url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                        headerFields: nil)!
+                    return (response, body)
+                }
                 let response = HTTPURLResponse(
                     url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
                     headerFields: nil)!
-                return (response, body)
+                return (response, Data("{}".utf8))
             }
-            if request.url?.host == "music.youtube.com" && request.url?.path == "/" {
-                let response = HTTPURLResponse(
-                    url: request.url!, statusCode: 500, httpVersion: "HTTP/1.1",
-                    headerFields: nil)!
-                return (response, Data())
-            }
-            // music.youtube.com search endpoint — return empty JSON
-            let response = HTTPURLResponse(
-                url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
-                headerFields: nil)!
-            return (response, Data("{}".utf8))
+
+            _ = try await api.search(query: "abc")
+
+            let captured = URLProtocolStub.capturedRequests
+            XCTAssertEqual(captured.filter { $0.url?.path == "/sw.js_data" }.count, 1)
+            let searchRequest = try XCTUnwrap(captured.first {
+                $0.url?.host == "music.youtube.com" && $0.url?.path == "/youtubei/v1/search"
+            })
+
+            let headerValue = searchRequest.value(forHTTPHeaderField: "X-Goog-Visitor-Id")
+            XCTAssertEqual(headerValue, storedToken,
+                "Header must be the raw stored value with '=' intact, not URL-encoded")
+            XCTAssertFalse(headerValue?.contains("%3D") ?? false,
+                "Header must not URL-encode '=' to '%3D'")
         }
-
-        _ = try? await api.search(query: "abc")
-
-        let captured = URLProtocolStub.capturedRequests
-        guard let searchRequest = captured.first(where: {
-            $0.url?.host == "music.youtube.com" && $0.httpMethod == "POST"
-        }) else {
-            XCTFail("No search request captured")
-            return
-        }
-
-        let headerValue = searchRequest.value(forHTTPHeaderField: "X-Goog-Visitor-Id")
-        XCTAssertEqual(headerValue, storedToken,
-            "Header must be the raw stored value with '=' intact, not URL-encoded")
-        // Sanity: ensure '=' was not encoded to '%3D'
-        XCTAssertFalse(headerValue?.contains("%3D") ?? false,
-            "Header must not URL-encode '=' to '%3D'")
     }
 
     // MARK: - 2. Empty header when no cache and refresh fails
 
     func test_visitorDataFallback_usesDefault_whenNoCacheAndRefreshFails() async throws {
-        // Both sw.js_data and music.youtube.com HTML fallback return 500.
-        // No UserDefaults cache. Header must carry the hardcoded default token.
+        // Visitor refresh fails, but the homepage still supplies public client
+        // configuration without a visitor token. The search must use a fresh
+        // generated visitor without requiring an embedded API key.
         let api = makeAPI { request in
+            if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                return bootstrap
+            }
             if request.url?.host == "music.youtube.com" && request.httpMethod == "GET" {
                 let response = HTTPURLResponse(
                     url: request.url!, statusCode: 500, httpVersion: "HTTP/1.1",
@@ -103,7 +103,7 @@ final class InnerTubeVisitorDataTests: XCTestCase {
             return (response, Data("{}".utf8))
         }
 
-        _ = try? await api.search(query: "anything")
+        _ = try await api.search(query: "anything")
 
         guard let searchRequest = URLProtocolStub.capturedRequests.first(where: {
             $0.url?.host == "music.youtube.com" && $0.httpMethod == "POST"
@@ -113,11 +113,7 @@ final class InnerTubeVisitorDataTests: XCTestCase {
         }
 
         let headerValue = searchRequest.value(forHTTPHeaderField: "X-Goog-Visitor-Id")
-        // In degraded state, the default generated token is used — never empty
-        XCTAssertTrue(
-            headerValue?.hasPrefix("Cgt") == true && (headerValue?.count ?? 0) > 20,
-            "Expected valid visitor token in degraded state, got: \(headerValue ?? "nil")"
-        )
+        try assertFreshGeneratedVisitorData(headerValue)
     }
 
     // MARK: - 3. Persistence write/read within TTL
@@ -167,15 +163,18 @@ final class InnerTubeVisitorDataTests: XCTestCase {
         let hydrated = await api.visitorData
         // Expired token is not hydrated — visitorData falls back to generated default token
         XCTAssertNotEqual(hydrated, token, "Expired persisted visitorData must NOT hydrate (2 days > 24h TTL)")
-        XCTAssertTrue(hydrated.hasPrefix("Cgt") && hydrated.count > 20)
+        try assertFreshGeneratedVisitorData(hydrated)
     }
 
     // MARK: - 5. Cache policy is reloadIgnoringLocalCacheData on every InnerTube POST
 
     func test_cachePolicy_isReloadIgnoringLocal_onAllInnerTubePOSTs() async throws {
         // Stub sw.js_data so refresh can succeed quickly.
-        let swJsData = ")]}'\n[[0,0,[\"CgtGUkVTSF9UT0tFTg==\"]]]"
+        let swJsData = ")]}'\n[[0,0,[\"\(VisitorDataTestFixtures.letterVisitor)\"]]]"
         let api = makeAPI { request in
+            if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                return bootstrap
+            }
             if request.url?.path == "/sw.js_data" {
                 let body = Data(swJsData.utf8)
                 let response = HTTPURLResponse(
@@ -189,8 +188,8 @@ final class InnerTubeVisitorDataTests: XCTestCase {
             return (response, Data("{}".utf8))
         }
 
-        _ = try? await api.search(query: "q1")
-        _ = try? await api.browse(browseId: "FEmusic_home")
+        _ = try await api.search(query: "q1")
+        _ = try await api.browse(browseId: "FEmusic_home")
 
         let postRequests = URLProtocolStub.capturedRequests.filter {
             $0.httpMethod == "POST" && $0.url?.host == "music.youtube.com"
@@ -210,19 +209,15 @@ final class InnerTubeVisitorDataTests: XCTestCase {
         let state = StubState()
 
         let api = makeAPI { request in
-            // Both sw.js_data and music.youtube.com HTML requests go through the same host
-            if request.url?.host == "music.youtube.com" && request.httpMethod == "GET" {
-                let shouldFail = state.shouldFailHomepage()
+            if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                return bootstrap
+            }
+            if request.url?.path == "/sw.js_data" {
+                let shouldFail = state.shouldFailServiceWorker()
                 let code = shouldFail ? 500 : 200
                 var body = Data()
                 if !shouldFail {
-                    if request.url?.path == "/sw.js_data" {
-                        body = Data(")]}'\n[[0,0,[\"CgtSRUNPVkVSRURfVE9LRU4=\"]]]".utf8)
-                    } else {
-                        body = Data("""
-                        <script>{"visitorData":"CgtSRUNPVkVSRURfVE9LRU4="}</script>
-                        """.utf8)
-                    }
+                    body = Data(")]}'\n[[0,0,[\"\(VisitorDataTestFixtures.letterVisitor)\"]]]".utf8)
                 }
                 let response = HTTPURLResponse(
                     url: request.url!, statusCode: code, httpVersion: "HTTP/1.1",
@@ -235,22 +230,19 @@ final class InnerTubeVisitorDataTests: XCTestCase {
             return (response, Data("{}".utf8))
         }
 
-        // Drive ensureFreshVisitorData via two search calls. Each call performs
-        // the in-call retry; the timestamp stays nil on failure so the next call
-        // re-enters the refresh path.
-        // Each ensure-cycle hits sw.js_data (initial + retry) + HTML fallback (initial + retry) = 4 GET hits per cycle
-        // Two ensure-cycles = 8 failures needed
-        state.failHomepageCalls = 8
-        _ = try? await api.search(query: "first")
-        _ = try? await api.search(query: "second")
+        // Two refresh cycles fail. The HTML fallback has no visitor, while its
+        // public client config keeps the downstream searches operational.
+        state.failServiceWorkerCalls = 2
+        _ = try await api.search(query: "first")
+        _ = try await api.search(query: "second")
 
         let degradedAfterFailures = await api.degradedVisitorState
         XCTAssertTrue(degradedAfterFailures, "Expected degraded=true after 2 ensure-cycle failures")
 
         // Now allow success on the next refresh — visitorDataTimestamp is nil
         // so the next call re-enters refresh; success should clear degraded.
-        state.failHomepageCalls = 0
-        _ = try? await api.search(query: "third")
+        state.failServiceWorkerCalls = 0
+        _ = try await api.search(query: "third")
 
         let degradedAfterSuccess = await api.degradedVisitorState
         XCTAssertFalse(degradedAfterSuccess, "Expected degraded=false after recovery")
@@ -306,13 +298,71 @@ final class URLProtocolStub: URLProtocol, @unchecked Sendable {
 /// Small reference container used to share mutable counters with `URLProtocolStub.handler`
 /// closures (which are otherwise capture-by-value).
 private final class StubState: @unchecked Sendable {
-    var failHomepageCalls: Int = 0
+    var failServiceWorkerCalls: Int = 0
 
-    func shouldFailHomepage() -> Bool {
-        if failHomepageCalls > 0 {
-            failHomepageCalls -= 1
+    func shouldFailServiceWorker() -> Bool {
+        if failServiceWorkerCalls > 0 {
+            failServiceWorkerCalls -= 1
             return true
         }
         return false
     }
+}
+
+enum VisitorDataTestFixtures {
+    // Protobuf field 1: "A1234567890" / "01234567890"; field 5: 1761000000.
+    // Preserve the Base64 padding to cover raw HTTP-header encoding.
+    static let letterVisitor = "CgtBMTIzNDU2Nzg5MCjA9NrHBg=="
+    static let digitVisitor = "CgswMTIzNDU2Nzg5MCjA9NrHBg=="
+
+    static func publicWebBootstrapResponse(for request: URLRequest) -> (HTTPURLResponse, Data)? {
+        guard let url = request.url, url.host == "music.youtube.com", url.path == "/",
+              request.httpMethod == "GET" else { return nil }
+        let html = "<script>{\"INNERTUBE_API_KEY\":\"AIza\(String(repeating: "A", count: 35))\"," +
+            "\"INNERTUBE_CONTEXT_CLIENT_VERSION\":\"1.20261021.01.00\"}</script>"
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": "text/html"])!
+        return (response, Data(html.utf8))
+    }
+}
+
+/// Verify the actual generated protobuf rather than a Base64 prefix that
+/// changes with the random visitor ID's first byte.
+func assertFreshGeneratedVisitorData(
+    _ value: String?, file: StaticString = #filePath, line: UInt = #line
+) throws {
+    let token = try XCTUnwrap(value, file: file, line: line)
+    XCTAssertNotNil(token.range(of: #"^[A-Za-z0-9_-]+$"#, options: .regularExpression),
+                    file: file, line: line)
+    let base64 = token.replacingOccurrences(of: "-", with: "+")
+        .replacingOccurrences(of: "_", with: "/")
+    let padded = base64 + String(repeating: "=", count: (4 - base64.count % 4) % 4)
+    let bytes = Array(try XCTUnwrap(Data(base64Encoded: padded), file: file, line: line))
+    guard bytes.count >= 15 else {
+        XCTFail("Generated visitor must contain an 11-byte ID and a timestamp", file: file, line: line)
+        return
+    }
+    XCTAssertEqual(Array(bytes.prefix(2)), [0x0A, 0x0B], file: file, line: line)
+    let identifier = try XCTUnwrap(String(bytes: bytes[2..<13], encoding: .utf8), file: file, line: line)
+    XCTAssertNotNil(identifier.range(of: #"^[A-Za-z0-9_-]{11}$"#, options: .regularExpression),
+                    file: file, line: line)
+    XCTAssertEqual(bytes[13], 0x28, file: file, line: line)
+    var timestamp: UInt64 = 0
+    var shift: UInt64 = 0
+    var offset = 14
+    var terminated = false
+    while offset < bytes.count && shift <= 63 {
+        let byte = bytes[offset]
+        timestamp |= UInt64(byte & 0x7F) << shift
+        offset += 1
+        if byte & 0x80 == 0 {
+            terminated = true
+            break
+        }
+        shift += 7
+    }
+    XCTAssertTrue(terminated, file: file, line: line)
+    XCTAssertEqual(offset, bytes.count, file: file, line: line)
+    XCTAssertLessThan(abs(Date().timeIntervalSince1970 - Double(timestamp)), 60,
+                      "Generated visitor must carry the current timestamp", file: file, line: line)
 }

@@ -656,8 +656,10 @@ actor InnerTubeAPI {
     }
 
     /// Validates that a candidate string looks like a real visitorData token.
+    /// The protobuf's first visitor-ID byte changes the Base64 prefix: a digit
+    /// or "-" produces Cgs, while an ASCII letter or "_" produces Cgt.
     private static func isValidVisitorData(_ str: String) -> Bool {
-        str.hasPrefix("Cgt") && str.count > 20
+        (str.hasPrefix("Cgs") || str.hasPrefix("Cgt")) && str.count > 20
             && str.range(
                 of: #"^[A-Za-z0-9_\-+/=%]+$"#,
                 options: .regularExpression) != nil
@@ -665,7 +667,7 @@ actor InnerTubeAPI {
 
     /// Fetches visitorData from `music.youtube.com/sw.js_data`. The response
     /// starts with a Google XSSI prefix (`)]}'`), followed by a JSON array.
-    /// The visitorData token is nested at `[0][2][first "Cgt..." element]`.
+    /// The visitorData token is nested at `[0][2][first valid visitor token]`.
     private func fetchVisitorDataFromSwJsData() async throws -> String? {
         guard let url = URL(string: "https://music.youtube.com/sw.js_data") else {
             return nil

@@ -287,7 +287,7 @@ final class InnerTubePlayerSessionTests: XCTestCase {
         })
         assertAnonymous(player)
         let header = try XCTUnwrap(player.value(forHTTPHeaderField: "X-Goog-Visitor-Id"))
-        XCTAssertTrue(header.hasPrefix("Cgt"))
+        try assertFreshGeneratedVisitorData(header)
         XCTAssertEqual(try bodyVisitor(player), header,
                        "A degraded refresh must not generate a new identity between body and header")
     }

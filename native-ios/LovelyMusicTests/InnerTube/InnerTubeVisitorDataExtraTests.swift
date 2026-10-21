@@ -46,9 +46,12 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
         // Each sw.js_data hit sleeps ~300ms before returning a successful body.
         // Worst case: 1 sw.js_data hit (no retry needed) ≈ 0.3s + search ≈ negligible.
         // Bound at 5.0s — well above the 1.5s backoff window even on a contended runner.
-        let swJsData = ")]}'\n[[0,0,[\"CgtCT1VOREVEX1RPS0VO\"]]]"
+        let swJsData = ")]}'\n[[0,0,[\"\(VisitorDataTestFixtures.letterVisitor)\"]]]"
         let api = makeAPI { request in
-            if request.url?.host == "music.youtube.com" && request.httpMethod == "GET" {
+            if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                return bootstrap
+            }
+            if request.url?.path == "/sw.js_data" {
                 Thread.sleep(forTimeInterval: 0.3)
                 let body = Data(swJsData.utf8)
                 let response = HTTPURLResponse(
@@ -63,7 +66,7 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
         }
 
         let start = Date()
-        _ = try? await api.search(query: "bounded")
+        _ = try await api.search(query: "bounded")
         let elapsed = Date().timeIntervalSince(start)
 
         XCTAssertLessThanOrEqual(
@@ -78,11 +81,14 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
     /// `degradedVisitorState` must be false.
     func test_visitorDataRefresh_recoversAfterTransientFailure() async throws {
         let state = TransientStubState()
-        let recoverySwJsData = ")]}'\n[[0,0,[\"CgtSRUNPVkVSWV9UT0tFTg==\"]]]"
+        let recoverySwJsData = ")]}'\n[[0,0,[\"\(VisitorDataTestFixtures.letterVisitor)\"]]]"
 
         let api = makeAPI { request in
-            if request.url?.host == "music.youtube.com" && request.httpMethod == "GET" {
-                if state.shouldFailHomepage() {
+            if let bootstrap = VisitorDataTestFixtures.publicWebBootstrapResponse(for: request) {
+                return bootstrap
+            }
+            if request.url?.path == "/sw.js_data" {
+                if state.shouldFailServiceWorker() {
                     let response = HTTPURLResponse(
                         url: request.url!, statusCode: 500, httpVersion: "HTTP/1.1",
                         headerFields: nil)!
@@ -100,11 +106,12 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
             return (response, Data("{}".utf8))
         }
 
-        // Fail the first cycle entirely (sw.js_data + HTML fallback = 2 GET calls):
-        state.failHomepageCalls = 2
-        _ = try? await api.search(query: "first")
-        // Second call re-enters refresh because timestamp stayed nil; this time succeeds.
-        _ = try? await api.search(query: "second")
+        // First refresh has a failed service-worker request and an HTML fallback
+        // without a visitor. Public bootstrap remains valid, so search still runs.
+        state.failServiceWorkerCalls = 1
+        _ = try await api.search(query: "first")
+        // No freshness timestamp was stored; the next refresh must actually run.
+        _ = try await api.search(query: "second")
 
         let degraded = await api.degradedVisitorState
         XCTAssertFalse(
@@ -121,7 +128,7 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
         }
         XCTAssertEqual(
             lastSearch.value(forHTTPHeaderField: "X-Goog-Visitor-Id"),
-            "CgtSRUNPVkVSWV9UT0tFTg==",
+            VisitorDataTestFixtures.letterVisitor,
             "After recovery, downstream calls must use the freshly-fetched token"
         )
     }
@@ -167,7 +174,7 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
 
         XCTAssertEqual(hydratedA, "TOKEN_FOR_A_ONLY")
         XCTAssertNotEqual(hydratedB, "TOKEN_FOR_A_ONLY", "Suite B must NOT inherit suite A's visitorData")
-        XCTAssertTrue(hydratedB.hasPrefix("Cgt") && hydratedB.count > 20)
+        try assertFreshGeneratedVisitorData(hydratedB)
     }
 }
 
@@ -175,11 +182,11 @@ final class InnerTubeVisitorDataExtraTests: XCTestCase {
 // `StubState` declared in InnerTubeVisitorDataTests.swift)
 
 private final class TransientStubState: @unchecked Sendable {
-    var failHomepageCalls: Int = 0
+    var failServiceWorkerCalls: Int = 0
 
-    func shouldFailHomepage() -> Bool {
-        if failHomepageCalls > 0 {
-            failHomepageCalls -= 1
+    func shouldFailServiceWorker() -> Bool {
+        if failServiceWorkerCalls > 0 {
+            failServiceWorkerCalls -= 1
             return true
         }
         return false
