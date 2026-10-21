@@ -19,7 +19,7 @@ final class MediaCandidateRecoveryTests: XCTestCase {
 
         XCTAssertTrue(recovered.remoteURL.path.contains("visionOS-0-medium"))
         XCTAssertEqual(recovered.mimeType, "audio/mp4")
-        XCTAssertEqual(recovered.duration, 200)
+        XCTAssertEqual(recovered.duration, .seconds(200))
         let calls = await api.calls
         XCTAssertEqual(calls, ["session", "visionOS"])
     }

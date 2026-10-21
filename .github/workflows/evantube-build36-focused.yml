@@ -1,6 +1,12 @@
 name: EvanTube Build36 focused playback regression
 
 on:
+  push:
+    branches:
+      - codex/evantube-build36-audio-repair-20261021
+    paths:
+      - native-ios/**
+      - .github/workflows/evantube-build36-focused.yml
   workflow_dispatch: {}
 
 permissions:
@@ -55,6 +61,7 @@ jobs:
       - name: Run only Build36 transfer and background navigation tests
         working-directory: native-ios
         run: |
+          set -o pipefail
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicTests \
@@ -64,5 +71,29 @@ jobs:
             -only-testing:LovelyMusicTests/Build36AudioProbeTests \
             -only-testing:LovelyMusicTests/Build36BackgroundSkipTests \
             -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
+            -resultBundlePath "$RUNNER_TEMP/build36-focused-audio.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-simulator.entitlements" test
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-simulator.entitlements" test \
+            2>&1 | tee "$RUNNER_TEMP/build36-focused-audio.log"
+      - name: Publish readable focused audio result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build36-focused-audio.log')
+          lines = file.read_text(errors='replace').splitlines() if file.exists() else []
+          for line in lines:
+              if ' error: ' in line or 'XCTAssert' in line:
+                  print('::error::' + line[:1600].replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+              if 'Executed ' in line or 'Test Suite ' in line:
+                  print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-Build36-focused-audio-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build36-focused-audio.log
+            ${{ runner.temp }}/build36-focused-audio.xcresult
+          if-no-files-found: error
+          retention-days: 7
