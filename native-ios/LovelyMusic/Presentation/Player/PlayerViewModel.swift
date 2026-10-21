@@ -208,7 +208,7 @@ final class PlayerViewModel {
     private let maxRetries = 3
     /// Tracks how many songs in a row failed via auto-skip-on-error so we can
     /// halt the loop when an entire queue (e.g., region-blocked playlist) is
-    /// unavailable. Reset on any user-initiated playback action.
+    /// unavailable. Reset on confirmed playback or a user-initiated action.
     private var consecutiveAutoSkipFailures = 0
     private let maxConsecutiveAutoSkipFailures = 3
     private var bufferingTimerTask: Task<Void, Never>?
@@ -306,6 +306,12 @@ final class PlayerViewModel {
         self.isAppForeground = isAppForeground
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
+        audioEngine.onPlaybackConfirmed = { [weak self] song in
+            guard let self, self.currentSong?.id == song.id else { return }
+            // Selecting/loading a track is not success. A real AVPlayer start
+            // breaks the consecutive-failure streak, including in background.
+            self.resetConsecutiveFailures()
+        }
         observeAudioEngineErrors()
         observeBufferingState()
         observeTrackChanges()
@@ -429,8 +435,7 @@ final class PlayerViewModel {
         audioEngine.next(userInitiated: userInitiated)
     }
 
-    /// Reset the consecutive-failure counter when the user explicitly
-    /// navigates — they are taking control of the queue.
+    /// A confirmed player start or explicit navigation begins a new streak.
     private func resetConsecutiveFailures() {
         consecutiveAutoSkipFailures = 0
     }

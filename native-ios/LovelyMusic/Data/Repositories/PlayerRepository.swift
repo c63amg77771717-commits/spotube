@@ -13,7 +13,45 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
     private struct AudioInflightKey: Hashable, Sendable {
         let videoID: String
         let quality: AudioQuality
+        let candidateVersion: UInt64
     }
+
+    private enum AudioCandidateClient: CaseIterable, Hashable, Sendable {
+        case session, visionOS, ios, webRemix
+    }
+
+    private struct ResolvedAudioCandidate: Sendable {
+        let descriptor: StreamDescriptor
+        let client: AudioCandidateClient
+    }
+
+    private struct ObservedAudioCandidate {
+        let url: String
+        let client: AudioCandidateClient
+        let observedAt: Date
+    }
+
+    private struct CandidateState {
+        var version: UInt64
+        var rejected: Set<AudioCandidateClient> = []
+        // Keep only the newest descriptor for each quality. Old URLs cannot
+        // blacklist a replacement descriptor, and the state stays bounded.
+        var observed: [AudioQuality: ObservedAudioCandidate] = [:]
+        var expiresAt: Date
+        var lastAccess: Date
+    }
+
+    private struct CandidateSnapshot: Sendable {
+        let version: UInt64
+        let rejected: Set<AudioCandidateClient>
+    }
+
+    private let candidateLock = NSLock()
+    private var candidateStates: [String: CandidateState] = [:]
+    private var candidateVersion: UInt64 = 0
+    private let candidateClock: @Sendable () -> Date
+    private static let candidateTTL: TimeInterval = 5 * 60
+    private static let maximumCandidateVideos = 64
 
     private let audioInflight: InflightCache<AudioInflightKey, StreamDescriptor>
     private let videoInflight: InflightCache<
@@ -35,10 +73,12 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         api: PlayerAPIClient,
         videoQualityProvider: @escaping @Sendable () -> VideoQuality = { .auto },
         audioInflightDidJoin: InflightJoinObserver? = nil,
-        videoInflightDidJoin: InflightJoinObserver? = nil
+        videoInflightDidJoin: InflightJoinObserver? = nil,
+        candidateClock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.api = api
         self.videoQualityProvider = videoQualityProvider
+        self.candidateClock = candidateClock
         audioInflight = InflightCache(didJoin: audioInflightDidJoin)
         videoInflight = InflightCache(didJoin: videoInflightDidJoin)
     }
@@ -68,17 +108,118 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         quality: AudioQuality,
         requestHeaders: [String: String]
     ) async throws -> StreamDescriptor {
-        let key = AudioInflightKey(videoID: videoId, quality: quality)
+        let candidates = candidateSnapshot(videoId: videoId)
+        let key = AudioInflightKey(
+            videoID: videoId, quality: quality, candidateVersion: candidates.version
+        )
         let base = try await audioInflight.run(key) { [self] in
-            try await resolveStreamDescriptorUncached(videoId: videoId, quality: quality)
+            let result = try await resolveStreamDescriptorUncached(
+                videoId: videoId, quality: quality, rejected: candidates.rejected
+            )
+            recordPlaybackCandidate(
+                result, videoId: videoId, quality: quality, version: candidates.version
+            )
+            return result.descriptor
         }
         return base.withRequestHeaders(requestHeaders)
     }
 
+    func reportPlaybackCandidateFailure(videoId: String, streamURL: String) {
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        pruneCandidateStates(now: now)
+        guard var state = candidateStates[videoId] else { return }
+        let matchingClients = Set(state.observed.values.compactMap { candidate in
+            candidate.url == streamURL && now.timeIntervalSince(candidate.observedAt) < Self.candidateTTL
+                ? candidate.client : nil
+        })
+        guard matchingClients.count == 1, let client = matchingClients.first,
+              state.rejected.insert(client).inserted else { return }
+        state.version = nextCandidateVersion()
+        // Late callbacks from the previous resolution generation are ignored.
+        state.observed.removeAll()
+        state.expiresAt = now.addingTimeInterval(Self.candidateTTL)
+        state.lastAccess = now
+        candidateStates[videoId] = state
+    }
+
+    func reportPlaybackCandidateSuccess(videoId: String, streamURL: String) {
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        pruneCandidateStates(now: now)
+        guard var state = candidateStates[videoId], !state.rejected.isEmpty else { return }
+        let matching = state.observed.filter { _, candidate in
+            candidate.url == streamURL && now.timeIntervalSince(candidate.observedAt) < Self.candidateTTL
+        }
+        guard !matching.isEmpty else { return }
+        state.rejected.removeAll()
+        state.version = nextCandidateVersion()
+        state.observed = matching
+        state.expiresAt = now.addingTimeInterval(Self.candidateTTL)
+        state.lastAccess = now
+        candidateStates[videoId] = state
+    }
+
+    private func candidateSnapshot(videoId: String) -> CandidateSnapshot {
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        pruneCandidateStates(now: now)
+        if var state = candidateStates[videoId] {
+            state.lastAccess = now
+            candidateStates[videoId] = state
+            return CandidateSnapshot(version: state.version, rejected: state.rejected)
+        }
+        if candidateStates.count >= Self.maximumCandidateVideos,
+           let oldest = candidateStates.min(by: { $0.value.lastAccess < $1.value.lastAccess })?.key {
+            candidateStates.removeValue(forKey: oldest)
+        }
+        let state = CandidateState(
+            version: nextCandidateVersion(),
+            expiresAt: now.addingTimeInterval(Self.candidateTTL), lastAccess: now
+        )
+        candidateStates[videoId] = state
+        return CandidateSnapshot(version: state.version, rejected: [])
+    }
+
+    private func recordPlaybackCandidate(
+        _ result: ResolvedAudioCandidate, videoId: String, quality: AudioQuality, version: UInt64
+    ) {
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        pruneCandidateStates(now: now)
+        guard var state = candidateStates[videoId], state.version == version else { return }
+        state.observed[quality] = ObservedAudioCandidate(
+            url: result.descriptor.remoteURL.absoluteString,
+            client: result.client, observedAt: now
+        )
+        state.expiresAt = now.addingTimeInterval(Self.candidateTTL)
+        state.lastAccess = now
+        candidateStates[videoId] = state
+    }
+
+    // These helpers run only while candidateLock is held. URL provenance never
+    // leaves this in-memory state and is not included in diagnostics or logs.
+    private func nextCandidateVersion() -> UInt64 {
+        candidateVersion &+= 1
+        return candidateVersion
+    }
+
+    private func pruneCandidateStates(now: Date) {
+        candidateStates = candidateStates.filter { $0.value.expiresAt > now }
+    }
+
     private func resolveStreamDescriptorUncached(
         videoId: String,
-        quality: AudioQuality
-    ) async throws -> StreamDescriptor {
+        quality: AudioQuality,
+        rejected: Set<AudioCandidateClient>
+    ) async throws -> ResolvedAudioCandidate {
+        guard rejected.count < AudioCandidateClient.allCases.count else {
+            throw InnerTubeError.noStreamAvailable
+        }
         // The user's own session may work without optional fallback client keys.
         // Do not block the signed-in native playback request before it can run.
         let cpn = generateCPN()
@@ -97,74 +238,80 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
             // Start with this user's own iOS session. Preserve the exact HTTP
             // failure; a missing optional alternate-client key is not the cause.
-            do {
-                if let result = try await attemptClientWithRetries(
-                    label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
-                    quality: quality,
-                    playabilityReason: &lastPlayabilityReason,
-                    descriptorError: &lastDescriptorError
-                ) {
-                    return result
-                }
-            } catch let error as InnerTubeError {
-                switch error {
-                case .httpError, .sourceNotConfigured:
-                    lastSessionFailure = error
-                default:
-                    // Respect YouTube's explicit sign-in/verification rejection.
-                    throw error
+            if !rejected.contains(.session) {
+                do {
+                    if let result = try await attemptClientWithRetries(
+                        label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
+                        quality: quality,
+                        playabilityReason: &lastPlayabilityReason,
+                        descriptorError: &lastDescriptorError
+                    ) {
+                        return ResolvedAudioCandidate(descriptor: result, client: .session)
+                    }
+                } catch let error as InnerTubeError {
+                    switch error {
+                    case .httpError, .sourceNotConfigured:
+                        lastSessionFailure = error
+                    default:
+                        // Respect YouTube's explicit sign-in/verification rejection.
+                        throw error
+                    }
                 }
             }
 
             // The VisionOS HLS DVR playlist can advertise only a ~69-second
             // live window for a much longer song. Prefer its full AAC adaptive
             // resource (if available) before considering HLS playback.
-            do {
-                if let descriptor = try await extractHLSDescriptor(
-                    videoId: videoId,
-                    quality: quality
-                ) {
-                    PlaybackDiagnostics.shared.record(.init(
-                        phase: .streamResolved, client: .visionOS,
-                        videoID: videoId,
-                        hlsAvailable: descriptor.mimeType == "application/x-mpegURL"
-                    ))
-                    if needsPublicWebFallback &&
-                        descriptor.mimeType == "application/x-mpegURL" {
-                        // This may be a 69-second live DVR window. Keep it only
-                        // as a last resort while we try the full public AAC source.
-                        pendingHLS = descriptor
-                    } else {
-                        return descriptor
+            if !rejected.contains(.visionOS) {
+                do {
+                    if let descriptor = try await extractHLSDescriptor(
+                        videoId: videoId,
+                        quality: quality
+                    ) {
+                        PlaybackDiagnostics.shared.record(.init(
+                            phase: .streamResolved, client: .visionOS,
+                            videoID: videoId,
+                            hlsAvailable: descriptor.mimeType == "application/x-mpegURL"
+                        ))
+                        if needsPublicWebFallback &&
+                            descriptor.mimeType == "application/x-mpegURL" {
+                            // This may be a 69-second live DVR window. Keep it only
+                            // as a last resort while we try the full public AAC source.
+                            pendingHLS = descriptor
+                        } else {
+                            return ResolvedAudioCandidate(descriptor: descriptor, client: .visionOS)
+                        }
                     }
+                } catch let failure as PlayabilityFailure {
+                    // A definitive VisionOS content result beats an earlier
+                    // transport-level IOS HTTP 400.
+                    lastPlayabilityReason = failure.reason
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // One unavailable client must not prevent the public web
+                    // fallback from being attempted on a signed-out device.
+                    Log.player.warning("VisionOS source unavailable; trying other public sources")
                 }
-            } catch let failure as PlayabilityFailure {
-                // A definitive VisionOS content result beats an earlier
-                // transport-level IOS HTTP 400.
-                lastPlayabilityReason = failure.reason
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                // One unavailable client must not prevent the public web
-                // fallback from being attempted on a signed-out device.
-                Log.player.warning("VisionOS source unavailable; trying other public sources")
             }
 
             if needsPublicWebFallback {
                 // Use the same runtime public WEB_REMIX configuration as
                 // anonymous search. No Google Drive OAuth credentials or
                 // hardcoded private keys are used for this player request.
-                if let result = try await attemptClientWithRetries(
+                if !rejected.contains(.webRemix), let result = try await attemptClientWithRetries(
                     label: "WEB_REMIX(public)", videoId: videoId,
                     cpn: cpn, client: .webRemix, quality: quality,
                     playabilityReason: &lastPlayabilityReason,
                     descriptorError: &lastDescriptorError
                 ) {
-                    return result
+                    return ResolvedAudioCandidate(descriptor: result, client: .webRemix)
                 }
                 // Preserve the Build31-34 HLS duration check if no complete
                 // source is available: never claim a short DVR window is full.
-                if let pendingHLS { return pendingHLS }
+                if let pendingHLS {
+                    return ResolvedAudioCandidate(descriptor: pendingHLS, client: .visionOS)
+                }
                 if let reason = lastPlayabilityReason {
                     throw InnerTubeError.videoUnavailable(reason: reason)
                 }
@@ -174,27 +321,29 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
             }
 
             // Reset session before trying fallback clients
-            Log.player.info("Primary client failed, resetting session for fallback chain")
-            await api.resetSession()
+            if !rejected.contains(.ios) || !rejected.contains(.webRemix) {
+                Log.player.info("Primary client failed, resetting session for fallback chain")
+                await api.resetSession()
+            }
 
             // Fallback 1: IOS client
-            if let result = try await attemptClientWithRetries(
+            if !rejected.contains(.ios), let result = try await attemptClientWithRetries(
                 label: "IOS", videoId: videoId, cpn: cpn, client: .ios,
                 quality: quality,
                 playabilityReason: &lastPlayabilityReason,
                 descriptorError: &lastDescriptorError
             ) {
-                return result
+                return ResolvedAudioCandidate(descriptor: result, client: .ios)
             }
 
             // Fallback 2: WEB_REMIX client
-            if let result = try await attemptClientWithRetries(
+            if !rejected.contains(.webRemix), let result = try await attemptClientWithRetries(
                 label: "WEB_REMIX", videoId: videoId, cpn: cpn, client: .webRemix,
                 quality: quality,
                 playabilityReason: &lastPlayabilityReason,
                 descriptorError: &lastDescriptorError
             ) {
-                return result
+                return ResolvedAudioCandidate(descriptor: result, client: .webRemix)
             }
 
             Log.player.error("All player clients exhausted")

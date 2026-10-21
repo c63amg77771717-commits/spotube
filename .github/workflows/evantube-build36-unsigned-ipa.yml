@@ -43,6 +43,7 @@ jobs:
               '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/MediaCandidateRecoveryTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Core/Audio/Build36BackgroundPlaybackTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockInnerTubeRepository.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockPlaylistRepository.swift' + chr(10) +
@@ -59,6 +60,7 @@ jobs:
       - name: Verify keyless online search plus 69-second playback regressions
         working-directory: native-ios
         run: |
+          set -o pipefail
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicTests \
@@ -70,10 +72,35 @@ jobs:
             -only-testing:LovelyMusicTests/AnonymousPlaybackFallbackTests \
             -only-testing:LovelyMusicTests/Build36AudioProbeTests \
             -only-testing:LovelyMusicTests/Build36BackgroundSkipTests \
+            -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSUsesHLSOnlyWhenNoValidAACExists \
+            -resultBundlePath "$RUNNER_TEMP/build36-audio.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-simulator.entitlements" test
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-simulator.entitlements" test \
+            2>&1 | tee "$RUNNER_TEMP/build36-audio.log"
+      - name: Publish readable audio result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build36-audio.log')
+          lines = file.read_text(errors='replace').splitlines() if file.exists() else []
+          for line in lines:
+              if ' error: ' in line or 'XCTAssert' in line:
+                  print('::error::' + line[:1600].replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+              if 'Executed ' in line or 'Test Suite ' in line:
+                  print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-Build36-audio-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build36-audio.log
+            ${{ runner.temp }}/build36-audio.xcresult
+          if-no-files-found: error
+          retention-days: 7
 
   unsigned-ipa:
     needs: [audio-regression, settings-navigation-ui]
@@ -175,6 +202,7 @@ jobs:
           manifest={'file':ipa.name,'bytes':ipa.stat().st_size,'sha256':digest,'sourceSHA':os.environ['GITHUB_SHA'],
                     'version':'1.0.1','build':36,'unsigned':True,'architecture':'arm64',
                     'deviceCompilation':'PASS','archiveIntegrity':'PASS','audioRegression':'PASS',
+                    'settingsNavigationUI':'PASS','mediaCandidateRecovery':'PASS',
                     'lyricsEnabled':False,'physicalDevice':'NOT_RUN','credentialsEmbedded':False}
           (output/'build36-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
           print('BUILD36_UNSIGNED_IPA_PASS')
@@ -216,6 +244,7 @@ jobs:
       - name: Validate full-card taps for YouTube, import, and Drive sheets
         working-directory: native-ios
         run: |
+          set -o pipefail
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicUITests \
@@ -223,5 +252,29 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
             -only-testing:LovelyMusicUITests/SettingsTapRegressionUITests \
+            -resultBundlePath "$RUNNER_TEMP/build36-settings.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
-            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-ui-simulator.entitlements" test
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-ui-simulator.entitlements" test \
+            2>&1 | tee "$RUNNER_TEMP/build36-settings.log"
+      - name: Publish readable settings result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build36-settings.log')
+          lines = file.read_text(errors='replace').splitlines() if file.exists() else []
+          for line in lines:
+              if ' error: ' in line or 'XCTAssert' in line:
+                  print('::error::' + line[:1600].replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+              if 'Executed ' in line or 'Test Suite ' in line:
+                  print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-Build36-settings-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build36-settings.log
+            ${{ runner.temp }}/build36-settings.xcresult
+          if-no-files-found: error
+          retention-days: 7

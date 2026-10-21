@@ -1,12 +1,6 @@
 name: EvanTube Build36 focused playback regression
 
 on:
-  push:
-    branches:
-      - codex/evantube-build36-background-playback-20261021
-    paths:
-      - native-ios/**
-      - .github/workflows/evantube-build36-focused.yml
   workflow_dispatch: {}
 
 permissions:
@@ -43,6 +37,7 @@ jobs:
               'LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift',
               'LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift',
               'LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift',
+              'LovelyMusicTests/Data/MediaCandidateRecoveryTests.swift',
               'LovelyMusicTests/Data/KeylessOnlineSearchTests.swift',
               'LovelyMusicTests/Mocks/MockInnerTubeRepository.swift',
               'LovelyMusicTests/Mocks/MockPlaylistRepository.swift',
@@ -68,5 +63,6 @@ jobs:
             -parallel-testing-enabled NO \
             -only-testing:LovelyMusicTests/Build36AudioProbeTests \
             -only-testing:LovelyMusicTests/Build36BackgroundSkipTests \
+            -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build36-simulator.entitlements" test

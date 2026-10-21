@@ -219,6 +219,12 @@ final class DIContainer {
         self.audioEngine.streamURLResolver = { [sourceStore] originalID in
             try await sourceStore.resolve(originalID: originalID, using: basePlaybackResolver)
         }
+        self.audioEngine.onStreamCandidateFailure = { [playerRepo] sourceID, streamURL in
+            playerRepo.reportPlaybackCandidateFailure(videoId: sourceID, streamURL: streamURL)
+        }
+        self.audioEngine.onStreamCandidateSuccess = { [playerRepo] sourceID, streamURL in
+            playerRepo.reportPlaybackCandidateSuccess(videoId: sourceID, streamURL: streamURL)
+        }
         self.audioEngine.contextualVideoStreamURLResolver = { [playerRepo, sourceStore, scopedSourceStore] song in
             try await scopedSourceStore.resolve(song: song, legacy: { sourceStore.sourceID(for: $0) }) { sourceID in
                 try await playerRepo.resolveVideoStreamURL(videoId: sourceID)

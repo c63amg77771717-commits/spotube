@@ -291,6 +291,11 @@ final class AudioEngine {
     private var hasReportedPlaybackStart = false
     private var recoveryPosition: TimeInterval?
     var onPlaybackStarted: ((Song) -> Void)?
+    /// Recovery accounting is independent of the optional listening-history sink.
+    /// Emitted only when the current AVPlayer actually enters `.playing`.
+    var onPlaybackConfirmed: ((Song) -> Void)?
+    var onStreamCandidateFailure: ((String, String) -> Void)?
+    var onStreamCandidateSuccess: ((String, String) -> Void)?
     private(set) var pendingSeekTime: TimeInterval?
     private var interruptionObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
@@ -465,6 +470,7 @@ final class AudioEngine {
     private let remoteCommandManager = RemoteCommandManager()
     private let recoveryClock: (any PlaybackRecoveryClock)?
     private let recoveryScheduler: (any PlaybackRecoveryScheduling)?
+    private let audioTransferSession: URLSession
     @ObservationIgnored
     private lazy var recoveryService: PlaybackRecoveryService = {
         PlaybackRecoveryService(clock: recoveryClock, scheduler: recoveryScheduler, eventSink: { [weak self] event in
@@ -476,9 +482,11 @@ final class AudioEngine {
     private var loadingRecoveryAttemptCount = 0
 
     init(recoveryClock: (any PlaybackRecoveryClock)? = nil,
-         recoveryScheduler: (any PlaybackRecoveryScheduling)? = nil) {
+         recoveryScheduler: (any PlaybackRecoveryScheduling)? = nil,
+         audioTransferSession: URLSession = .shared) {
         self.recoveryClock = recoveryClock
         self.recoveryScheduler = recoveryScheduler
+        self.audioTransferSession = audioTransferSession
         let savedSpeed = UserDefaults.standard.float(forKey: "playbackSpeed")
         playbackSpeed = savedSpeed > 0 ? savedSpeed : 1.0
         recoveryService.delegate = self
@@ -3053,6 +3061,7 @@ final class AudioEngine {
             let rawURL = cacheDir.appendingPathComponent("\(sourceID)_raw.m4a")
             let remuxedURL = cacheDir.appendingPathComponent("\(sourceID)_remuxed.m4a")
             var transferStage: PlaybackDiagnostics.TransferStage = .probe
+            var transferCandidateURL = url.absoluteString
             var transferHTTPStatus: Int?
             var transferReceivedBytes: Int64?
             var transferExpectedBytes = song.streamContentLength
@@ -3092,7 +3101,9 @@ final class AudioEngine {
                 // each subsequent byte transfer before writing any playback item.
                 var headerRequest = baseRequest
                 headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
-                let (headerData, headerResponse) = try await URLSession.shared.data(for: headerRequest)
+                transferHTTPStatus = nil
+                transferReceivedBytes = nil
+                let (headerData, headerResponse) = try await self.audioTransferSession.data(for: headerRequest)
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
                 transferHTTPStatus = (headerResponse as? HTTPURLResponse)?.statusCode
                 transferReceivedBytes = Int64(headerData.count)
@@ -3135,7 +3146,9 @@ final class AudioEngine {
                     // Some formats have no sidx. Download the whole resource,
                     // never the former 400 KB preview-sized fallback.
                     // URLSession.download keeps the whole response off-heap.
-                    let (temporaryURL, fullResponse) = try await URLSession.shared.download(for: baseRequest)
+                    transferHTTPStatus = nil
+                    transferReceivedBytes = nil
+                    let (temporaryURL, fullResponse) = try await self.audioTransferSession.download(for: baseRequest)
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
                     transferHTTPStatus = (fullResponse as? HTTPURLResponse)?.statusCode
                     let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
@@ -3171,7 +3184,9 @@ final class AudioEngine {
                         transferStage = .initializationPrefix
                         var prefixRequest = baseRequest
                         prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
-                        let (prefixData, prefixResponse) = try await URLSession.shared.data(for: prefixRequest)
+                        transferHTTPStatus = nil
+                        transferReceivedBytes = nil
+                        let (prefixData, prefixResponse) = try await self.audioTransferSession.data(for: prefixRequest)
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         transferHTTPStatus = (prefixResponse as? HTTPURLResponse)?.statusCode
                         transferReceivedBytes = Int64(prefixData.count)
@@ -3208,6 +3223,8 @@ final class AudioEngine {
                             throw AudioTransferIntegrityError.incompleteResource
                         }
                         let refreshed = try await resolver(song.id)
+                        guard !Task.isCancelled, self.loadGeneration == generation,
+                              self.currentTrack?.id == song.id else { throw CancellationError() }
                         guard let refreshedURL = URL(string: refreshed.url),
                               ["http", "https"].contains(refreshedURL.scheme?.lowercased() ?? "")
                         else {
@@ -3215,6 +3232,17 @@ final class AudioEngine {
                         }
                         if let declared = refreshed.contentLength, declared != expectedTotal {
                             throw AudioTransferIntegrityError.resourceChanged
+                        }
+                        transferCandidateURL = refreshed.url
+                        // Repository provenance follows the newest descriptor. Keep
+                        // later integrity, native decode and success callbacks on
+                        // that exact candidate without accepting stale song loads.
+                        if var current = self.currentTrack {
+                            current.streamURL = refreshed.url
+                            current.streamContentLength = refreshed.contentLength
+                            self.currentTrack = current
+                            self.updateQueuedStream(songID: song.id, streamURL: refreshed.url,
+                                                    contentLength: refreshed.contentLength)
                         }
                         var refreshedRequest = baseRequest
                         refreshedRequest.url = refreshedURL
@@ -3227,6 +3255,8 @@ final class AudioEngine {
                         transferStage = .segment
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         if rangesOnCurrentURL >= 5 {
+                            transferHTTPStatus = nil
+                            transferReceivedBytes = nil
                             currentRequest = try await refreshSignedRequest()
                             rangesOnCurrentURL = 0
                         }
@@ -3238,13 +3268,17 @@ final class AudioEngine {
                                 "bytes=\(requiredRange.lowerBound)-\(requiredRange.upperBound - 1)",
                                 forHTTPHeaderField: "Range"
                             )
-                            let (bytes, response) = try await URLSession.shared.data(for: segmentRequest)
+                            transferHTTPStatus = nil
+                            transferReceivedBytes = nil
+                            let (bytes, response) = try await self.audioTransferSession.data(for: segmentRequest)
                             guard !Task.isCancelled, self.loadGeneration == generation else { return }
                             transferHTTPStatus = (response as? HTTPURLResponse)?.statusCode
                             transferReceivedBytes = Int64(bytes.count)
                             if let http = response as? HTTPURLResponse,
                                [403, 410, 429].contains(http.statusCode),
                                retry == 0 {
+                                transferHTTPStatus = nil
+                                transferReceivedBytes = nil
                                 currentRequest = try await refreshSignedRequest()
                                 rangesOnCurrentURL = 0
                                 continue
@@ -3338,6 +3372,9 @@ final class AudioEngine {
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
                 // Broken downloads must not survive into a later playback/cache hit.
                 try? FileManager.default.removeItem(at: rawURL)
+                if PlaybackCandidateFailurePolicy.shouldReject(error, httpStatus: transferHTTPStatus) {
+                    self.rejectPlaybackCandidate(for: song, streamURL: transferCandidateURL)
+                }
                 self.recoveryService.stopStallDetection()
                 self.isBuffering = false
                 self.isPlaying = false
@@ -3637,6 +3674,7 @@ final class AudioEngine {
                         self.player?.pause()
                         self.isPlaying = false
                         self.isBuffering = false
+                        if let song = self.currentTrack { self.rejectPlaybackCandidate(for: song) }
                         self.lastError = "Audio source is shorter than the song. Please retry."
                         Log.audio.error("Rejected incomplete HLS playback window")
                         return
@@ -3685,6 +3723,10 @@ final class AudioEngine {
                     if self.guardedCoordinator != nil {
                         self.reportPlaybackItemFailure()
                         return
+                    }
+                    if let error = item.error, let song = self.currentTrack,
+                       PlaybackCandidateFailurePolicy.shouldReject(error, httpStatus: mediaStatus) {
+                        self.rejectPlaybackCandidate(for: song)
                     }
                     // Check if failure is due to expired stream URL (HTTP 403/410)
                     if self.isStreamExpiryError(item.error),
@@ -4006,6 +4048,10 @@ final class AudioEngine {
                     self.recordPlaybackDiagnostic(.enginePlaying)
                     if !self.hasReportedPlaybackStart {
                         self.hasReportedPlaybackStart = true
+                        if let streamURL = song.streamURL {
+                            self.onStreamCandidateSuccess?(self.playbackSourceID(for: song), streamURL)
+                        }
+                        self.onPlaybackConfirmed?(song)
                         self.onPlaybackStarted?(song)
                     }
                 @unknown default:
@@ -4013,6 +4059,13 @@ final class AudioEngine {
                 }
             }
         }
+    }
+
+    private func rejectPlaybackCandidate(for song: Song, streamURL candidateURL: String? = nil) {
+        guard currentTrack?.id == song.id, let streamURL = candidateURL ?? song.streamURL,
+              let remote = URL(string: streamURL), remote.scheme == "https" else { return }
+        onStreamCandidateFailure?(playbackSourceID(for: song), streamURL)
+        updateQueuedStream(songID: song.id, streamURL: nil, contentLength: nil)
     }
 
     private func cleanupPlayer() {
@@ -5056,6 +5109,37 @@ enum AudioTransferIntegrity {
     }
 }
 
+
+/// Reject only a successfully delivered but unusable media candidate. Network,
+/// authorization, throttling and device/session errors retain their own recovery.
+enum PlaybackCandidateFailurePolicy {
+    static func shouldReject(_ error: Error, httpStatus: Int?) -> Bool {
+        if let httpStatus, (100...599).contains(httpStatus),
+           httpStatus != 200 && httpStatus != 206 { return false }
+        if error is AudioTransferIntegrityError {
+            return httpStatus == 200 || httpStatus == 206
+        }
+        let nsError = error as NSError
+        guard nsError.domain == AVFoundationErrorDomain else { return false }
+        let mediaCodes: Set<Int> = [
+            AVError.Code.fileFormatNotRecognized.rawValue,
+            AVError.Code.decoderNotFound.rawValue,
+            AVError.Code.decodeFailed.rawValue,
+            AVError.Code.invalidSourceMedia.rawValue,
+        ]
+        guard mediaCodes.contains(nsError.code) else { return false }
+        var underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+        for _ in 0..<8 {
+            guard let nested = underlying else { break }
+            if nested.domain == NSURLErrorDomain { return false }
+            if nested.domain == AVFoundationErrorDomain,
+               [AVError.Code.contentIsNotAuthorized.rawValue,
+                AVError.Code.contentIsProtected.rawValue].contains(nested.code) { return false }
+            underlying = nested.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return true
+    }
+}
 
 /// Avoid treating a short CDN/HLS window as a completed long recording.
 /// Ignore near matches: catalog times are often rounded to whole seconds.
