@@ -3052,6 +3052,10 @@ final class AudioEngine {
                 at: cacheDir, withIntermediateDirectories: true)
             let rawURL = cacheDir.appendingPathComponent("\(sourceID)_raw.m4a")
             let remuxedURL = cacheDir.appendingPathComponent("\(sourceID)_remuxed.m4a")
+            var transferStage: PlaybackDiagnostics.TransferStage = .probe
+            var transferHTTPStatus: Int?
+            var transferReceivedBytes: Int64?
+            var transferExpectedBytes = song.streamContentLength
 
             // Check LRU cache (may have been populated by prefetch)
             if let cachedURL = cacheManager?.getFile(for: sourceID) {
@@ -3090,12 +3094,24 @@ final class AudioEngine {
                 headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
                 let (headerData, headerResponse) = try await URLSession.shared.data(for: headerRequest)
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
-                let expectedTotal = try AudioTransferIntegrity.validate(
+                transferHTTPStatus = (headerResponse as? HTTPURLResponse)?.statusCode
+                transferReceivedBytes = Int64(headerData.count)
+                // A CDN may ignore HTTP Range and send the entire resource.
+                // Accept that body only when it matches an independently
+                // declared song content length; never accept a 400 KB preview.
+                let probe = try AudioTransferIntegrity.validateProbe(
                     response: headerResponse,
                     receivedBytes: Int64(headerData.count),
-                    requestedRange: 0..<4096,
                     expectedTotal: song.streamContentLength
                 )
+                let expectedTotal = probe.totalBytes
+                transferExpectedBytes = expectedTotal
+                PlaybackDiagnostics.shared.record(.init(
+                    phase: .audioTransferProbe, videoID: song.id,
+                    httpStatus: transferHTTPStatus, transferStage: .probe,
+                    transferReceivedBytes: transferReceivedBytes,
+                    transferExpectedBytes: transferExpectedBytes
+                ))
                 self.recoveryService.recordLoadingProgress()
 
                 let (headerEnd, segmentSizes) = parseSIDX(headerData)
@@ -3110,16 +3126,23 @@ final class AudioEngine {
                 let fileHandle = try FileHandle(forWritingTo: rawURL)
                 defer { fileHandle.closeFile() }
 
-                if segmentSizes.isEmpty {
+                if probe.containsFullResource {
+                    // This is an independently validated complete body; do
+                    // not request a second copy or truncate an already full song.
+                    fileHandle.write(headerData)
+                } else if segmentSizes.isEmpty {
+                    transferStage = .fullDownload
                     // Some formats have no sidx. Download the whole resource,
                     // never the former 400 KB preview-sized fallback.
                     // URLSession.download keeps the whole response off-heap.
                     let (temporaryURL, fullResponse) = try await URLSession.shared.download(for: baseRequest)
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    transferHTTPStatus = (fullResponse as? HTTPURLResponse)?.statusCode
                     let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
                     guard let actualSize = (attributes[.size] as? NSNumber)?.int64Value else {
                         throw AudioTransferIntegrityError.incompleteResource
                     }
+                    transferReceivedBytes = actualSize
                     _ = try AudioTransferIntegrity.validate(
                         response: fullResponse,
                         receivedBytes: actualSize,
@@ -3145,10 +3168,13 @@ final class AudioEngine {
                     if headerEnd <= headerData.count {
                         fileHandle.write(headerData.prefix(headerEnd))
                     } else {
+                        transferStage = .initializationPrefix
                         var prefixRequest = baseRequest
                         prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
                         let (prefixData, prefixResponse) = try await URLSession.shared.data(for: prefixRequest)
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                        transferHTTPStatus = (prefixResponse as? HTTPURLResponse)?.statusCode
+                        transferReceivedBytes = Int64(prefixData.count)
                         _ = try AudioTransferIntegrity.validate(
                             response: prefixResponse,
                             receivedBytes: Int64(prefixData.count),
@@ -3198,6 +3224,7 @@ final class AudioEngine {
                     var currentRequest = baseRequest
                     var rangesOnCurrentURL = 0
                     for requiredRange in requiredRanges {
+                        transferStage = .segment
                         guard !Task.isCancelled, self.loadGeneration == generation else { return }
                         if rangesOnCurrentURL >= 5 {
                             currentRequest = try await refreshSignedRequest()
@@ -3213,6 +3240,8 @@ final class AudioEngine {
                             )
                             let (bytes, response) = try await URLSession.shared.data(for: segmentRequest)
                             guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                            transferHTTPStatus = (response as? HTTPURLResponse)?.statusCode
+                            transferReceivedBytes = Int64(bytes.count)
                             if let http = response as? HTTPURLResponse,
                                [403, 410, 429].contains(http.statusCode),
                                retry == 0 {
@@ -3238,6 +3267,7 @@ final class AudioEngine {
                     }
                 }
 
+                transferStage = .fileComplete
                 fileHandle.closeFile()
                 let writtenBytes = (try? FileManager.default.attributesOfItem(atPath: rawURL.path)[.size] as? Int64) ?? 0
                 Log.audio.info("Download complete for \(song.id, privacy: .public): \(writtenBytes)B in \(String(format: "%.2f", Date().timeIntervalSince(startTime)))s")
@@ -3248,6 +3278,7 @@ final class AudioEngine {
                 guard writtenBytes == expectedTotal else {
                     throw AudioTransferIntegrityError.incompleteResource
                 }
+                transferStage = .durationCheck
                 if let songSeconds = song.duration, songSeconds >= 90,
                    let assetDuration = try? await AVURLAsset(url: rawURL).load(.duration) {
                     let measuredSeconds = assetDuration.seconds
@@ -3313,6 +3344,18 @@ final class AudioEngine {
                 self.lastError = error is AudioTransferIntegrityError
                     ? "Incomplete audio stream. Please retry."
                     : "Download failed"
+                // Stable typed metadata, never a signed CDN URL, token,
+                // cookie, raw response or freeform server error string.
+                let nsError = error as NSError
+                PlaybackDiagnostics.shared.record(.init(
+                    phase: .audioTransferFailure, videoID: song.id,
+                    httpStatus: transferHTTPStatus,
+                    transportErrorCode: nsError.domain == NSURLErrorDomain ? nsError.code : nil,
+                    transferStage: transferStage,
+                    transferFailure: .classify(error),
+                    transferReceivedBytes: transferReceivedBytes,
+                    transferExpectedBytes: transferExpectedBytes
+                ))
                 Log.audio.error(
                     "Download failed, code=\((error as NSError).code)"
                 )
@@ -4591,8 +4634,14 @@ final class AudioEngine {
     private func setupRemoteCommands() {
         remoteCommandManager.onPlay = { [weak self] in self?.handleRemotePlay() }
         remoteCommandManager.onPause = { [weak self] in self?.handleRemotePause() }
-        remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
-        remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
+        remoteCommandManager.onNext = { [weak self] in
+            self?.recordPlaybackDiagnostic(.remoteNext)
+            self?.next(userInitiated: true)
+        }
+        remoteCommandManager.onPrevious = { [weak self] in
+            self?.recordPlaybackDiagnostic(.remotePrevious)
+            self?.previous()
+        }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
         remoteCommandManager.setup()
     }
@@ -4908,6 +4957,35 @@ enum AudioTransferIntegrity {
         let start: Int64
         let endExclusive: Int64
         let total: Int64
+    }
+
+    struct Probe: Equatable {
+        let totalBytes: Int64
+        let containsFullResource: Bool
+    }
+
+    /// A 206 probe must precisely honor bytes=0-4095. A 200 response
+    /// is accepted only when a known descriptor length proves that every
+    /// byte was received. Never infer a complete song from a short 200.
+    static func validateProbe(
+        response: URLResponse, receivedBytes: Int64, expectedTotal: Int64?
+    ) throws -> Probe {
+        if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+            guard let expectedTotal, expectedTotal > 0,
+                  receivedBytes <= 64 * 1024 * 1024 else {
+                throw AudioTransferIntegrityError.incompleteResource
+            }
+            let total = try validate(
+                response: response, receivedBytes: receivedBytes,
+                requestedRange: nil, expectedTotal: expectedTotal
+            )
+            return Probe(totalBytes: total, containsFullResource: true)
+        }
+        let total = try validate(
+            response: response, receivedBytes: receivedBytes,
+            requestedRange: 0..<4096, expectedTotal: expectedTotal
+        )
+        return Probe(totalBytes: total, containsFullResource: false)
     }
 
     static func parseContentRange(_ raw: String?) -> ContentRange? {
