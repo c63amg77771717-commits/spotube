@@ -10,10 +10,20 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case audioSessionConfigured, audioSessionActivated, audioRouteChanged, audioMediaServicesReset
         case nowPlayingSession
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
+        case remoteNext, remotePrevious, transferFailure
     }
     enum Client: String, Codable, Sendable { case visionOS, iosSession, ios, webRemix, other }
     enum VisitorSource: String, Codable, Sendable { case tvPage, watchPage, musicRefresh, persisted, generated, appFallback }
     enum QueueSource: String, Codable, Sendable { case userQueue, autoplay }
+    // Allowlisted values only: never export signed CDN URLs, headers, tokens,
+    // raw network responses, or raw error strings in a user diagnostic.
+    enum TransferStage: String, Codable, Sendable {
+        case initialRange, initializationPrefix, fullResource, segmentRange, refreshSource, integrityCheck
+    }
+    enum TransferFailure: String, Codable, Sendable {
+        case invalidResponse, incompleteResource, resourceChanged, invalidIndex, durationMismatch
+        case network, cancelled, other
+    }
     enum Reason: String, Codable, Sendable {
         case verificationRequired, signInRequired, regionRestricted, unavailable, sourceNotConfigured, badRequest, cancelled, network, other
 
@@ -59,6 +69,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let manualPause: Bool?
         let routeOutputCount: Int?
         let interruptionShouldResume: Bool?
+        let transferStage: TransferStage?
+        let transferFailure: TransferFailure?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
@@ -69,7 +81,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
               positionSeconds: TimeInterval? = nil, isPlaying: Bool? = nil, isBuffering: Bool? = nil,
               audioMixingEnabled: Bool? = nil, audioActivationSucceeded: Bool? = nil,
               nowPlayingActive: Bool? = nil, playbackRate: Double? = nil, manualPause: Bool? = nil, routeOutputCount: Int? = nil,
-              interruptionShouldResume: Bool? = nil, timestamp: Date = Date()) {
+              interruptionShouldResume: Bool? = nil,
+              transferStage: TransferStage? = nil, transferFailure: TransferFailure? = nil,
+              timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
             self.client = client
@@ -102,6 +116,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.manualPause = manualPause
             self.routeOutputCount = routeOutputCount.flatMap { (0...16).contains($0) ? $0 : nil }
             self.interruptionShouldResume = interruptionShouldResume
+            self.transferStage = transferStage
+            self.transferFailure = transferFailure
         }
 
         var sanitized: Self {
@@ -115,7 +131,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 positionSeconds: positionSeconds, isPlaying: isPlaying, isBuffering: isBuffering,
                 audioMixingEnabled: audioMixingEnabled, audioActivationSucceeded: audioActivationSucceeded,
                 nowPlayingActive: nowPlayingActive, playbackRate: playbackRate, manualPause: manualPause, routeOutputCount: routeOutputCount,
-                interruptionShouldResume: interruptionShouldResume, timestamp: timestamp)
+                interruptionShouldResume: interruptionShouldResume,
+                transferStage: transferStage, transferFailure: transferFailure,
+                timestamp: timestamp)
         }
     }
     struct Report: Codable {
