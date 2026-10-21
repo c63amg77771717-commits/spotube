@@ -54,9 +54,10 @@ final class SettingsTapRegressionUITests: XCTestCase {
         app.buttons["account_details_done"].tap()
 
         let importer = app.buttons["settings_playlist_import"].firstMatch
-        XCTAssertTrue(waitForDismissal(of: accountPage, before: importer, timeout: 10),
-                      "Account sheet must close and the import card must be tappable")
+        XCTAssertTrue(accountPage.waitForNonExistence(timeout: 10),
+                      "Account sheet must close before tapping the import card")
         XCTAssertTrue(account.exists)
+        XCTAssertTrue(importer.exists)
         XCTAssertTrue(importer.isHittable)
         tapRightSide(importer, in: app)
         let importPage = app.navigationBars["匯入歌單"].firstMatch
@@ -66,23 +67,15 @@ final class SettingsTapRegressionUITests: XCTestCase {
         app.buttons["完成"].firstMatch.tap()
 
         let drive = app.buttons["settings_drive_sync"].firstMatch
-        XCTAssertTrue(waitForDismissal(of: importPage, before: drive, timeout: 12),
-                      "Import sheet must close and the Drive card must be tappable")
+        XCTAssertTrue(importPage.waitForNonExistence(timeout: 12),
+                      "Import sheet must close before tapping the Drive card")
+        XCTAssertTrue(drive.exists)
         XCTAssertTrue(drive.isHittable)
         tapRightSide(drive, in: app)
         XCTAssertTrue(app.navigationBars["Google Drive 同步"].waitForExistence(timeout: 12),
                       "Drive sync sheet must open from the full card")
         XCTAssertTrue(app.staticTexts["跨裝置歌單"].exists)
         app.buttons["完成"].firstMatch.tap()
-    }
-
-    @MainActor private func waitForDismissal(
-        of page: XCUIElement, before button: XCUIElement, timeout: TimeInterval
-    ) -> Bool {
-        let ready = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-            !page.exists && button.exists && button.isHittable
-        }, object: nil)
-        return XCTWaiter.wait(for: [ready], timeout: timeout) == .completed
     }
 
     @MainActor private func tapRightSide(_ card: XCUIElement, in app: XCUIApplication) {

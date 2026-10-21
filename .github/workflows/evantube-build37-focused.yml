@@ -7,6 +7,7 @@ on:
     paths:
       - native-ios/**
       - .github/workflows/evantube-build37-focused.yml
+      - .github/scripts/capture-ui-host-diagnostics.sh
   workflow_dispatch: {}
 
 permissions:
@@ -45,6 +46,25 @@ jobs:
         working-directory: native-ios
         run: |
           set -o pipefail
+          diagnostics_dir="$RUNNER_TEMP/build37-focused-settings-diagnostics"
+          diagnostics_pid=""
+          stop_ui_diagnostics() {
+            local exit_status=$?
+            trap - EXIT
+            if [ -n "$diagnostics_pid" ]; then
+              kill -TERM "$diagnostics_pid" 2>/dev/null || true
+              wait "$diagnostics_pid" 2>/dev/null || true
+            fi
+            exit "$exit_status"
+          }
+          trap stop_ui_diagnostics EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          if mkdir -p "$diagnostics_dir"; then
+            bash "$GITHUB_WORKSPACE/.github/scripts/capture-ui-host-diagnostics.sh" "$diagnostics_dir" \
+              > "$diagnostics_dir/sampler.log" 2>&1 &
+            diagnostics_pid=$!
+          fi
           xcodebuild \
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicUITests \
@@ -76,5 +96,6 @@ jobs:
           path: |
             ${{ runner.temp }}/build37-focused-settings.log
             ${{ runner.temp }}/build37-focused-settings.xcresult
+            ${{ runner.temp }}/build37-focused-settings-diagnostics
           if-no-files-found: error
           retention-days: 7
