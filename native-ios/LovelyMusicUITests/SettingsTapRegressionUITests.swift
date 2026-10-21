@@ -47,7 +47,7 @@ final class SettingsTapRegressionUITests: XCTestCase {
         let account = app.buttons["settings_youtube_account"].firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 15))
         XCTAssertTrue(account.isHittable)
-        tapRightSide(account, in: app)
+        tapRightSide(account)
         let accountPage = app.navigationBars["YouTube 帳號"].firstMatch
         XCTAssertTrue(accountPage.waitForExistence(timeout: 12))
         XCTAssertTrue(app.buttons["account_reauthenticate"].exists)
@@ -59,7 +59,7 @@ final class SettingsTapRegressionUITests: XCTestCase {
         XCTAssertTrue(account.exists)
         XCTAssertTrue(importer.exists)
         XCTAssertTrue(importer.isHittable)
-        tapRightSide(importer, in: app)
+        tapRightSide(importer)
         let importPage = app.navigationBars["匯入歌單"].firstMatch
         XCTAssertTrue(importPage.waitForExistence(timeout: 12),
                       "Import ZIP sheet must open from the full card")
@@ -71,25 +71,14 @@ final class SettingsTapRegressionUITests: XCTestCase {
                       "Import sheet must close before tapping the Drive card")
         XCTAssertTrue(drive.exists)
         XCTAssertTrue(drive.isHittable)
-        tapRightSide(drive, in: app)
+        tapRightSide(drive)
         XCTAssertTrue(app.navigationBars["Google Drive 同步"].waitForExistence(timeout: 12),
                       "Drive sync sheet must open from the full card")
         XCTAssertTrue(app.staticTexts["跨裝置歌單"].exists)
         app.buttons["完成"].firstMatch.tap()
     }
 
-    @MainActor private func tapRightSide(_ card: XCUIElement, in app: XCUIApplication) {
-        let frame = card.frame
-        let target = CGPoint(x: frame.minX + frame.width * 0.90, y: frame.midY)
-        let state = XCTAttachment(string: """
-            card: \(card.identifier)
-            exists: \(card.exists), hittable: \(card.isHittable)
-            frame: \(frame), expected right-side point: \(target)
-            navigation bars: \(app.navigationBars.allElementsBoundByIndex.map(\.identifier))
-            """)
-        state.name = "Before \(card.identifier) right-side tap"
-        state.lifetime = .keepAlways
-        add(state)
+    @MainActor private func tapRightSide(_ card: XCUIElement) {
         card.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
     }
 }
