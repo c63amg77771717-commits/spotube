@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UIKit
 import os
 
 // MARK: - Playback Error Categories
@@ -99,6 +100,20 @@ enum PlaybackErrorCategory: Equatable {
             return "此版本的原生串流來源尚未設定完整。請檢查 EvanTube 的登入與播放來源設定。"
         case .unknown: return LocalizationManager.text("Something went wrong")
         }
+    }
+}
+
+/// Whether an unavailable song should wait for manual replacement selection.
+/// Background/lock-screen playback has no usable replacement picker, so it
+/// must continue through the existing bounded auto-skip path instead.
+enum PlaybackUnavailablePolicy {
+    static func offersManualReplacement(
+        category: PlaybackErrorCategory,
+        isPermanent: Bool,
+        hasSearcher: Bool,
+        appIsActive: Bool
+    ) -> Bool {
+        isPermanent && hasSearcher && category.permitsReplacementSearch && appIsActive
     }
 }
 
@@ -813,7 +828,11 @@ final class PlayerViewModel {
             }
             let isPermanent = audioEngine.lastErrorKind == .permanent
             // Keep a confirmed single-source failure available for an explicit alternative choice.
-            if isPermanent, replacementSearcher != nil, category.permitsReplacementSearch {
+            if PlaybackUnavailablePolicy.offersManualReplacement(
+                category: category, isPermanent: isPermanent,
+                hasSearcher: replacementSearcher != nil,
+                appIsActive: UIApplication.shared.applicationState == .active
+            ) {
                 autoSkipTask?.cancel()
                 return
             }
