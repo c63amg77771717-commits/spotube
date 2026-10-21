@@ -6,7 +6,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case watchSession, visitor, playerResponse, streamResolved, engineReady, enginePlaying, engineError, authChanged
         case playbackSelection, playbackMode
         case webSessionUpdated
-        case remotePlay, remotePause, interruptionBegan, interruptionEnded
+        case remotePlay, remotePause, remoteNext, remotePrevious
+        case autoSkipUnavailable, autoSkipLimitReached
+        case interruptionBegan, interruptionEnded
         case audioSessionConfigured, audioSessionActivated, audioRouteChanged, audioMediaServicesReset
         case nowPlayingSession
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
