@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import SwiftUI
+import UIKit
 import os
 
 // MARK: - Playback Error Categories
@@ -102,6 +103,18 @@ enum PlaybackErrorCategory: Equatable {
     }
 }
 
+/// Keep interactive source selection in the foreground. In the lock-screen
+/// background, an unavailable recording should follow the user's bounded
+/// auto-skip-on-error setting instead of waiting for an invisible sheet.
+enum BackgroundTrackFailurePolicy {
+    static func shouldWaitForManualReplacement(
+        isForeground: Bool, hasReplacementSearcher: Bool,
+        categoryPermitsReplacement: Bool
+    ) -> Bool {
+        isForeground && hasReplacementSearcher && categoryPermitsReplacement
+    }
+}
+
 enum TransferEstimateFormatter {
     static func upperBoundString(bytes: Int64) -> String {
         let byteCount = max(0, bytes)
@@ -139,6 +152,7 @@ final class PlayerViewModel {
     private let playlistSourceStore: PlaylistSourceOverrideStore
     private let previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))?
     private let replacementSearcher: ((String) async throws -> [Song])?
+    private let isAppForeground: () -> Bool
     private(set) var sourceReplacementSession: ReplacementSourceSearchModel?
 
     // MARK: - Lyrics
@@ -271,7 +285,10 @@ final class PlayerViewModel {
         sourceReplacementStore: PlaybackSourceReplacementStore? = nil,
         playlistSourceOverrideStore: PlaylistSourceOverrideStore? = nil,
         previewStreamResolver: ((String) async throws -> (url: String, contentLength: Int64?))? = nil,
-        replacementSearcher: ((String) async throws -> [Song])? = nil
+        replacementSearcher: ((String) async throws -> [Song])? = nil,
+        isAppForeground: @escaping () -> Bool = {
+            UIApplication.shared.applicationState == .active
+        }
     ) {
         self.audioEngine = audioEngine
         self.resolveStreamUseCase = resolveStreamUseCase
@@ -286,6 +303,7 @@ final class PlayerViewModel {
         self.playlistSourceStore = playlistSourceOverrideStore ?? PlaylistSourceOverrideStore()
         self.previewStreamResolver = previewStreamResolver
         self.replacementSearcher = replacementSearcher
+        self.isAppForeground = isAppForeground
         self.isAutoplayEnabled =
             UserDefaults.standard.object(forKey: "isAutoplayEnabled") as? Bool ?? true
         observeAudioEngineErrors()
@@ -812,8 +830,14 @@ final class PlayerViewModel {
                 return
             }
             let isPermanent = audioEngine.lastErrorKind == .permanent
-            // Keep a confirmed single-source failure available for an explicit alternative choice.
-            if isPermanent, replacementSearcher != nil, category.permitsReplacementSearch {
+            // A replacement chooser requires foreground interaction. In the
+            // background or on the lock screen it cannot be used, so allow the
+            // existing bounded auto-skip path to handle this recording.
+            if isPermanent && BackgroundTrackFailurePolicy.shouldWaitForManualReplacement(
+                isForeground: isAppForeground(),
+                hasReplacementSearcher: replacementSearcher != nil,
+                categoryPermitsReplacement: category.permitsReplacementSearch
+            ) {
                 autoSkipTask?.cancel()
                 return
             }
