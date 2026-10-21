@@ -437,6 +437,54 @@ final class Build36BackgroundSkipTests: XCTestCase {
         }
     }
 
+    func testQueuedOldPlayerStatusCannotConfirmNewSongWhileResolverIsPending() async throws {
+        let playableURL = try XCTUnwrap(
+            Bundle.main.url(forResource: "demo_song_morning_light", withExtension: "m4a")
+        )
+        let first = song("GOODKVO0036")
+        let pending = song("WAITKVO0036")
+        let engine = AudioEngine()
+        defer { engine.stop() }
+        var historyIDs: [String] = []
+        var confirmedIDs: [String] = []
+        var pendingResolverStarted = false
+        engine.onPlaybackStarted = { historyIDs.append($0.id) }
+        engine.onPlaybackConfirmed = { confirmedIDs.append($0.id) }
+        engine.streamURLResolver = { id in
+            if id == first.id {
+                return (url: playableURL.absoluteString, contentLength: nil)
+            }
+            pendingResolverStarted = true
+            // No item can be installed for the new selection. stop() cancels
+            // this suspension, without leaking a checked continuation.
+            while true { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        engine.play(song: first, fromQueue: [first, pending])
+        for _ in 0..<250 where historyIDs.isEmpty {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(historyIDs, [first.id])
+
+        // Queue real time-control notifications on the reused player, then
+        // change selections before their main-actor callbacks can run.
+        for _ in 0..<4 {
+            engine.handleRemotePause()
+            engine.handleRemotePlay()
+        }
+        engine.next(userInitiated: false)
+        for _ in 0..<100 where !pendingResolverStarted {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(pendingResolverStarted)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(engine.currentTrack?.id, pending.id)
+        XCTAssertNil(engine.localFileURL)
+        XCTAssertTrue(engine.isBuffering)
+        XCTAssertNil(engine.lastError)
+        XCTAssertEqual(historyIDs, [first.id], "Old-player KVO must not create playback history for a pending song")
+        XCTAssertEqual(confirmedIDs, [first.id], "A pending song must not reset the consecutive-failure budget")
+    }
+
     private func withAutomaticSkipEnabled(_ operation: () async throws -> Void) async rethrows {
         let original = UserDefaults.standard.object(forKey: "autoSkipOnError")
         UserDefaults.standard.set(true, forKey: "autoSkipOnError")

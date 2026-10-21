@@ -3,8 +3,9 @@ name: EvanTube Build36 focused settings UI repair
 on:
   push:
     branches:
-      - codex/evantube-build36-background-playback-20261021
+      - codex/evantube-build36-audio-repair-20261021
     paths:
+      - native-ios/**
       - .github/workflows/evantube-build36-ui-repair.yml
   workflow_dispatch: {}
 

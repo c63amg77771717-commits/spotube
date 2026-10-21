@@ -3469,6 +3469,7 @@ final class AudioEngine {
 
         // Replace in-place on existing AVPlayer (avoids audio graph teardown)
         player?.replaceCurrentItem(with: playerItem)
+        setupTimeControlObserver()
         isStreamingMode = false
         recoveryService.resetRetry()
 
@@ -4011,11 +4012,24 @@ final class AudioEngine {
     // MARK: - Time Control Status
 
     private func setupTimeControlObserver() {
-        timeControlObserver = player?.observe(\.timeControlStatus, options: [.new, .initial]) {
-            [weak self] player, _ in
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
+        guard let observedPlayer = player, let observedItem = observedPlayer.currentItem,
+              let observedSongID = currentTrack?.id else { return }
+        let observedGeneration = loadGeneration
+        timeControlObserver = observedPlayer.observe(\.timeControlStatus, options: [.new, .initial]) {
+            [weak self] player, change in
+            let observedStatus = change.newValue ?? player.timeControlStatus
             Task { @MainActor [weak self] in
-                guard let self, self.player === player else { return }
-                switch player.timeControlStatus {
+                // AVPlayer is reused across songs. A queued KVO callback belongs
+                // to the item/selection installed when this observer was bound,
+                // never to a new song that is still resolving without an item.
+                guard let self, self.player === player,
+                      player.currentItem === observedItem,
+                      self.loadGeneration == observedGeneration,
+                      self.currentTrack?.id == observedSongID,
+                      player.timeControlStatus == observedStatus else { return }
+                switch observedStatus {
                 case .paused:
                     // Skip recovery if player has no item (song transition in progress)
                     guard player.currentItem != nil else { return }
@@ -4031,7 +4045,10 @@ final class AudioEngine {
                         try? await Task.sleep(nanoseconds: 500_000_000)
                         // Re-check after delay: item may have been replaced during sleep
                         if self.isPlaying && !self.isSeeking
-                            && player.currentItem != nil
+                            && self.player === player
+                            && player.currentItem === observedItem
+                            && self.loadGeneration == observedGeneration
+                            && self.currentTrack?.id == observedSongID
                             && player.timeControlStatus == .paused
                         {
                             self.resumePlayer()
@@ -4043,6 +4060,7 @@ final class AudioEngine {
                     Log.audio.debug("Waiting to play at specified rate")
                 case .playing:
                     guard self.isPlaying, !self.userInitiatedPause, !self.isInterrupted,
+                          observedItem.status == .readyToPlay,
                           let song = self.currentTrack else { return }
                     self.isBuffering = false
                     self.recordPlaybackDiagnostic(.enginePlaying)
@@ -4069,6 +4087,10 @@ final class AudioEngine {
     }
 
     private func cleanupPlayer() {
+        // Invalidation stops future delivery; the captured item/generation
+        // guards also discard callbacks already queued on the main actor.
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
         isSeeking = false
         pendingSeekTime = nil
         isReconnecting = false
@@ -4640,10 +4662,11 @@ final class AudioEngine {
 
     /// Reuses an existing AVPlayer via `replaceCurrentItem` to avoid the cost of
     /// tearing down and re-creating the AVPlayer graph on every track change.
-    /// Observer setup only happens once — on the first player creation.
+    /// Time-control observation is rebound to each installed item/selection.
     private func configurePlayer(with playerItem: AVPlayerItem) {
         if let existingPlayer = player {
             existingPlayer.replaceCurrentItem(with: playerItem)
+            setupTimeControlObserver()
         } else {
             player = AVPlayer(playerItem: playerItem)
             setupPlayerObservers()
