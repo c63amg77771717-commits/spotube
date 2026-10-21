@@ -291,6 +291,8 @@ final class AudioEngine {
     private var hasReportedPlaybackStart = false
     private var recoveryPosition: TimeInterval?
     var onPlaybackStarted: ((Song) -> Void)?
+    var onPlaybackConfirmed: ((Song) -> Void)?
+    var onRemoteUserNavigation: (() -> Void)?
     private(set) var pendingSeekTime: TimeInterval?
     private var interruptionObserver: NSObjectProtocol?
     private var mediaServicesResetObserver: NSObjectProtocol?
@@ -3963,6 +3965,7 @@ final class AudioEngine {
                     self.recordPlaybackDiagnostic(.enginePlaying)
                     if !self.hasReportedPlaybackStart {
                         self.hasReportedPlaybackStart = true
+                        self.onPlaybackConfirmed?(song)
                         self.onPlaybackStarted?(song)
                     }
                 @unknown default:
@@ -4591,8 +4594,18 @@ final class AudioEngine {
     private func setupRemoteCommands() {
         remoteCommandManager.onPlay = { [weak self] in self?.handleRemotePlay() }
         remoteCommandManager.onPause = { [weak self] in self?.handleRemotePause() }
-        remoteCommandManager.onNext = { [weak self] in self?.next(userInitiated: true) }
-        remoteCommandManager.onPrevious = { [weak self] in self?.previous() }
+        remoteCommandManager.onNext = { [weak self] in
+            guard let self else { return }
+            self.recordPlaybackDiagnostic(.remoteNext)
+            self.onRemoteUserNavigation?()
+            self.next(userInitiated: true)
+        }
+        remoteCommandManager.onPrevious = { [weak self] in
+            guard let self else { return }
+            self.recordPlaybackDiagnostic(.remotePrevious)
+            self.onRemoteUserNavigation?()
+            self.previous()
+        }
         remoteCommandManager.onSeek = { [weak self] time in self?.seek(to: time) }
         remoteCommandManager.setup()
     }
