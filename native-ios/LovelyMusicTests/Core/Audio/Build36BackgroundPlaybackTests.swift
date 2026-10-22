@@ -259,6 +259,8 @@ private final class Build36RefreshedCandidateFixture: URLProtocol {
 /// The probe succeeds, then the following whole-resource request fails before
 /// receiving a response. No real network, media, cookies, or credentials are used.
 private final class Build36TransferTimeoutFixture: URLProtocol {
+    private var pendingFailure: DispatchWorkItem?
+
     override class func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "build36-timeout.example.test"
     }
@@ -271,7 +273,16 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
             return
         }
         guard request.value(forHTTPHeaderField: "Range") == "bytes=0-4095" else {
-            client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            // URLSession.download(for:) can race a synchronous URLProtocol
+            // failure delivered from startLoading() on a heavily loaded
+            // Simulator. Let the download task enter its running state first,
+            // then deliver the same deterministic timeout.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, !work.isCancelled else { return }
+                self.client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            }
+            pendingFailure = work
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05, execute: work)
             return
         }
         let response = HTTPURLResponse(
@@ -283,7 +294,10 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        pendingFailure?.cancel()
+        pendingFailure = nil
+    }
 }
 
 @MainActor
