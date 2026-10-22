@@ -5055,13 +5055,12 @@ func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
 }
 
 
-/// YouTube's media CDN accepts the initial zero-based byte probe with a normal
-/// HTTP Range header, but some signed media URLs reject later non-zero ranges
-/// unless the same byte interval is also carried in the URL's `range=` query.
-/// Keep the original percent-encoded signed query intact and replace only a
-/// pre-existing range parameter. The HTTP header and URL query are always kept
-/// identical so a refreshed signed candidate cannot accidentally request a
-/// different segment.
+/// Byte ranges go only in the HTTP Range header. A `range=` query makes the
+/// CDN serve that slice as a new resource: Content-Range then reports the
+/// slice length as the total (`bytes 0-4095/4096`, Build38 resourceChanged)
+/// and any later header range returns 416. A query range also does not lift
+/// the CDN's 403 on later offsets (verified 2026-10-22). Keep the signed query
+/// intact and drop only a pre-existing range parameter.
 enum YouTubeCDNRangeRequest {
     static func applying(
         _ range: Range<Int64>, to request: URLRequest
@@ -5085,8 +5084,8 @@ enum YouTubeCDNRangeRequest {
             ).first.map(String.init) ?? ""
             return name.caseInsensitiveCompare("range") == .orderedSame
         }
-        encodedParts.append("range=\(value)")
-        components.percentEncodedQuery = encodedParts.joined(separator: "&")
+        components.percentEncodedQuery = encodedParts.isEmpty
+            ? nil : encodedParts.joined(separator: "&")
 
         guard let rangedURL = components.url else {
             throw AudioTransferIntegrityError.invalidResponse

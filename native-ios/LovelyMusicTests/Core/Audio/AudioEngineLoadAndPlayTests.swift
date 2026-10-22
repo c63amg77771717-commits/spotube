@@ -527,7 +527,7 @@ final class AudioTransferIntegrityTests: XCTestCase {
 
 
 final class YouTubeCDNRangeRequestTests: XCTestCase {
-    func testRangeIsMirroredIntoQueryAndHeaderWithoutDroppingSignedFields() throws {
+    func testRangeIsSentOnlyInHeaderWithoutDroppingSignedFields() throws {
         let original = try XCTUnwrap(URL(string:
             "https://rr1---sn.example.googlevideo.com/videoplayback?expire=123&sig=ABC%2FDEF&n=xyz&range=0-15"
         ))
@@ -556,10 +556,9 @@ final class YouTubeCDNRangeRequestTests: XCTestCase {
                           resolvingAgainstBaseURL: false)
         )
         let items = components.queryItems ?? []
-        XCTAssertEqual(
-            items.filter { $0.name.lowercased() == "range" }.map(\.value),
-            ["4096-8191"]
-        )
+        // A query range makes the CDN report the slice length as the total.
+        XCTAssertTrue(items.filter { $0.name.lowercased() == "range" }.isEmpty)
+        XCTAssertEqual(components.percentEncodedQuery, "expire=123&sig=ABC%2FDEF&n=xyz")
         XCTAssertEqual(items.first { $0.name == "expire" }?.value, "123")
         XCTAssertEqual(items.first { $0.name == "sig" }?.value, "ABC/DEF")
         XCTAssertEqual(items.first { $0.name == "n" }?.value, "xyz")
