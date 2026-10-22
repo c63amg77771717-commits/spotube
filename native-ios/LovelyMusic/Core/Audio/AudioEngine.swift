@@ -3099,8 +3099,9 @@ final class AudioEngine {
                 // A partial HTTP response is NOT a playable song. Derive the
                 // authoritative resource length from Content-Range and verify
                 // each subsequent byte transfer before writing any playback item.
-                var headerRequest = baseRequest
-                headerRequest.setValue("bytes=0-4095", forHTTPHeaderField: "Range")
+                let headerRequest = try YouTubeCDNRangeRequest.applying(
+                    0..<4096, to: baseRequest
+                )
                 transferHTTPStatus = nil
                 transferReceivedBytes = nil
                 let (headerData, headerResponse) = try await self.audioTransferSession.data(for: headerRequest)
@@ -3182,8 +3183,9 @@ final class AudioEngine {
                         fileHandle.write(headerData.prefix(headerEnd))
                     } else {
                         transferStage = .initializationPrefix
-                        var prefixRequest = baseRequest
-                        prefixRequest.setValue("bytes=0-\(headerEnd - 1)", forHTTPHeaderField: "Range")
+                        let prefixRequest = try YouTubeCDNRangeRequest.applying(
+                            0..<Int64(headerEnd), to: baseRequest
+                        )
                         transferHTTPStatus = nil
                         transferReceivedBytes = nil
                         let (prefixData, prefixResponse) = try await self.audioTransferSession.data(for: prefixRequest)
@@ -3263,10 +3265,8 @@ final class AudioEngine {
 
                         var received: Data?
                         for retry in 0..<2 {
-                            var segmentRequest = currentRequest
-                            segmentRequest.setValue(
-                                "bytes=\(requiredRange.lowerBound)-\(requiredRange.upperBound - 1)",
-                                forHTTPHeaderField: "Range"
+                            let segmentRequest = try YouTubeCDNRangeRequest.applying(
+                                requiredRange, to: currentRequest
                             )
                             transferHTTPStatus = nil
                             transferReceivedBytes = nil
@@ -5049,6 +5049,58 @@ func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
         cursor += 12
     }
     return (boxEnd + Int(firstOffset), sizes)
+}
+
+
+/// YouTube's media CDN accepts the initial zero-based byte probe with a normal
+/// HTTP Range header, but some signed media URLs reject later non-zero ranges
+/// unless the same byte interval is also carried in the URL's `range=` query.
+/// Keep the original percent-encoded signed query intact and replace only a
+/// pre-existing range parameter. The HTTP header and URL query are always kept
+/// identical so a refreshed signed candidate cannot accidentally request a
+/// different segment.
+enum YouTubeCDNRangeRequest {
+    static func applying(
+        _ range: Range<Int64>, to request: URLRequest
+    ) throws -> URLRequest {
+        guard range.lowerBound >= 0, range.upperBound > range.lowerBound,
+              let sourceURL = request.url,
+              var components = URLComponents(
+                  url: sourceURL, resolvingAgainstBaseURL: false
+              )
+        else {
+            throw AudioTransferIntegrityError.invalidIndex
+        }
+
+        let value = "\(range.lowerBound)-\(range.upperBound - 1)"
+        var encodedParts = components.percentEncodedQuery?
+            .split(separator: "&")
+            .map(String.init) ?? []
+        encodedParts.removeAll { part in
+            let name = part.split(
+                separator: "=", maxSplits: 1, omittingEmptySubsequences: false
+            ).first.map(String.init) ?? ""
+            return name.caseInsensitiveCompare("range") == .orderedSame
+        }
+        encodedParts.append("range=\(value)")
+        components.percentEncodedQuery = encodedParts.joined(separator: "&")
+
+        guard let rangedURL = components.url else {
+            throw AudioTransferIntegrityError.invalidResponse
+        }
+
+        var rangedRequest = request
+        rangedRequest.url = rangedURL
+        rangedRequest.setValue(
+            "bytes=\(value)", forHTTPHeaderField: "Range"
+        )
+        // A compressed transfer would make Content-Range/body byte accounting
+        // ambiguous. YouTube media itself is already compressed.
+        rangedRequest.setValue(
+            "identity", forHTTPHeaderField: "Accept-Encoding"
+        )
+        return rangedRequest
+    }
 }
 
 enum AudioTransferIntegrityError: Error, Equatable {
