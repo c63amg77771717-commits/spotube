@@ -3378,11 +3378,11 @@ final class AudioEngine {
                 self.recoveryService.stopStallDetection()
                 self.isBuffering = false
                 self.isPlaying = false
-                self.lastError = error is AudioTransferIntegrityError
-                    ? "Incomplete audio stream. Please retry."
-                    : "Download failed"
-                // Stable typed metadata, never a signed CDN URL, token,
-                // cookie, raw response or freeform server error string.
+                // Record the concrete transport/integrity failure before
+                // publishing lastError. lastError's didSet emits the generic
+                // engineError event, and observers/tests may react to it
+                // immediately. Keeping the causal transfer event first avoids
+                // a race and preserves useful diagnostic ordering.
                 let nsError = error as NSError
                 PlaybackDiagnostics.shared.record(.init(
                     phase: .audioTransferFailure, videoID: song.id,
@@ -3393,6 +3393,9 @@ final class AudioEngine {
                     transferReceivedBytes: transferReceivedBytes,
                     transferExpectedBytes: transferExpectedBytes
                 ))
+                self.lastError = error is AudioTransferIntegrityError
+                    ? "Incomplete audio stream. Please retry."
+                    : "Download failed"
                 Log.audio.error(
                     "Download failed, code=\((error as NSError).code)"
                 )
