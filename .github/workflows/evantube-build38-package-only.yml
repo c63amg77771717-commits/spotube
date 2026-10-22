@@ -1,4 +1,5 @@
 name: EvanTube Build38 package after verified regression
+# package-only trigger 2026-10-22
 
 on:
   push:
