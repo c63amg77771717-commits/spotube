@@ -257,7 +257,18 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
             return
         }
         guard request.value(forHTTPHeaderField: "Range") == "bytes=0-4095" else {
-            client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            // URLSession.download(for:) may call stopLoading while the task is
+            // transitioning into its download state. A synchronous failure can
+            // be lost in that transition on loaded Simulator runners, leaving
+            // the production task suspended until its long timeout. Deliver
+            // the deterministic transport error on the next scheduler turn.
+            let protocolClient = client
+            let protocolInstance = self
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+                protocolClient?.urlProtocol(
+                    protocolInstance, didFailWithError: URLError(.timedOut)
+                )
+            }
             return
         }
         let response = HTTPURLResponse(
