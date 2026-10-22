@@ -278,7 +278,7 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
             // Simulator. Let the download task enter its running state first,
             // then deliver the same deterministic timeout.
             let work = DispatchWorkItem { [weak self] in
-                guard let self, !work.isCancelled else { return }
+                guard let self, self.pendingFailure?.isCancelled == false else { return }
                 self.client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
             }
             pendingFailure = work
