@@ -178,7 +178,7 @@ jobs:
           bundles.append((ext[0],'com.c63amg77771717.evantube.NotificationService'))
           for bundle, expectedID in bundles:
               info=plistlib.loads((bundle/'Info.plist').read_bytes())
-              assert info['CFBundleVersion']=='37'
+              assert info['CFBundleVersion']=='38'
               assert info['CFBundleShortVersionString']=='1.0.1'
               assert info['CFBundleIdentifier']==expectedID
               exe=(bundle/info['CFBundleExecutable']).read_bytes()
