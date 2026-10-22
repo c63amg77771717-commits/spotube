@@ -52,6 +52,10 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
     private var candidateStates: [String: CandidateState] = [:]
     private var candidateSessionContext: PlayerSessionContext?
     private var candidateVersion: UInt64 = 0
+    // Signed-in session whose native IOS player returned HTTP 400. That request
+    // is rebuilt identically per song and per signed-URL refresh, so skip it
+    // until the session changes instead of paying a failing round trip each time.
+    private var sessionPlayerBadRequestContext: PlayerSessionContext?
     private let candidateClock: @Sendable () -> Date
     private static let candidateTTL: TimeInterval = 5 * 60
     private static let maximumCandidateVideos = 64
@@ -228,6 +232,18 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
     // These helpers run only while candidateLock is held. URL provenance never
     // leaves this in-memory state and is not included in diagnostics or logs.
+    private func sessionPlayerHadBadRequest(_ context: PlayerSessionContext) -> Bool {
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        return sessionPlayerBadRequestContext == context
+    }
+
+    private func markSessionPlayerBadRequest(_ context: PlayerSessionContext) {
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        sessionPlayerBadRequestContext = context
+    }
+
     private func nextCandidateVersion() -> UInt64 {
         candidateVersion &+= 1
         return candidateVersion
@@ -266,7 +282,10 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
 
             // Start with this user's own iOS session. Preserve the exact HTTP
             // failure; a missing optional alternate-client key is not the cause.
-            if !isAnonymous && !rejected.contains(.session) {
+            if !isAnonymous && !rejected.contains(.session)
+                && sessionPlayerHadBadRequest(sessionContext) {
+                lastSessionFailure = .httpError(statusCode: 400)
+            } else if !isAnonymous && !rejected.contains(.session) {
                 do {
                     if let result = try await attemptClientWithRetries(
                         label: "IOS(session)", videoId: videoId, cpn: cpn, useSession: true,
@@ -279,6 +298,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
                 } catch let error as InnerTubeError {
                     switch error {
                     case .httpError, .sourceNotConfigured:
+                        if case .httpError(statusCode: 400) = error {
+                            markSessionPlayerBadRequest(sessionContext)
+                        }
                         lastSessionFailure = error
                     default:
                         // Respect YouTube's explicit sign-in/verification rejection.

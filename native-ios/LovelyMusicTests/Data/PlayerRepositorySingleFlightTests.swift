@@ -1014,6 +1014,54 @@ final class PlayerRepositorySingleFlightTests: XCTestCase {
         XCTAssertEqual(descriptor.mimeType, "application/x-mpegURL")
     }
 
+    func testSessionHTTP400IsSkippedUntilSessionChanges() async throws {
+        let mock = MockPlayerAPI()
+        let fullAAC = "https://cdn.example.test/full-song.m4a"
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "playabilityStatus": ["status": "OK"],
+            "streamingData": [
+                "adaptiveFormats": [
+                    [
+                        "itag": 140,
+                        "url": fullAAC,
+                        "mimeType": "audio/mp4; codecs=\"mp4a.40.2\"",
+                        "bitrate": 128_000,
+                        "contentLength": "3000000",
+                        "approxDurationMs": "200000",
+                    ]
+                ]
+            ]
+        ] as [String: Any])
+        await mock.setHandler { kind, _ in
+            switch kind {
+            case .session:
+                throw InnerTubeError.httpError(statusCode: 400)
+            case .player("VISIONOS"):
+                return payload
+            case .player:
+                throw InnerTubeError.noStreamAvailable
+            }
+        }
+        let repository = PlayerRepository(api: mock)
+
+        for videoID in ["SONG-A", "SONG-B", "SONG-C"] {
+            let descriptor = try await repository.resolveStreamDescriptor(
+                videoId: videoID, quality: .medium, requestHeaders: [:]
+            )
+            XCTAssertEqual(descriptor.remoteURL.absoluteString, fullAAC)
+        }
+        let sameSessionCalls = await mock.playerWithSessionCallCount
+        XCTAssertEqual(sameSessionCalls, 1)
+
+        // A new sign-in may fix the session request; try it again once.
+        await mock.setSessionGeneration(1)
+        _ = try await repository.resolveStreamDescriptor(
+            videoId: "SONG-D", quality: .medium, requestHeaders: [:]
+        )
+        let newSessionCalls = await mock.playerWithSessionCallCount
+        XCTAssertEqual(newSessionCalls, 2)
+    }
+
     private func multiQualityAudioPlayerJSON() -> Data {
         let payload: [String: Any] = [
             "playabilityStatus": ["status": "OK"],
@@ -1347,8 +1395,14 @@ actor MockPlayerAPI: PlayerAPIClient {
 
     // MARK: PlayerAPIClient
 
+    private var sessionGeneration: UInt64 = 0
+
+    func setSessionGeneration(_ generation: UInt64) {
+        sessionGeneration = generation
+    }
+
     func playerSessionContext() async -> PlayerSessionContext {
-        PlayerSessionContext(isAuthenticated: true, generation: 0)
+        PlayerSessionContext(isAuthenticated: true, generation: sessionGeneration)
     }
 
     func playerWithSession(videoId: String, playlistId: String?) async throws -> Data {

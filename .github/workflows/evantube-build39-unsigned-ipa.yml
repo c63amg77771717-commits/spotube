@@ -86,6 +86,7 @@ jobs:
             -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow \
             -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSUsesHLSOnlyWhenNoValidAACExists \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testSessionHTTP400IsSkippedUntilSessionChanges \
             -resultBundlePath "$RUNNER_TEMP/build39-audio.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build39-simulator.entitlements" test \
