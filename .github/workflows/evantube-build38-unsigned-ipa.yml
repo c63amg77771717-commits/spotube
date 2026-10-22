@@ -43,11 +43,11 @@ jobs:
               '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift' + chr(10) +
-              '      - path: LovelyMusicTests/Data/Build38AnonymousSourceSelectionTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/Build37AnonymousSourceSelectionTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/InnerTube/InnerTubePlayerSessionTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/InnerTube/InnerTubeVisitorDataTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/InnerTube/InnerTubeVisitorDataExtraTests.swift' + chr(10) +
-              '      - path: LovelyMusicTests/Core/Audio/Build38GuestPlaybackIntegrationTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/Build37GuestPlaybackIntegrationTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/MediaCandidateRecoveryTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Core/Audio/Build36BackgroundPlaybackTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockInnerTubeRepository.swift' + chr(10) +
@@ -76,11 +76,11 @@ jobs:
             -only-testing:LovelyMusicTests/YouTubeCDNRangeRequestTests \
             -only-testing:LovelyMusicTests/KeylessOnlineSearchTests \
             -only-testing:LovelyMusicTests/AnonymousPlaybackFallbackTests \
-            -only-testing:LovelyMusicTests/Build38AnonymousSourceSelectionTests \
+            -only-testing:LovelyMusicTests/Build37AnonymousSourceSelectionTests \
             -only-testing:LovelyMusicTests/InnerTubePlayerSessionTests \
             -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests \
             -only-testing:LovelyMusicTests/InnerTubeVisitorDataExtraTests \
-            -only-testing:LovelyMusicTests/Build38GuestPlaybackIntegrationTests \
+            -only-testing:LovelyMusicTests/Build37GuestPlaybackIntegrationTests \
             -only-testing:LovelyMusicTests/Build36AudioProbeTests \
             -only-testing:LovelyMusicTests/Build36BackgroundSkipTests \
             -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
