@@ -176,9 +176,9 @@ final class Build36AudioProbeTests: XCTestCase {
         // actually asserts: the transfer-failure diagnostic.
         // GitHub-hosted Simulator runners can delay URLProtocol callbacks
         // substantially under load. Keep the assertion event-based rather than
-        // sleeping a fixed duration, but allow a bounded 15-second window.
+        // sleeping a fixed duration, but allow a bounded 30-second window.
         // The loop exits immediately once the production diagnostic arrives.
-        for _ in 0..<750 {
+        for _ in 0..<1500 {
             let hasFailureEvent = PlaybackDiagnostics.shared.events.contains {
                 $0.videoID == selected.id &&
                 $0.timestamp >= beganAt &&
