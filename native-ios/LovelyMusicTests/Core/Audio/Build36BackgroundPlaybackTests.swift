@@ -174,7 +174,11 @@ final class Build36AudioProbeTests: XCTestCase {
         // is appended. On a loaded CI runner, observing lastError alone can race
         // the event sink by one MainActor turn. Wait for the contract this test
         // actually asserts: the transfer-failure diagnostic.
-        for _ in 0..<250 {
+        // GitHub-hosted Simulator runners can delay URLProtocol callbacks
+        // substantially under load. Keep the assertion event-based rather than
+        // sleeping a fixed duration, but allow a bounded 15-second window.
+        // The loop exits immediately once the production diagnostic arrives.
+        for _ in 0..<750 {
             let hasFailureEvent = PlaybackDiagnostics.shared.events.contains {
                 $0.videoID == selected.id &&
                 $0.timestamp >= beganAt &&
