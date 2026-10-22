@@ -170,7 +170,17 @@ final class Build36AudioProbeTests: XCTestCase {
             (url: "https://build36-timeout.example.test/audio.m4a", contentLength: 8_192)
         }
         engine.play(song: selected)
-        for _ in 0..<250 where engine.lastError == nil {
+        // lastError is assigned immediately before the diagnostic failure event
+        // is appended. On a loaded CI runner, observing lastError alone can race
+        // the event sink by one MainActor turn. Wait for the contract this test
+        // actually asserts: the transfer-failure diagnostic.
+        for _ in 0..<250 {
+            let hasFailureEvent = PlaybackDiagnostics.shared.events.contains {
+                $0.videoID == selected.id &&
+                $0.timestamp >= beganAt &&
+                $0.phase == .audioTransferFailure
+            }
+            if hasFailureEvent { break }
             try await Task.sleep(for: .milliseconds(20))
         }
 
