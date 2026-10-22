@@ -170,21 +170,7 @@ final class Build36AudioProbeTests: XCTestCase {
             (url: "https://build36-timeout.example.test/audio.m4a", contentLength: 8_192)
         }
         engine.play(song: selected)
-        // lastError is assigned immediately before the diagnostic failure event
-        // is appended. On a loaded CI runner, observing lastError alone can race
-        // the event sink by one MainActor turn. Wait for the contract this test
-        // actually asserts: the transfer-failure diagnostic.
-        // GitHub-hosted Simulator runners can delay URLProtocol callbacks
-        // substantially under load. Keep the assertion event-based rather than
-        // sleeping a fixed duration, but allow a bounded 30-second window.
-        // The loop exits immediately once the production diagnostic arrives.
-        for _ in 0..<1500 {
-            let hasFailureEvent = PlaybackDiagnostics.shared.events.contains {
-                $0.videoID == selected.id &&
-                $0.timestamp >= beganAt &&
-                $0.phase == .audioTransferFailure
-            }
-            if hasFailureEvent { break }
+        for _ in 0..<250 where engine.lastError == nil {
             try await Task.sleep(for: .milliseconds(20))
         }
 
@@ -259,8 +245,6 @@ private final class Build36RefreshedCandidateFixture: URLProtocol {
 /// The probe succeeds, then the following whole-resource request fails before
 /// receiving a response. No real network, media, cookies, or credentials are used.
 private final class Build36TransferTimeoutFixture: URLProtocol {
-    private var pendingFailure: DispatchWorkItem?
-
     override class func canInit(with request: URLRequest) -> Bool {
         request.url?.host == "build36-timeout.example.test"
     }
@@ -273,16 +257,18 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
             return
         }
         guard request.value(forHTTPHeaderField: "Range") == "bytes=0-4095" else {
-            // URLSession.download(for:) can race a synchronous URLProtocol
-            // failure delivered from startLoading() on a heavily loaded
-            // Simulator. Let the download task enter its running state first,
-            // then deliver the same deterministic timeout.
-            let work = DispatchWorkItem { [weak self] in
-                guard let self, self.pendingFailure?.isCancelled == false else { return }
-                self.client?.urlProtocol(self, didFailWithError: URLError(.timedOut))
+            // URLSession.download(for:) may call stopLoading while the task is
+            // transitioning into its download state. A synchronous failure can
+            // be lost in that transition on loaded Simulator runners, leaving
+            // the production task suspended until its long timeout. Deliver
+            // the deterministic transport error on the next scheduler turn.
+            let protocolClient = client
+            let protocolInstance = self
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+                protocolClient?.urlProtocol(
+                    protocolInstance, didFailWithError: URLError(.timedOut)
+                )
             }
-            pendingFailure = work
-            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05, execute: work)
             return
         }
         let response = HTTPURLResponse(
@@ -294,10 +280,7 @@ private final class Build36TransferTimeoutFixture: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {
-        pendingFailure?.cancel()
-        pendingFailure = nil
-    }
+    override func stopLoading() {}
 }
 
 @MainActor
