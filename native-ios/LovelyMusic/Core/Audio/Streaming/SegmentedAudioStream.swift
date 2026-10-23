@@ -1,5 +1,5 @@
+import Darwin
 import Foundation
-import Network
 
 // Progressive playback for YouTube DASH audio (fMP4 + sidx).
 //
@@ -201,137 +201,164 @@ enum LoopbackHTTPResponse {
 
 /// Serves one playlist and its media byte ranges on 127.0.0.1 for AVPlayer.
 /// Paths carry a random token so other local processes cannot guess them.
+/// Plain BSD sockets: an NWListener in the app host reset every accepted
+/// connection (SO_NECP_LISTENUUID failed), so clients saw -1005.
 final class LoopbackSegmentProxy: @unchecked Sendable {
     typealias Fetch = @Sendable (Range<Int64>) async throws -> Data
 
     // AVPlayer asks for one fragment per request; bound open-ended requests.
     static let maximumResponseBytes: Int64 = 4 * 1024 * 1024
 
-    private let listener: NWListener
+    private let listenFD: Int32
+    private let port: UInt16
     private let queue = DispatchQueue(label: "EvanTube.LoopbackSegmentProxy")
     private let token = UUID().uuidString
     private let totalBytes: Int64
     private let fetch: Fetch
+    private let lock = NSLock()
     private var playlist = Data()
+    private var acceptSource: DispatchSourceRead?
+    private var stopped = false
 
     init(totalBytes: Int64, fetch: @escaping Fetch) throws {
-        let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
-        parameters.acceptLocalOnly = true
-        listener = try NWListener(using: parameters)
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw URLError(.cannotConnectToHost) }
+        var on: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, socklen_t(MemoryLayout<Int32>.size))
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = 0
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, length) }
+        }
+        let named = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
+        }
+        guard bound == 0, named == 0, listen(fd, 16) == 0 else {
+            close(fd)
+            throw URLError(.cannotConnectToHost)
+        }
+        listenFD = fd
+        port = UInt16(bigEndian: address.sin_port)
         self.totalBytes = totalBytes
         self.fetch = fetch
     }
 
+    deinit {
+        stop()
+    }
+
     var mediaPath: String { "/\(token)/media" }
 
-    /// Starts listening and returns the playlist URL. `makePlaylist` receives
+    /// Starts accepting and returns the playlist URL. `makePlaylist` receives
     /// the media URI to reference.
     func start(makePlaylist: (String) -> String?) async throws -> URL {
-        let listener = self.listener
-        let queue = self.queue
-        let port: NWEndpoint.Port = try await withCheckedThrowingContinuation { continuation in
-            let once = ResumeOnce()
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    guard once.claim() else { return }
-                    if let port = listener.port {
-                        continuation.resume(returning: port)
-                    } else {
-                        continuation.resume(throwing: URLError(.cannotConnectToHost))
-                    }
-                case .failed(let error):
-                    guard once.claim() else { return }
-                    continuation.resume(throwing: error)
-                case .cancelled:
-                    guard once.claim() else { return }
-                    continuation.resume(throwing: CancellationError())
-                default:
-                    break
-                }
-            }
-            listener.newConnectionHandler = { [weak self] connection in
-                self?.serve(connection)
-            }
-            listener.start(queue: queue)
-        }
-        let base = "http://127.0.0.1:\(port.rawValue)"
+        let base = "http://127.0.0.1:\(port)"
         guard let text = makePlaylist(base + mediaPath),
               let url = URL(string: "\(base)/\(token)/index.m3u8")
         else {
             stop()
             throw AudioTransferIntegrityError.invalidIndex
         }
-        queue.sync { playlist = Data(text.utf8) }
+        lock.lock()
+        playlist = Data(text.utf8)
+        lock.unlock()
+
+        let fd = listenFD
+        lock.lock()
+        guard !stopped else {
+            lock.unlock()
+            throw CancellationError()
+        }
+        // Created under the lock so stop() either sees it or closes fd itself.
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: queue)
+        source.setEventHandler { [weak self] in
+            let client = accept(fd, nil, nil)
+            guard client >= 0 else { return }
+            guard let self else { close(client); return }
+            DispatchQueue.global(qos: .userInitiated).async { self.serve(client) }
+        }
+        source.setCancelHandler { close(fd) }
+        acceptSource = source
+        lock.unlock()
+        source.resume()
         return url
     }
 
     func stop() {
-        listener.cancel()
+        lock.lock()
+        let source = acceptSource
+        acceptSource = nil
+        let closeNow = source == nil && !stopped
+        stopped = true
+        lock.unlock()
+        // A started source closes the socket in its cancel handler.
+        source?.cancel()
+        if closeNow { close(listenFD) }
     }
 
-    private func serve(_ connection: NWConnection) {
-        connection.start(queue: queue)
-        receive(on: connection, buffer: Data())
-    }
+    /// Blocking request/response on a worker thread; one request per connection.
+    private func serve(_ client: Int32) {
+        var on: Int32 = 1
+        setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        var timeout = timeval(tv_sec: 15, tv_usec: 0)
+        setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        defer { close(client) }
 
-    private func receive(on connection: NWConnection, buffer: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) {
-            [weak self] data, _, isComplete, error in
-            guard let self else { connection.cancel(); return }
-            var buffer = buffer
-            if let data { buffer.append(data) }
-            if let request = LoopbackHTTPRequest(parsing: buffer) {
-                self.respond(to: request, on: connection)
-            } else if isComplete || error != nil || buffer.count > 64 * 1024 {
-                connection.cancel()
-            } else {
-                self.receive(on: connection, buffer: buffer)
+        var buffer = Data()
+        var chunk = [UInt8](repeating: 0, count: 16 * 1024)
+        var request: LoopbackHTTPRequest?
+        while request == nil, buffer.count <= 64 * 1024 {
+            let count = recv(client, &chunk, chunk.count, 0)
+            guard count > 0 else { return }
+            buffer.append(contentsOf: chunk[0..<count])
+            request = LoopbackHTTPRequest(parsing: buffer)
+        }
+        guard let request else { return }
+
+        let response = makeResponse(to: request)
+        response.withUnsafeBytes { raw in
+            guard var pointer = raw.baseAddress else { return }
+            var remaining = raw.count
+            while remaining > 0 {
+                let sent = send(client, pointer, remaining, 0)
+                guard sent > 0 else { return }
+                pointer += sent
+                remaining -= sent
             }
         }
+        // Half-close, then drain until the client closes so close() cannot
+        // turn unread input into a reset that discards the response.
+        shutdown(client, SHUT_WR)
+        while recv(client, &chunk, chunk.count, 0) > 0 {}
     }
 
-    private func respond(to request: LoopbackHTTPRequest, on connection: NWConnection) {
-        let queue = self.queue
-        let send: (Data) -> Void = { response in
-            // .finalMessage sends FIN after the body. Cancelling right after the
-            // send resets the socket and the client loses the response (-1005),
-            // so wait for the client to close, with a bounded fallback.
-            connection.send(
-                content: response, contentContext: .finalMessage, isComplete: true,
-                completion: .contentProcessed { _ in
-                    connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { _, _, _, _ in
-                        connection.cancel()
-                    }
-                    queue.asyncAfter(deadline: .now() + 5) { connection.cancel() }
-                }
-            )
-        }
+    private func makeResponse(to request: LoopbackHTTPRequest) -> Data {
         guard request.method == "GET" || request.method == "HEAD" else {
-            send(LoopbackHTTPResponse.make(status: 405, reason: "Method Not Allowed", headers: [], body: Data()))
-            return
+            return LoopbackHTTPResponse.make(status: 405, reason: "Method Not Allowed", headers: [], body: Data())
         }
         let bodyless = request.method == "HEAD"
         if request.path == "/\(token)/index.m3u8" {
+            lock.lock()
             let body = playlist
-            send(LoopbackHTTPResponse.make(
+            lock.unlock()
+            return LoopbackHTTPResponse.make(
                 status: 200, reason: "OK",
                 headers: [("Content-Type", "application/vnd.apple.mpegurl")],
                 body: bodyless ? Data() : body
-            ))
-            return
+            )
         }
         guard request.path == mediaPath else {
-            send(LoopbackHTTPResponse.make(status: 404, reason: "Not Found", headers: [], body: Data()))
-            return
+            return LoopbackHTTPResponse.make(status: 404, reason: "Not Found", headers: [], body: Data())
         }
         guard let range = request.byteRange(totalBytes: totalBytes, cap: Self.maximumResponseBytes) else {
-            send(LoopbackHTTPResponse.make(
+            return LoopbackHTTPResponse.make(
                 status: 416, reason: "Range Not Satisfiable",
                 headers: [("Content-Range", "bytes */\(totalBytes)")], body: Data()
-            ))
-            return
+            )
         }
         let headers: [(String, String)] = [
             ("Content-Type", "audio/mp4"),
@@ -339,33 +366,35 @@ final class LoopbackSegmentProxy: @unchecked Sendable {
             ("Content-Range", "bytes \(range.lowerBound)-\(range.upperBound - 1)/\(totalBytes)"),
         ]
         if bodyless {
-            send(LoopbackHTTPResponse.make(status: 206, reason: "Partial Content", headers: headers, body: Data()))
-            return
+            return LoopbackHTTPResponse.make(status: 206, reason: "Partial Content", headers: headers, body: Data())
         }
+        // This worker thread waits for the async CDN fetch.
+        let result = BlockingResult<Data>()
         let fetch = self.fetch
-        Task {
-            do {
-                let body = try await fetch(range)
-                send(LoopbackHTTPResponse.make(
-                    status: 206, reason: "Partial Content", headers: headers, body: body
-                ))
-            } catch {
-                send(LoopbackHTTPResponse.make(status: 502, reason: "Bad Gateway", headers: [], body: Data()))
-            }
+        Task.detached {
+            do { result.finish(.success(try await fetch(range))) } catch { result.finish(.failure(error)) }
+        }
+        switch result.wait() {
+        case .success(let body):
+            return LoopbackHTTPResponse.make(status: 206, reason: "Partial Content", headers: headers, body: body)
+        case .failure:
+            return LoopbackHTTPResponse.make(status: 502, reason: "Bad Gateway", headers: [], body: Data())
         }
     }
 }
 
-private final class ResumeOnce: @unchecked Sendable {
-    private let lock = NSLock()
-    private var claimed = false
+private final class BlockingResult<Value>: @unchecked Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var result: Result<Value, Error>?
 
-    func claim() -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard !claimed else { return false }
-        claimed = true
-        return true
+    func finish(_ value: Result<Value, Error>) {
+        result = value
+        semaphore.signal()
+    }
+
+    func wait() -> Result<Value, Error> {
+        semaphore.wait()
+        return result!
     }
 }
 
