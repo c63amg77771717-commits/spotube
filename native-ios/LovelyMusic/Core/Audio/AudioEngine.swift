@@ -388,6 +388,12 @@ final class AudioEngine {
     private var loadGeneration: UInt64 = 0
     private(set) var isStreamingMode: Bool = false
     private var backgroundRemuxTask: Task<Void, Never>?
+    // Progressive playback: loopback proxy for the current item, whether that
+    // item has reached readyToPlay, and the song that must use download-then-play
+    // because its progressive item failed before it ever became ready.
+    private var segmentedProxy: LoopbackSegmentProxy?
+    private var segmentedItemBecameReady = false
+    private var segmentedFallbackSongID: String?
 
     // Gapless playback (delegated to GaplessPreFetchManager)
     private let prefetchManager = GaplessPreFetchManager()
@@ -471,6 +477,8 @@ final class AudioEngine {
     private let recoveryClock: (any PlaybackRecoveryClock)?
     private let recoveryScheduler: (any PlaybackRecoveryScheduling)?
     private let audioTransferSession: URLSession
+    // false keeps download-then-play as the only remote path (its regression tests).
+    private let progressiveStreaming: Bool
     @ObservationIgnored
     private lazy var recoveryService: PlaybackRecoveryService = {
         PlaybackRecoveryService(clock: recoveryClock, scheduler: recoveryScheduler, eventSink: { [weak self] event in
@@ -483,10 +491,12 @@ final class AudioEngine {
 
     init(recoveryClock: (any PlaybackRecoveryClock)? = nil,
          recoveryScheduler: (any PlaybackRecoveryScheduling)? = nil,
-         audioTransferSession: URLSession = .shared) {
+         audioTransferSession: URLSession = .shared,
+         progressiveStreaming: Bool = true) {
         self.recoveryClock = recoveryClock
         self.recoveryScheduler = recoveryScheduler
         self.audioTransferSession = audioTransferSession
+        self.progressiveStreaming = progressiveStreaming
         let savedSpeed = UserDefaults.standard.float(forKey: "playbackSpeed")
         playbackSpeed = savedSpeed > 0 ? savedSpeed : 1.0
         recoveryService.delegate = self
@@ -2878,11 +2888,143 @@ final class AudioEngine {
             streamHeaders.isEmpty ? AppConstants.youtubeStreamHeaders : streamHeaders
 
         // YouTube serves DASH fMP4 (fragmented MP4 with empty stbl + sidx segments).
-        // AVPlayer CANNOT stream fMP4 from network (causes stall at 0s / unknown error).
-        // AVPlayer CAN play fMP4 from a LOCAL file for linear playback.
-        // Strategy: download to local file → play raw fMP4 immediately → remux in
+        // AVPlayer CANNOT stream fMP4 from network (causes stall at 0s / unknown error),
+        // but it plays fMP4 inside HLS: stream it progressively through a sidx-built
+        // playlist. Fallback: download to local file → play raw fMP4 → remux in
         // background → seamless handoff to remuxed file for seek capability.
-        startDownloadThenPlay(url: url, headers: headers, song: song, seekTo: initialSeek)
+        if progressiveStreaming, segmentedFallbackSongID != song.id {
+            startSegmentedStreaming(url: url, headers: headers, song: song, seekTo: initialSeek)
+        } else {
+            startDownloadThenPlay(url: url, headers: headers, song: song, seekTo: initialSeek)
+        }
+    }
+
+    /// Reads the fMP4 index (sidx), then plays the song as HLS through a loopback
+    /// proxy so audio starts after the first fragment instead of the whole file.
+    private func startSegmentedStreaming(
+        url: URL, headers: [String: String], song: Song, seekTo initialSeek: TimeInterval?
+    ) {
+        let generation = loadGeneration
+        backgroundRemuxTask = Task { [weak self] in
+            guard let self else { return }
+            var baseRequest = URLRequest(url: url)
+            baseRequest.timeoutInterval = 30
+            for (key, value) in headers {
+                baseRequest.setValue(value, forHTTPHeaderField: key)
+            }
+            do {
+                let probeRequest = try YouTubeCDNRangeRequest.applying(0..<4096, to: baseRequest)
+                var (header, response) = try await self.audioTransferSession.data(for: probeRequest)
+                guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                let probe = try AudioTransferIntegrity.validateProbe(
+                    response: response,
+                    receivedBytes: Int64(header.count),
+                    expectedTotal: song.streamContentLength
+                )
+                let totalBytes = probe.totalBytes
+                PlaybackDiagnostics.shared.record(.init(
+                    phase: .audioTransferProbe, videoID: song.id,
+                    httpStatus: (response as? HTTPURLResponse)?.statusCode, transferStage: .probe,
+                    transferReceivedBytes: Int64(header.count), transferExpectedBytes: totalBytes
+                ))
+                // Long songs have a sidx larger than the 4 KB probe.
+                if let needed = SIDXIndex.requiredHeaderLength(header),
+                   needed > header.count, Int64(needed) < totalBytes {
+                    let indexRange = 0..<Int64(needed)
+                    (header, response) = try await self.audioTransferSession.data(
+                        for: try YouTubeCDNRangeRequest.applying(indexRange, to: baseRequest)
+                    )
+                    guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    _ = try AudioTransferIntegrity.validate(
+                        response: response, receivedBytes: Int64(header.count),
+                        requestedRange: indexRange, expectedTotal: totalBytes
+                    )
+                }
+                guard let index = SIDXIndex.parse(header) else {
+                    throw AudioTransferIntegrityError.invalidIndex
+                }
+
+                let fetcher = SegmentedCDNFetcher(
+                    request: baseRequest, totalBytes: totalBytes,
+                    session: self.audioTransferSession,
+                    refresh: { [weak self] in
+                        guard let self else { throw CancellationError() }
+                        return try await self.refreshSegmentedStreamURL(
+                            song: song, totalBytes: totalBytes, generation: generation
+                        )
+                    }
+                )
+                let proxy = try LoopbackSegmentProxy(totalBytes: totalBytes) { range in
+                    try await fetcher.fetch(range)
+                }
+                let playlistURL = try await proxy.start { mediaURI in
+                    SegmentedHLSPlaylist.make(mediaURI: mediaURI, index: index, totalBytes: totalBytes)
+                }
+                guard !Task.isCancelled, self.loadGeneration == generation else {
+                    proxy.stop()
+                    return
+                }
+                Log.audio.info(
+                    "Segmented streaming: \(index.references.count) fragments, \(totalBytes)B for \(song.id, privacy: .public)"
+                )
+                self.playSegmentedStream(playlistURL, proxy: proxy, song: song, seekTo: initialSeek)
+            } catch {
+                guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                Log.audio.warning(
+                    "Segmented streaming unavailable, code=\((error as NSError).code); downloading instead"
+                )
+                self.segmentedFallbackSongID = song.id
+                self.startDownloadThenPlay(url: url, headers: headers, song: song, seekTo: initialSeek)
+            }
+        }
+    }
+
+    private func playSegmentedStream(
+        _ playlistURL: URL, proxy: LoopbackSegmentProxy, song: Song, seekTo initialSeek: TimeInterval?
+    ) {
+        segmentedProxy = proxy
+        segmentedItemBecameReady = false
+        isStreamingMode = false // HLS is seekable
+        let playerItem = AVPlayerItem(asset: AVURLAsset(url: playlistURL))
+        configurePlayer(with: playerItem)
+        pendingSeekTime = initialSeek
+        if let initialSeek { currentTime = initialSeek }
+        setupPlayerItemObserver(playerItem)
+        if let songDuration = song.duration, songDuration > 0 {
+            duration = TimeInterval(songDuration)
+        }
+        nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
+        resumePlayer()
+        applyAudioProcessing()
+        recoveryService.startStallDetection()
+    }
+
+    /// Re-resolves the current song's signed media URL for the segment fetcher.
+    /// A different resource length means a different file: never splice it in.
+    private func refreshSegmentedStreamURL(
+        song: Song, totalBytes: Int64, generation: UInt64
+    ) async throws -> URL {
+        guard let resolver = streamResolver(for: song) else {
+            throw AudioTransferIntegrityError.incompleteResource
+        }
+        let refreshed = try await resolver(song.id)
+        guard loadGeneration == generation, currentTrack?.id == song.id else {
+            throw CancellationError()
+        }
+        guard let url = URL(string: refreshed.url),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+        else { throw AudioTransferIntegrityError.invalidResponse }
+        if let declared = refreshed.contentLength, declared != totalBytes {
+            throw AudioTransferIntegrityError.resourceChanged
+        }
+        if var current = currentTrack {
+            current.streamURL = refreshed.url
+            current.streamContentLength = refreshed.contentLength
+            currentTrack = current
+            updateQueuedStream(songID: song.id, streamURL: refreshed.url,
+                               contentLength: refreshed.contentLength)
+        }
+        return url
     }
 
     /// Plays a local audio file directly (for downloaded/offline/cached tracks).
@@ -3689,6 +3831,7 @@ final class AudioEngine {
                     if itemDuration.isFinite, itemDuration > 0 {
                         self.duration = itemDuration
                     }
+                    self.segmentedItemBecameReady = true
                     self.lastError = nil
                     Log.audio.info("Ready to play, duration: \(self.duration)s")
                     self.nowPlayingManager.updateNowPlayingInfo(
@@ -3738,6 +3881,16 @@ final class AudioEngine {
                         statusCode: mediaStatus, errorCode: (item.error as NSError?)?.code)
                     if self.guardedCoordinator != nil {
                         self.reportPlaybackItemFailure()
+                        return
+                    }
+                    // AVPlayer rejected the generated playlist itself: keep the
+                    // song playable through the proven download-then-play path.
+                    if self.segmentedProxy != nil, !self.segmentedItemBecameReady,
+                       let song = self.currentTrack {
+                        let resumeAt = self.pendingSeekTime
+                        Log.audio.warning("Segmented stream failed before ready; downloading instead")
+                        self.segmentedFallbackSongID = song.id
+                        self.performLoadAndPlay(song: song, seekTo: resumeAt)
                         return
                     }
                     if let error = item.error, let song = self.currentTrack,
@@ -4137,6 +4290,8 @@ final class AudioEngine {
         backgroundRemuxTask = nil
         downloadTask?.cancel()
         downloadTask = nil
+        segmentedProxy?.stop()
+        segmentedProxy = nil
         if let observer = endOfTrackObserver {
             NotificationCenter.default.removeObserver(observer)
             endOfTrackObserver = nil
@@ -5005,53 +5160,8 @@ extension AudioEngine: PlaybackRecoveryDelegate {
 /// Parse a fully present sidx table. A truncated table must NOT be treated
 /// as the end of the track. first_offset is relative to the end of sidx.
 func parseSIDX(_ data: Data) -> (headerEnd: Int, segmentSizes: [Int]) {
-    let sidxTag = Data([0x73, 0x69, 0x64, 0x78])
-    guard let tag = data.range(of: sidxTag), tag.lowerBound >= 4 else { return (0, []) }
-    let boxStart = tag.lowerBound - 4
-    func word(at offset: Int) -> UInt64 {
-        UInt64(data[offset]) << 24 | UInt64(data[offset + 1]) << 16 |
-        UInt64(data[offset + 2]) << 8 | UInt64(data[offset + 3])
-    }
-    let boxSize = word(at: boxStart)
-    guard boxSize >= 32, boxSize <= UInt64(data.count - boxStart) else { return (0, []) }
-    let boxEnd = boxStart + Int(boxSize)
-    var cursor = tag.upperBound
-    guard cursor + 4 <= boxEnd else { return (0, []) }
-    let version = data[cursor]
-    guard version == 0 || version == 1 else { return (0, []) }
-    cursor += 4 // version and flags
-    cursor += 8 // reference_id and timescale
-    let firstOffset: UInt64
-    if version == 0 {
-        guard cursor + 8 <= boxEnd else { return (0, []) }
-        cursor += 4 // earliest presentation time
-        firstOffset = word(at: cursor)
-        cursor += 4
-    } else {
-        guard cursor + 16 <= boxEnd else { return (0, []) }
-        cursor += 8 // earliest presentation time
-        firstOffset = (word(at: cursor) << 32) | word(at: cursor + 4)
-        cursor += 8
-    }
-    guard firstOffset <= UInt64(Int.max - boxEnd), cursor + 4 <= boxEnd else {
-        return (0, [])
-    }
-    cursor += 2 // reserved
-    let count = Int(data[cursor]) << 8 | Int(data[cursor + 1])
-    cursor += 2
-    guard count > 0, count <= (boxEnd - cursor) / 12 else { return (0, []) }
-
-    var sizes: [Int] = []
-    for _ in 0..<count {
-        let entry = word(at: cursor)
-        // Hierarchical references require another index; they aren't media.
-        guard (entry & 0x8000_0000) == 0 else { return (0, []) }
-        let size = Int(entry & 0x7FFF_FFFF)
-        guard size > 0 else { return (0, []) }
-        sizes.append(size)
-        cursor += 12
-    }
-    return (boxEnd + Int(firstOffset), sizes)
+    guard let index = SIDXIndex.parse(data) else { return (0, []) }
+    return (index.firstSegmentOffset, index.references.map(\.size))
 }
 
 

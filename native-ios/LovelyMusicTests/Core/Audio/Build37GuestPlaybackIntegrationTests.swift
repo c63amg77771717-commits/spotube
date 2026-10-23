@@ -22,7 +22,7 @@ final class Build37GuestPlaybackIntegrationTests: XCTestCase {
         defaults.set("drive-only-fixture", forKey: "evantube_drive_enabled_account")
         let api = InnerTubeAPI(session: session, userDefaults: defaults, cookie: nil)
         let repository = PlayerRepository(api: api)
-        let engine = AudioEngine(audioTransferSession: session)
+        let engine = AudioEngine(audioTransferSession: session, progressiveStreaming: false)
         let trackID = "GUESTPLAY37"
         defer {
             engine.stop()

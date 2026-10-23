@@ -78,7 +78,7 @@ final class Build36AudioProbeTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Build36IncompleteBodyFixture.self]
         let session = URLSession(configuration: configuration)
-        let engine = AudioEngine(audioTransferSession: session)
+        let engine = AudioEngine(audioTransferSession: session, progressiveStreaming: false)
         defer { engine.stop(); session.invalidateAndCancel() }
         let sourceURL = "https://build36-incomplete.example.test/full.m4a"
         let selected = Song(id: "INCOMPL0036", title: "Incomplete fixture", artistName: "Fixture",
@@ -126,7 +126,7 @@ final class Build36AudioProbeTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Build36RefreshedCandidateFixture.self]
         let session = URLSession(configuration: configuration)
-        let engine = AudioEngine(audioTransferSession: session)
+        let engine = AudioEngine(audioTransferSession: session, progressiveStreaming: false)
         defer { engine.stop(); session.invalidateAndCancel() }
         let selected = Song(id: "REFRESH0036", title: "Refresh fixture", artistName: "Fixture",
                             artistId: nil, albumName: nil, albumId: nil, duration: 240, thumbnailURL: nil)
@@ -153,7 +153,7 @@ final class Build36AudioProbeTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [Build36TransferTimeoutFixture.self]
         let session = URLSession(configuration: configuration)
-        let engine = AudioEngine(audioTransferSession: session)
+        let engine = AudioEngine(audioTransferSession: session, progressiveStreaming: false)
         var rejectedCandidates = 0
         engine.onStreamCandidateFailure = { _, _ in rejectedCandidates += 1 }
         defer {
