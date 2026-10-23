@@ -293,10 +293,20 @@ final class LoopbackSegmentProxy: @unchecked Sendable {
     }
 
     private func respond(to request: LoopbackHTTPRequest, on connection: NWConnection) {
+        let queue = self.queue
         let send: (Data) -> Void = { response in
-            connection.send(content: response, completion: .contentProcessed { _ in
-                connection.cancel()
-            })
+            // .finalMessage sends FIN after the body. Cancelling right after the
+            // send resets the socket and the client loses the response (-1005),
+            // so wait for the client to close, with a bounded fallback.
+            connection.send(
+                content: response, contentContext: .finalMessage, isComplete: true,
+                completion: .contentProcessed { _ in
+                    connection.receive(minimumIncompleteLength: 1, maximumLength: 1) { _, _, _, _ in
+                        connection.cancel()
+                    }
+                    queue.asyncAfter(deadline: .now() + 5) { connection.cancel() }
+                }
+            )
         }
         guard request.method == "GET" || request.method == "HEAD" else {
             send(LoopbackHTTPResponse.make(status: 405, reason: "Method Not Allowed", headers: [], body: Data()))
