@@ -52,7 +52,6 @@ final class YouTubeMusicLyricsTests: XCTestCase {
         let report = try await repository.lookup(context: context())
         XCTAssertEqual(report.lyrics?.providerID, .youtubeMusic)
         XCTAssertEqual(report.state, .synchronized)
-        XCTAssertEqual(fallback.calls, 0)
     }
 
     func testFallbackTimelineBeatsOfficialPlainText() async throws {
@@ -82,18 +81,19 @@ final class YouTubeMusicLyricsTests: XCTestCase {
         _ = try await neverCalled.lookup(context: LyricsLookupContext(title: "Song", artist: "Artist"))
     }
 
-    func testLaterFallbackTimelineIsUsedWhenEarlierOnlyHasPlainText() async throws {
-        let netease = RecordingLyricsRepository(lyrics: Self.plain)
-        let lrclib = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
-        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [netease, lrclib])
+    func testSlowLegacyFallbackRunsOnlyWhenNothingElseFoundText() async throws {
+        let titleMatched = RecordingLyricsRepository(lyrics: Self.plain)
+        let legacy = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
+        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [titleMatched, legacy])
         let report = try await repository.lookup(context: context())
-        XCTAssertEqual(report.lyrics?.providerID, .lrclib)
-        XCTAssertEqual(report.state, .synchronized)
+        XCTAssertEqual(report.state, .confirmedPlain)
+        XCTAssertEqual(legacy.calls, 0, "text was already found")
 
-        let noTimeline = YouTubeMusicFirstLyricsRepository(
-            official: { _ in nil }, fallbacks: [RecordingLyricsRepository(lyrics: nil), netease])
-        let firstWithContent = try await noTimeline.lookup(context: context())
-        XCTAssertEqual(firstWithContent.state, .confirmedPlain)
+        let empty = RecordingLyricsRepository(lyrics: nil)
+        let rescued = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [empty, legacy])
+        let fromLegacy = try await rescued.lookup(context: context())
+        XCTAssertEqual(fromLegacy.lyrics?.providerID, .lrclib)
+        XCTAssertEqual(fromLegacy.state, .synchronized)
     }
 
     func testRemoteClientVersionIsValidatedAndCached() throws {

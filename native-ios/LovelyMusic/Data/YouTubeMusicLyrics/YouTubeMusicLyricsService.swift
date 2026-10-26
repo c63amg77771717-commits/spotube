@@ -132,34 +132,49 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
     }
 
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
-        var officialLyrics: SyncedLyrics?
-        if context.hasYouTubeOrigin, let videoID = context.songID, !videoID.isEmpty {
-            do { officialLyrics = try await official(videoID) }
-            catch { try LyricsMatchingPolicy.checkCancellation(error) }
-        }
+        // YouTube Music and the first (title-matched) fallback run at the same time.
+        async let officialResult = officialLyrics(context)
+        async let firstResult = Self.report(fallbacks.first, context: context)
+        let officialLyrics = await officialResult
         try Task.checkCancellation()
-        if let officialLyrics, officialLyrics.isTimeSynced {
-            return .provider(.youtubeMusic, lyrics: officialLyrics, received: 1, successfulResponses: 1, failures: [])
-        }
-        var reports: [LyricsLookupReport] = []
-        for fallback in fallbacks {
-            let report: LyricsLookupReport
-            do { report = try await fallback.lookup(context: context) }
-            catch {
-                // One failing source must not hide the next one or the official text.
-                try LyricsMatchingPolicy.checkCancellation(error)
-                continue
-            }
+        if let officialLyrics, officialLyrics.isTimeSynced { return Self.officialReport(officialLyrics) }
+        let first = await firstResult
+        try Task.checkCancellation()
+        if let first, first.state == .synchronized { return first }
+        // Any text already found beats waiting on the slow legacy pipeline.
+        if let officialLyrics { return Self.officialReport(officialLyrics) }
+        if let first, Self.hasContent(first) { return first }
+        var reports = first.map { [$0] } ?? []
+        for fallback in fallbacks.dropFirst() {
+            // One failing source must not hide the next one.
+            guard let report = await Self.report(fallback, context: context) else { continue }
+            try Task.checkCancellation()
             if report.state == .synchronized { return report }
             reports.append(report)
         }
-        try Task.checkCancellation()
-        if let officialLyrics {
-            return .provider(.youtubeMusic, lyrics: officialLyrics, received: 1, successfulResponses: 1, failures: [])
-        }
-        return reports.first { report in
-            report.lyrics.map { !$0.lines.isEmpty || !$0.candidates.isEmpty } ?? false
-        } ?? reports.last ?? .legacy(nil)
+        return reports.first(where: Self.hasContent) ?? reports.last ?? .legacy(nil)
+    }
+
+    private func officialLyrics(_ context: LyricsLookupContext) async -> SyncedLyrics? {
+        guard context.hasYouTubeOrigin, let videoID = context.songID, !videoID.isEmpty else { return nil }
+        let lyrics = (try? await official(videoID)) ?? nil
+        LyricsLookupDiagnostics.shared.record(.init(context: context, provider: .youtubeMusic, phase: .response,
+            reason: lyrics.map { $0.isTimeSynced ? .timingCompatible : .plainOnly } ?? .providerEmpty,
+            count: lyrics?.lines.count ?? 0))
+        return lyrics
+    }
+
+    private static func report(_ repository: LyricsRepositoryProtocol?, context: LyricsLookupContext) async -> LyricsLookupReport? {
+        guard let repository else { return nil }
+        return try? await repository.lookup(context: context)
+    }
+
+    private static func officialReport(_ lyrics: SyncedLyrics) -> LyricsLookupReport {
+        .provider(.youtubeMusic, lyrics: lyrics, received: 1, successfulResponses: 1, failures: [])
+    }
+
+    private static func hasContent(_ report: LyricsLookupReport) -> Bool {
+        report.lyrics.map { !$0.lines.isEmpty || !$0.candidates.isEmpty } ?? false
     }
 
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {

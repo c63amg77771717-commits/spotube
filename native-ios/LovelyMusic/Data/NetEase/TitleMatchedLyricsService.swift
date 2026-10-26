@@ -51,28 +51,37 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
         var plain: SyncedLyrics?
         var failures: [LyricsSourceFailure] = []
         var responses = 0
+        let titleHasArtist = !first.artist.isEmpty
         for guess in queries.prefix(Self.maxQueries) {
-            for provider in [LyricsProviderID.netease, .lrclib] {
-                try Task.checkCancellation()
-                do {
-                    guard let lyrics = try await lyrics(provider, guess: guess, context: context,
-                                                        titleHasArtist: !first.artist.isEmpty) else {
-                        responses += 1
-                        continue
-                    }
+            try Task.checkCancellation()
+            // NetEase and LRCLIB are queried at the same time; NetEase wins ties.
+            async let netease = attempt(.netease, guess: guess, context: context, titleHasArtist: titleHasArtist)
+            async let lrclib = attempt(.lrclib, guess: guess, context: context, titleHasArtist: titleHasArtist)
+            for (provider, result) in [(LyricsProviderID.netease, await netease), (.lrclib, await lrclib)] {
+                switch result {
+                case .success(let lyrics):
                     responses += 1
+                    guard let lyrics else { continue }
                     if lyrics.isTimeSynced {
                         return .provider(provider, lyrics: lyrics, received: 1, successfulResponses: responses, failures: failures)
                     }
                     plain = plain ?? lyrics
-                } catch {
+                case .failure(let error):
                     try LyricsMatchingPolicy.checkCancellation(error)
                     failures += LyricsSourceFailure.from(error, providerID: provider)
                 }
             }
+            // Text is enough to show; more guesses only chase a timeline.
+            if plain != nil, guess != queries.first { break }
         }
         return .provider(plain?.providerID ?? .netease, lyrics: plain, received: plain == nil ? 0 : 1,
                          successfulResponses: responses, failures: failures)
+    }
+
+    private func attempt(_ provider: LyricsProviderID, guess: YouTubeTitleParser.Guess,
+                         context: LyricsLookupContext, titleHasArtist: Bool) async -> Result<SyncedLyrics?, Error> {
+        do { return .success(try await lyrics(provider, guess: guess, context: context, titleHasArtist: titleHasArtist)) }
+        catch { return .failure(error) }
     }
 
     private func lyrics(_ provider: LyricsProviderID, guess: YouTubeTitleParser.Guess,
@@ -85,18 +94,44 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
                   let song = songs.first(where: { $0.record.title == match.title && $0.record.artist == match.artist
                                                   && $0.record.duration == match.duration }),
                   let lrc = try Self.neteaseLRC(from: try await fetch(Self.neteaseLyric(song.id)))
-            else { return nil }
-            return Self.lyrics(lrc: lrc, plain: nil, recording: match.duration, context: context, provider: .netease)
+            else { return Self.recordMiss(context, .netease, guess) }
+            return Self.recorded(Self.lyrics(lrc: lrc, plain: nil, recording: match.duration, context: context, provider: .netease),
+                                 context, .netease, match)
         default:
             let records = try Self.lrclibRecords(from: try await fetch(Self.lrclibSearch(guess)))
             guard let match = YouTubeTitleParser.bestMatch(records.map(\.record), guess: guess, videoTitle: context.title,
                                                            videoDuration: context.duration, titleHasArtist: titleHasArtist),
                   let record = records.first(where: { $0.record.title == match.title && $0.record.artist == match.artist
                                                       && $0.record.duration == match.duration })
-            else { return nil }
-            return Self.lyrics(lrc: record.synced ?? "", plain: record.plain, recording: match.duration,
-                               context: context, provider: .lrclib)
+            else { return Self.recordMiss(context, .lrclib, guess) }
+            return Self.recorded(Self.lyrics(lrc: record.synced ?? "", plain: record.plain, recording: match.duration,
+                                             context: context, provider: .lrclib), context, .lrclib, match)
         }
+    }
+
+    /// Diagnostics export: which record matched, its length, and whether its timeline was used.
+    private static func recorded(_ lyrics: SyncedLyrics?, _ context: LyricsLookupContext, _ provider: LyricsProviderID,
+                                 _ match: YouTubeTitleParser.Record) -> SyncedLyrics? {
+        let reason: LyricsLookupDiagnostics.Reason
+        switch lyrics?.timingState {
+        case .structurallyCompatible?: reason = .timingCompatible
+        case .durationMismatch?: reason = .durationMismatch
+        case .timingUnknown?: reason = .timingUnknown
+        case .plainOnly?: reason = .plainOnly
+        case .invalidTimestamp?: reason = .invalidTimestamp
+        case .unsupportedTiming?: reason = .unsupportedTiming
+        case nil: reason = .emptyContent
+        }
+        LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .candidateAccepted,
+            reason: reason, title: match.title, artist: match.artist, duration: match.duration))
+        return lyrics
+    }
+
+    private static func recordMiss(_ context: LyricsLookupContext, _ provider: LyricsProviderID,
+                                   _ guess: YouTubeTitleParser.Guess) -> SyncedLyrics? {
+        LyricsLookupDiagnostics.shared.record(.init(context: context, provider: provider, phase: .providerEmpty,
+            reason: .providerEmpty, title: guess.song, artist: guess.artist))
+        return nil
     }
 
     /// Timelines within 2 s of the video count as the same recording: YouTube

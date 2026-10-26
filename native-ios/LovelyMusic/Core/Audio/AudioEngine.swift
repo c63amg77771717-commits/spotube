@@ -3872,6 +3872,10 @@ final class AudioEngine {
                         }
                     } else {
                         self.isBuffering = false
+                        // With automaticallyWaitsToMinimizeStalling off, a rate set
+                        // before the first bytes arrive stalls to 0 and never resumes;
+                        // only a seek used to restart it. Re-apply the user's intent.
+                        if self.isPlaying, self.player?.rate == 0 { self.resumePlayer() }
                     }
                     // Status and time-control KVO can arrive in either order.
                     // Re-evaluate the installed selection only after the HLS
@@ -3952,7 +3956,9 @@ final class AudioEngine {
             [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self, self.player?.currentItem === item else { return }
-                if item.isPlaybackLikelyToKeepUp && self.isBuffering {
+                // Also restart a stalled start (rate 0 while the user wants playback).
+                if item.isPlaybackLikelyToKeepUp
+                    && (self.isBuffering || (self.isPlaying && !self.isSeeking && self.player?.rate == 0)) {
                     self.isBuffering = false
                     if self.isPlaying {
                         self.resumePlayer()
