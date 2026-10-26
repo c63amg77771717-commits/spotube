@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// Bottom action bar: playback speed, autoplay, video toggle, queue.
+/// Bottom action bar: playback speed, autoplay, video toggle, lyrics toggle, queue.
 struct PlayerBottomBarView: View {
     let playbackSpeedLabel: String
     let playbackSpeed: Float
     let isAutoplayEnabled: Bool
     let isVideoMode: Bool
+    let isLyricsVisible: Bool
     let isVideoPlaybackEnabled: Bool
 
     let onCycleSpeed: () -> Void
     let onToggleAutoplay: () -> Void
     let onToggleVideo: () -> Void
+    let onToggleLyrics: () -> Void
     let onShowQueue: () -> Void
 
     var body: some View {
@@ -95,6 +97,33 @@ struct PlayerBottomBarView: View {
             .opacity(isVideoPlaybackEnabled ? 1.0 : 0.3)
             .accessibilityLabel(isVideoMode ? "Switch to audio" : "Switch to video")
             .accessibilityValue(isVideoMode ? "On" : "Off")
+
+            // Lyrics toggle — Q4: `quote.bubble` is non-standard for music apps;
+            // `text.quote` is the platform-standard lyrics glyph.
+            Button {
+                onToggleLyrics()
+            } label: {
+                VStack(spacing: 2) {
+                    Image(systemName: "text.quote")
+                        .font(.title3)
+                        .foregroundStyle(
+                            isLyricsVisible
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
+                        )
+                    Text("Lyrics")
+                        .font(Theme.Typography.caption2.weight(.medium))
+                        .foregroundStyle(
+                            isLyricsVisible
+                                ? AnyShapeStyle(Theme.Colors.brandGradient)
+                                : AnyShapeStyle(Theme.Colors.textTertiary)
+                        )
+                }
+            }
+            .frame(minWidth: 56, minHeight: 52)
+            .accessibilityLabel(isLyricsVisible ? "Hide lyrics" : "Show lyrics")
+            .accessibilityValue(isLyricsVisible ? "Showing" : "Hidden")
+            .accessibilityIdentifier("toggle_lyrics")
 
             // Queue
             Button {

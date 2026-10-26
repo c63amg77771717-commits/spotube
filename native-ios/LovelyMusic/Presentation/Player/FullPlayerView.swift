@@ -220,9 +220,12 @@ struct FullPlayerView: View {
                     }
                     .padding(.top, Theme.Spacing.md)
 
-                    // Content slot: video / vinyl disc (lyrics removed).
+                    // Content slot: lyrics / video / vinyl disc share the same flexible space
                     Group {
-                        if featureFlags.isVideoPlaybackEnabled, playerVM.isVideoMode,
+                        if playerVM.isLyricsVisible {
+                            inlineLyricsView(geo: geo)
+                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        } else if featureFlags.isVideoPlaybackEnabled, playerVM.isVideoMode,
                             let vp = playerVM.videoPlayer, !isVideoFullScreen
                         {
                             VStack {
@@ -302,6 +305,7 @@ struct FullPlayerView: View {
                         }
                     }
                     .frame(maxHeight: .infinity)
+                    .animation(Theme.AnimationPresets.smooth, value: playerVM.isLyricsVisible)
                     .animation(Theme.AnimationPresets.smooth, value: playerVM.isVideoMode)
 
                     // Song info
@@ -383,12 +387,18 @@ struct FullPlayerView: View {
                         playbackSpeed: playerVM.playbackSpeed,
                         isAutoplayEnabled: playerVM.isAutoplayEnabled,
                         isVideoMode: playerVM.isVideoMode,
+                        isLyricsVisible: playerVM.isLyricsVisible,
                         isVideoPlaybackEnabled: featureFlags.isVideoPlaybackEnabled,
                         onCycleSpeed: { playerVM.cyclePlaybackSpeed() },
                         onToggleAutoplay: { playerVM.toggleAutoplay() },
                         onToggleVideo: {
                             withAnimation(Theme.AnimationPresets.bouncy) {
                                 playerVM.toggleVideoMode()
+                            }
+                        },
+                        onToggleLyrics: {
+                            withAnimation(Theme.AnimationPresets.bouncy) {
+                                playerVM.isLyricsVisible.toggle()
                             }
                         },
                         onShowQueue: { playerVM.isQueuePresented = true }
@@ -642,6 +652,64 @@ struct FullPlayerView: View {
         )
         let target = Song.formatTimestamp(Int(consent.targetSeconds.rounded(.down)))
         return LocalizationManager.text("This may use \(network) of network data and \(storage) of temporary storage. Playback will resume near \(target).")
+    }
+
+    @ViewBuilder
+    private func inlineLyricsView(geo: GeometryProxy) -> some View {
+        if let lyrics = playerVM.lyrics {
+            SyncedLyricsScrollView(lyrics: lyrics)
+        } else if playerVM.isLoadingLyrics {
+            VStack {
+                Spacer()
+                ProgressView().tint(Theme.Colors.brandGradientStart)
+                Text("Loading…")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textSecondary)
+                Spacer()
+            }
+        } else if let error = playerVM.lyricsError {
+            VStack(spacing: Theme.Spacing.md) {
+                Spacer()
+                Text(error).foregroundStyle(Theme.Colors.textSecondary)
+                    .accessibilityIdentifier("lyrics_lookup_outcome")
+                if let report = playerVM.lyricsLookupReport {
+                    Text(report.failureSummary)
+                        .accessibilityIdentifier("lyrics_failed_sources")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                }
+                Button("重試取得歌詞") { playerVM.retryLyrics() }
+                    .accessibilityIdentifier("lyrics_retry")
+                Spacer()
+            }
+        } else {
+            VStack {
+                Spacer()
+                VStack(spacing: Theme.Spacing.md) {
+                    Image(systemName: "music.note.list")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Theme.Colors.brandGradient)
+                    Text(playerVM.lyricsLookupReport?.state.message ?? LocalizationManager.text("Lyrics sources returned no results"))
+                        .accessibilityIdentifier("lyrics_lookup_outcome")
+                        .font(Theme.Typography.subheadline)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                    Text("歌詞查詢依歌曲名稱與歌手配對；影片標題可能與歌曲資料不同。")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .multilineTextAlignment(.center)
+                    if let report = playerVM.lyricsLookupReport, !report.failures.isEmpty {
+                        Text(LocalizationManager.text("Lyrics source temporarily unavailable") + " · "
+                             + report.failureSummary)
+                            .accessibilityIdentifier("lyrics_partial_source_failure")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Colors.textSecondary)
+                    }
+                    Button("重試取得歌詞") { playerVM.retryLyrics() }
+                        .accessibilityIdentifier("lyrics_retry")
+                }
+                Spacer()
+            }
+        }
     }
 
     private var downloadMenuLabel: String { LocalizationManager.text("Download") }

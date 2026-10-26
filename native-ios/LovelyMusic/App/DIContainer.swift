@@ -110,7 +110,26 @@ final class DIContainer {
         let contentRepo: InnerTubeRepositoryProtocol
         let playerRepo: PlayerRepositoryProtocol
         let playlistRepo = LocalPlaylistRepository()
-        let lyricsRepo: LyricsRepositoryProtocol = DisabledLyricsRepository()
+        let lyricsRepo: LyricsRepositoryProtocol
+        #if DEBUG
+        if isReviewMode, ProcessInfo.processInfo.environment["EVANTUBE_LRCAPI_FIXTURE"] == "1" {
+            let session = LrcApiPreviewHTTPFixture.session(
+                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")
+            lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(session: session),
+                secondary: LrcApiService(session: session), secondaryEnabled: { true })
+        } else if isReviewMode, ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_FIXTURE"] == "1" {
+            let session = LyricsCandidatePreviewHTTPFixture.session(
+                resetSelection: ProcessInfo.processInfo.environment["EVANTUBE_LYRICS_CANDIDATE_RESET"] == "1")
+            lyricsRepo = LrcLibService(session: session)
+        } else if isReviewMode {
+            // Layout previews must not send demo metadata to production lyric APIs.
+            lyricsRepo = ReviewLyricsFixtureRepository()
+        } else {
+            lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())
+        }
+        #else
+        lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())
+        #endif
         let favoritesRepo = LocalFavoritesRepository()
 
         if isReviewMode {

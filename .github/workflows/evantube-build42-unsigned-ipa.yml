@@ -1,0 +1,248 @@
+name: EvanTube Build42 verified guest playback IPA
+
+on:
+  push:
+    branches:
+      - codex/evantube-build42-lyrics-20261026
+    paths:
+      - native-ios/**
+      - .github/workflows/evantube-build42-unsigned-ipa.yml
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evantube-build42-unsigned-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audio-regression:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Generate isolated synthetic regression target
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          python3 - <<'PY'
+          import pathlib, plistlib, os
+          pathlib.Path('LovelyMusic/Resources/Secrets.plist').write_bytes(plistlib.dumps({}))
+          spec = pathlib.Path('project.yml')
+          data = spec.read_text()
+          old = '      - path: LovelyMusicTests' + chr(10)
+          assert data.count(old) == 1
+          new = (
+              '      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/Streaming/SegmentedAudioStreamTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Domain/StreamingDataTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/Build37AnonymousSourceSelectionTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/InnerTube/InnerTubePlayerSessionTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/InnerTube/InnerTubeVisitorDataTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/InnerTube/InnerTubeVisitorDataExtraTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/Build37GuestPlaybackIntegrationTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/MediaCandidateRecoveryTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/Build36BackgroundPlaybackTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Mocks/MockInnerTubeRepository.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Mocks/MockPlaylistRepository.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Mocks/MockFavoritesRepository.swift' + chr(10)
+          )
+          spec.write_text(data.replace(old, new))
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'build42-simulator.entitlements').write_bytes(plistlib.dumps({
+              'application-identifier': 'com.c63amg77771717.evantube',
+              'keychain-access-groups': ['com.c63amg77771717.evantube'],
+              'get-task-allow': True,
+          }))
+          PY
+          xcodegen generate
+      - name: Verify search, guest playback, session isolation, and audio regressions
+        working-directory: native-ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project LovelyMusic.xcodeproj \
+            -scheme LovelyMusicTests \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -parallel-testing-enabled NO \
+            -only-testing:LovelyMusicTests/AudioTransferIntegrityTests \
+            -only-testing:LovelyMusicTests/YouTubeCDNRangeRequestTests \
+            -only-testing:LovelyMusicTests/SegmentedAudioStreamTests \
+            -only-testing:LovelyMusicTests/StreamingDataTests \
+            -only-testing:LovelyMusicTests/KeylessOnlineSearchTests \
+            -only-testing:LovelyMusicTests/AnonymousPlaybackFallbackTests \
+            -only-testing:LovelyMusicTests/Build37AnonymousSourceSelectionTests \
+            -only-testing:LovelyMusicTests/InnerTubePlayerSessionTests \
+            -only-testing:LovelyMusicTests/InnerTubeVisitorDataTests \
+            -only-testing:LovelyMusicTests/InnerTubeVisitorDataExtraTests \
+            -only-testing:LovelyMusicTests/Build37GuestPlaybackIntegrationTests \
+            -only-testing:LovelyMusicTests/Build36AudioProbeTests \
+            -only-testing:LovelyMusicTests/Build36BackgroundSkipTests \
+            -only-testing:LovelyMusicTests/MediaCandidateRecoveryTests \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSPrefersFullAdaptiveAACOverShortHLSWindow \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testVisionOSUsesHLSOnlyWhenNoValidAACExists \
+            -only-testing:LovelyMusicTests/PlayerRepositorySingleFlightTests/testSessionHTTP400IsSkippedUntilSessionChanges \
+            -resultBundlePath "$RUNNER_TEMP/build42-audio.xcresult" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/build42-simulator.entitlements" test \
+            2>&1 | tee "$RUNNER_TEMP/build42-audio.log"
+      - name: Publish readable audio result
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, pathlib
+          file = pathlib.Path(os.environ['RUNNER_TEMP'], 'build42-audio.log')
+          lines = file.read_text(errors='replace').splitlines() if file.exists() else []
+          for line in lines:
+              if ' error: ' in line or 'XCTAssert' in line:
+                  print('::error::' + line[:1600].replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+              if 'Executed ' in line or 'Test Suite ' in line:
+                  print(line)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: EvanTube-Build42-audio-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build42-audio.log
+            ${{ runner.temp }}/build42-audio.xcresult
+          if-no-files-found: error
+          retention-days: 7
+
+  unsigned-ipa:
+    needs: [audio-regression]
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.2'
+      - name: Prepare clean Build42 device project without credentials
+        working-directory: native-ios
+        run: |
+          brew install xcodegen
+          python3 - <<'PY'
+          import json, pathlib, plistlib
+          project = pathlib.Path('public-ipa-project.json')
+          spec = json.loads(project.read_text())
+          assert set(spec['targets']) == {'LovelyMusic', 'LovelyMusicNotificationService'}
+          assert all(spec['targets'][name]['settings']['base']['CURRENT_PROJECT_VERSION'] == '42'
+                     for name in spec['targets'])
+          assert all(spec['targets'][name]['settings']['base']['MARKETING_VERSION'] == '1.0.1'
+                     for name in spec['targets'])
+          pathlib.Path('LovelyMusic/Resources/Secrets.plist').write_bytes(plistlib.dumps({}))
+          PY
+          xcodegen generate --spec public-ipa-project.json
+      - name: Compile unsigned arm64 iPhone Build42
+        working-directory: native-ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project LovelyMusic.xcodeproj -scheme LovelyMusic \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/evantube-build42-device" \
+            -resultBundlePath "$RUNNER_TEMP/build42-device.xcresult" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO build \
+            2>&1 | tee "$RUNNER_TEMP/build42-device.log"
+      - name: Verify app contents and package IPA
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, plistlib, struct, subprocess, zipfile
+          t=pathlib.Path(os.environ['RUNNER_TEMP'])
+          app=t/'evantube-build42-device/Build/Products/Release-iphoneos/LovelyMusic.app'
+          assert app.is_dir()
+          output=t/'evantube-build42-out'
+          output.mkdir(exist_ok=False)
+          payload=output/'Payload'
+          payload.mkdir()
+          import shutil
+          shutil.copytree(app,payload/'EvanTube.app',symlinks=True)
+          dest=payload/'EvanTube.app'
+          for file in dest.rglob('*'):
+              if file.is_symlink():
+                  assert file.resolve().is_relative_to(dest.resolve())
+              assert not any(part.lower() in {'fixtures','diagnostics','logs','_codesignature'} for part in file.relative_to(dest).parts)
+              assert file.suffix.lower() not in {'.xctest','.xcresult','.log','.dSYM'.lower()}
+          bundles=[(dest, 'com.c63amg77771717.evantube')]
+          ext=list(dest.glob('PlugIns/*.appex'))
+          assert len(ext)==1
+          bundles.append((ext[0],'com.c63amg77771717.evantube.NotificationService'))
+          for bundle, expectedID in bundles:
+              info=plistlib.loads((bundle/'Info.plist').read_bytes())
+              assert info['CFBundleVersion']=='42'
+              assert info['CFBundleShortVersionString']=='1.0.1'
+              assert info['CFBundleIdentifier']==expectedID
+              exe=(bundle/info['CFBundleExecutable']).read_bytes()
+              magic,cpu,subtype,filetype,commands,size,flags,reserved=struct.unpack_from('<8I',exe)
+              assert magic==0xfeedfacf and cpu==0x0100000c and filetype==2
+              assert size>0 and len(exe)>=32+size
+              offset=32
+              iosDevice=False
+              for i in range(commands):
+                  cmd,cmdlen=struct.unpack_from('<2I',exe,offset)
+                  assert cmdlen>=8 and offset+cmdlen<=32+size
+                  if cmd==0x32:
+                      assert struct.unpack_from('<I',exe,offset+8)[0]==2
+                      iosDevice=True
+                  if cmd==0x25: iosDevice=True
+                  if cmd==0x1d:
+                      assert struct.unpack_from('<I',exe,offset+12)[0]==0
+                  offset+=cmdlen
+              assert iosDevice
+          secretFiles=list(dest.rglob('Secrets.plist'))
+          assert len(secretFiles)==1 and plistlib.loads(secretFiles[0].read_bytes())=={}
+          assert not list(dest.rglob('embedded.mobileprovision'))
+          ipa=output/'EvanTube-iOS-1.0.1-build42-unsigned.ipa'
+          subprocess.run(['ditto','-c','-k','--sequesterRsrc','--keepParent',str(payload),str(ipa)],check=True)
+          with zipfile.ZipFile(ipa) as archive:
+              assert archive.testzip() is None
+              for name in archive.namelist():
+                  p=pathlib.PurePosixPath(name)
+                  assert not p.is_absolute() and '..' not in p.parts and p.parts[0] in {'Payload','__MACOSX'}
+              assert archive.read('Payload/EvanTube.app/'+bundles[0][0].joinpath('Info.plist').name) == (dest/'Info.plist').read_bytes()
+          with ipa.open('rb') as stream:
+              digest=hashlib.file_digest(stream,'sha256').hexdigest()
+          manifest={'file':ipa.name,'bytes':ipa.stat().st_size,'sha256':digest,'sourceSHA':os.environ['GITHUB_SHA'],
+                    'version':'1.0.1','build':42,'unsigned':True,'architecture':'arm64',
+                    'deviceCompilation':'PASS','archiveIntegrity':'PASS','audioRegression':'PASS',
+                    'settingsNavigationUI':'BLOCKED_CI_ENV','mediaCandidateRecovery':'PASS',
+                    'anonymousPlaybackRegression':'PASS',
+                    'lyricsEnabled':True,'physicalDevice':'NOT_RUN','credentialsEmbedded':False}
+          (output/'build42-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print('BUILD42_UNSIGNED_IPA_PASS')
+          PY
+      - name: Upload validated unsigned Build42 IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-iOS-1.0.1-build42-unsigned-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/evantube-build42-out/EvanTube-iOS-1.0.1-build42-unsigned.ipa
+            ${{ runner.temp }}/evantube-build42-out/build42-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload device build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EvanTube-Build42-device-evidence-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build42-device.log
+            ${{ runner.temp }}/build42-device.xcresult
+          if-no-files-found: error
+          retention-days: 7
+

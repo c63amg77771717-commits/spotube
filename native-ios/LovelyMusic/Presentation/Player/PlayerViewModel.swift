@@ -192,7 +192,9 @@ final class PlayerViewModel {
 
     var isFullPlayerPresented: Bool = false
     var isQueuePresented: Bool = false
-    private(set) var isLyricsVisible: Bool = false
+    var isLyricsVisible: Bool = UserDefaults.standard.bool(forKey: "playerLyricsVisible") {
+        didSet { UserDefaults.standard.set(isLyricsVisible, forKey: "playerLyricsVisible") }
+    }
     var showYouTubeLoginPrompt: Bool = false
     var isDockHidden: Bool = false
 
@@ -315,6 +317,7 @@ final class PlayerViewModel {
         observeAudioEngineErrors()
         observeBufferingState()
         observeTrackChanges()
+        if let song = currentSong { requestLyrics(for: song) }
         observeStreamRecovery()
         setupAutoplay()
         observeSettingsChanges()
@@ -345,16 +348,45 @@ final class PlayerViewModel {
             audioEngine.setVideoMode(true)
         }
 
+        requestLyrics(for: song)
     }
 
-    // Lyrics have been retired. Keep these compatibility entry points inert so
-    // legacy view observers cannot start a provider request or show a retry UI.
-    private func requestLyrics(for song: Song) {}
-    func retryInterruptedLyrics() {}
-    func retryLyrics() {}
+    // Track observation can repeat after stream resolution; do not reset a
+    // listener's manual cover/video choice for the same recording.
+    private func requestLyrics(for song: Song) {
+        guard currentSong?.id == song.id, lyricsTrackID != song.id else { return }
+        // Reserve synchronously before the task is scheduled to prevent duplicate lookups.
+        let epoch = lyricsGeneration
+        lyricsTrackID = song.id
+        Task { [weak self] in
+            guard let self, self.currentSong?.id == song.id, self.lyricsTrackID == song.id,
+                  self.lyricsGeneration == epoch else { return }
+            await self.loadLyrics(for: song)
+        }
+    }
+
+    func retryInterruptedLyrics() {
+        guard !isLoadingLyrics, lyrics == nil,
+              lyricsTrackID == nil || lyricsError != nil || lyricsLookupReport?.canRetryAvailability == true,
+              let song = currentSong else { return }
+        requestLyricsAfterFailure(for: song)
+    }
+
+    private func requestLyricsAfterFailure(for song: Song) {
+        lyricsTrackID = nil
+        requestLyrics(for: song)
+    }
+
+    func retryLyrics() {
+        guard !isLoadingLyrics, let song = currentSong else { return }
+        Task { [weak self] in
+            guard let self, !self.isLoadingLyrics, self.currentSong?.id == song.id else { return }
+            await self.loadLyrics(for: song)
+        }
+    }
+
     private func cancelLyricsRequest() {
         lyricsTask?.cancel()
-        lyricsTask = nil
         lyricsGeneration += 1
         lyricsTrackID = nil
         lyrics = nil
@@ -362,8 +394,73 @@ final class PlayerViewModel {
         lyricsLookupReport = nil
         isLoadingLyrics = false
     }
-    func lyricsSourceSettingsChanged() { cancelLyricsRequest() }
-    func loadLyrics(for song: Song) async { cancelLyricsRequest() }
+
+    /// Settings changes stop in-flight requests before replacing the lookup.
+    func lyricsSourceSettingsChanged() {
+        cancelLyricsRequest()
+        guard let song = currentSong else { return }
+        requestLyrics(for: song)
+    }
+
+    func loadLyrics(for song: Song) async {
+        guard currentSong?.id == song.id else { return }
+        lyricsTask?.cancel()
+        lyricsGeneration += 1
+        let generation = lyricsGeneration
+        lyricsTrackID = song.id
+        isLoadingLyrics = true
+        lyricsError = nil
+        lyricsLookupReport = nil
+        lyrics = nil
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let started = ProcessInfo.processInfo.systemUptime
+            do {
+                let report = try await self.getLyricsUseCase.executeReport(song: song)
+                guard !Task.isCancelled, self.lyricsGeneration == generation,
+                      self.currentSong?.id == song.id else { return }
+                let applyStarted = ProcessInfo.processInfo.systemUptime
+                defer {
+                    if let context = report.diagnosticContext {
+                        let now = ProcessInfo.processInfo.systemUptime
+                        LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .stageTiming,
+                            stage: "playerStateApply", stageElapsedMilliseconds: max(0, now - applyStarted) * 1000))
+                        LyricsLookupDiagnostics.shared.record(.init(context: context, phase: .stageTiming,
+                            stage: "playerLookupThroughStateApply", stageElapsedMilliseconds: max(0, now - started) * 1000))
+                    }
+                }
+                self.lyricsLookupReport = report
+                if report.state == .sourceUnavailable { self.lyricsError = report.state.message }
+                if let result = report.lyrics, !result.lines.isEmpty || !result.candidates.isEmpty {
+                    // Candidate-only results must reach the player's selection UI.
+                    self.lyrics = result
+                } else {
+                    self.lyrics = nil
+                }
+            } catch {
+                guard self.lyricsGeneration == generation,
+                      self.currentSong?.id == song.id else { return }
+                if Task.isCancelled || error is CancellationError
+                    || (error as? URLError)?.code == .cancelled {
+                    self.lyricsTrackID = nil
+                } else {
+                    self.lyricsError = "歌詞取得失敗（\(error.localizedDescription)），請重試"
+                }
+            }
+            guard self.lyricsGeneration == generation else { return }
+            self.isLoadingLyrics = false
+        }
+        lyricsTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        if lyricsGeneration == generation {
+            isLoadingLyrics = false
+            if task.isCancelled { lyricsTrackID = nil }
+        }
+    }
 
     func playPause() {
         audioEngine.playPause()
@@ -620,6 +717,7 @@ final class PlayerViewModel {
         bufferingTooLong = false
         let song = queue[index]
         audioEngine.play(song: song, fromQueue: queue)
+        Task { [weak self] in await self?.loadLyrics(for: song) }
     }
 
     func playFromAutoplayQueue(at index: Int) {
@@ -968,7 +1066,7 @@ final class PlayerViewModel {
                 // Persist playback state on track change
                 self.audioEngine.savePlaybackState()
 
-                // Auto-detect video mode on track change
+                // Auto-detect video mode and reload lyrics on track change
                 if let song = self.currentSong {
                     // Reset the video-load gate when crossing a real song-change
                     // boundary (different `song.id` than last observed). This
@@ -997,6 +1095,8 @@ final class PlayerViewModel {
                         }
                     }
 
+                    // Reload lyrics for the new track
+                    self.requestLyrics(for: song)
                 } else {
                     self.cancelLyricsRequest()
                     self.cancelSourceReplacement()
