@@ -41,6 +41,7 @@ jobs:
           new = (
               '      - path: LovelyMusicTests/Core/Audio/AudioEngineLoadAndPlayTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Core/Audio/Streaming/SegmentedAudioStreamTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Domain/StreamingDataTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift' + chr(10) +
@@ -76,6 +77,7 @@ jobs:
             -only-testing:LovelyMusicTests/AudioTransferIntegrityTests \
             -only-testing:LovelyMusicTests/YouTubeCDNRangeRequestTests \
             -only-testing:LovelyMusicTests/SegmentedAudioStreamTests \
+            -only-testing:LovelyMusicTests/StreamingDataTests \
             -only-testing:LovelyMusicTests/KeylessOnlineSearchTests \
             -only-testing:LovelyMusicTests/AnonymousPlaybackFallbackTests \
             -only-testing:LovelyMusicTests/Build37AnonymousSourceSelectionTests \

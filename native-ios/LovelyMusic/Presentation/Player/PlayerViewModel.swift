@@ -338,14 +338,11 @@ final class PlayerViewModel {
         previousObservedTrackId = nil
         audioEngine.play(song: song, fromQueue: fromQueue)
 
-        // Auto-detect video mode based on song metadata
+        // Video songs turn video mode on; otherwise the user's mode is kept.
+        // The video stream is loaded by observeTrackChanges (T3 gate).
         if song.isVideo {
             isVideoMode = true
             audioEngine.setVideoMode(true)
-            // Video stream is loaded by observeTrackChanges (T3 gate)
-        } else if isVideoMode {
-            isVideoMode = false
-            audioEngine.setVideoMode(false)
         }
 
     }
@@ -521,6 +518,8 @@ final class PlayerViewModel {
         isLyricsVisible = false
         isVideoMode.toggle()
         audioEngine.setVideoMode(isVideoMode)
+        // Mark the song handled so the track observer doesn't load it twice.
+        lastHandledVideoTrackId = isVideoMode ? currentSong?.id : nil
         if isVideoMode, let song = currentSong {
             audioEngine.loadVideoStream(for: song)
         }
@@ -976,10 +975,7 @@ final class PlayerViewModel {
                     // keeps duplicate observer fires for the SAME song from
                     // re-triggering `loadVideoStream`, while allowing a genuine
                     // next/previous to load video again. (ExecPlan T3.)
-                    // currentTrack also changes when its signed stream URL is
-                    // refreshed mid-song; only a new song may turn video off.
-                    let songChanged = self.previousObservedTrackId != song.id
-                    if songChanged {
+                    if self.previousObservedTrackId != song.id {
                         self.cancelLyricsRequest()
                         self.cancelSourceReplacement()
                         self.autoSkipTask?.cancel()
@@ -990,16 +986,15 @@ final class PlayerViewModel {
                         self.lastHandledVideoTrackId = nil
                     }
 
-                    if song.isVideo {
+                    // Video mode is the user's choice: it stays on across song
+                    // changes (and stream URL refreshes); only the toggle ends it.
+                    if song.isVideo || self.isVideoMode {
                         self.isVideoMode = true
                         self.audioEngine.setVideoMode(true)
                         if self.lastHandledVideoTrackId != song.id {
                             self.lastHandledVideoTrackId = song.id
                             self.audioEngine.loadVideoStream(for: song)
                         }
-                    } else if self.isVideoMode, songChanged {
-                        self.isVideoMode = false
-                        self.audioEngine.setVideoMode(false)
                     }
 
                 } else {

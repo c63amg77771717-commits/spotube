@@ -83,9 +83,11 @@ struct StreamingData {
         // Original response order makes the resulting typed error deterministic.
         guard !playable.isEmpty else { return audioCandidates.first }
 
-        // Prefer formats within quality limit, pick highest bitrate among those
+        // Prefer formats within quality limit, pick highest bitrate among those.
+        // Limits are nominal: YouTube reports its 128 kbps AAC (itag 140) as
+        // ~130 kbps, which a strict cap dropped to 48 kbps HE-AAC.
         let withinLimit = playable
-            .filter { ($0.bitrate ?? 0) <= maxBitrate }
+            .filter { ($0.bitrate ?? 0) <= maxBitrate + maxBitrate / 10 }
             .sorted { ($0.bitrate ?? 0) > ($1.bitrate ?? 0) }
 
         // If none within limit, take lowest available bitrate (closest to desired quality)

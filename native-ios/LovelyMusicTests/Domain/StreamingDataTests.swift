@@ -16,6 +16,16 @@ final class StreamingDataTests: XCTestCase {
         XCTAssertEqual(best?.bitrate, 128000)
     }
 
+    func testMediumQualityKeepsYouTubeAACReportedSlightlyAbove128k() {
+        let formats = [
+            StreamFormat(itag: 139, url: "https://audio-low", mimeType: "audio/mp4", bitrate: 49964, contentLength: nil, quality: nil, audioQuality: "AUDIO_QUALITY_LOW", audioSampleRate: "22050", audioChannels: 2, approxDurationMs: nil, width: nil, height: nil),
+            StreamFormat(itag: 140, url: "https://audio-medium", mimeType: "audio/mp4", bitrate: 130485, contentLength: nil, quality: nil, audioQuality: "AUDIO_QUALITY_MEDIUM", audioSampleRate: "44100", audioChannels: 2, approxDurationMs: nil, width: nil, height: nil),
+        ]
+        let data = StreamingData(formats: [], adaptiveFormats: formats, expiresAt: nil)
+        XCTAssertEqual(data.bestAudioFormat(quality: .medium)?.itag, 140)
+        XCTAssertEqual(data.bestAudioFormat(quality: .low)?.itag, 139)
+    }
+
     func testBestAudioFormatNoAudio() {
         let formats = [
             StreamFormat(itag: 22, url: "https://video1", mimeType: "video/mp4", bitrate: 720000, contentLength: nil, quality: nil, audioQuality: nil, audioSampleRate: nil, audioChannels: nil, approxDurationMs: nil, width: nil, height: nil),
