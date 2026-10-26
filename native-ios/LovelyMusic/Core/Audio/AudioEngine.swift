@@ -2947,10 +2947,11 @@ final class AudioEngine {
                 let fetcher = SegmentedCDNFetcher(
                     request: baseRequest, totalBytes: totalBytes,
                     session: self.audioTransferSession,
-                    refresh: { [weak self] in
+                    refresh: { [weak self] rejecting in
                         guard let self else { throw CancellationError() }
                         return try await self.refreshSegmentedStreamURL(
-                            song: song, totalBytes: totalBytes, generation: generation
+                            song: song, totalBytes: totalBytes, generation: generation,
+                            rejecting: rejecting
                         )
                     }
                 )
@@ -3000,12 +3001,17 @@ final class AudioEngine {
     }
 
     /// Re-resolves the current song's signed media URL for the segment fetcher.
-    /// A different resource length means a different file: never splice it in.
+    /// A refused URL rejects its source so the resolver moves to another one.
+    /// A different resource length means a different file: never splice it in;
+    /// restart the stream on it at the current position instead.
     private func refreshSegmentedStreamURL(
-        song: Song, totalBytes: Int64, generation: UInt64
+        song: Song, totalBytes: Int64, generation: UInt64, rejecting: URL?
     ) async throws -> URL {
         guard let resolver = streamResolver(for: song) else {
             throw AudioTransferIntegrityError.incompleteResource
+        }
+        if let rejecting {
+            rejectPlaybackCandidate(for: song, streamURL: rejecting.absoluteString)
         }
         let refreshed = try await resolver(song.id)
         guard loadGeneration == generation, currentTrack?.id == song.id else {
@@ -3015,6 +3021,7 @@ final class AudioEngine {
               ["http", "https"].contains(url.scheme?.lowercased() ?? "")
         else { throw AudioTransferIntegrityError.invalidResponse }
         if let declared = refreshed.contentLength, declared != totalBytes {
+            if let current = currentTrack { attemptStreamRecovery(for: current) }
             throw AudioTransferIntegrityError.resourceChanged
         }
         if var current = currentTrack {

@@ -976,7 +976,10 @@ final class PlayerViewModel {
                     // keeps duplicate observer fires for the SAME song from
                     // re-triggering `loadVideoStream`, while allowing a genuine
                     // next/previous to load video again. (ExecPlan T3.)
-                    if self.previousObservedTrackId != song.id {
+                    // currentTrack also changes when its signed stream URL is
+                    // refreshed mid-song; only a new song may turn video off.
+                    let songChanged = self.previousObservedTrackId != song.id
+                    if songChanged {
                         self.cancelLyricsRequest()
                         self.cancelSourceReplacement()
                         self.autoSkipTask?.cancel()
@@ -994,7 +997,7 @@ final class PlayerViewModel {
                             self.lastHandledVideoTrackId = song.id
                             self.audioEngine.loadVideoStream(for: song)
                         }
-                    } else if self.isVideoMode {
+                    } else if self.isVideoMode, songChanged {
                         self.isVideoMode = false
                         self.audioEngine.setVideoMode(false)
                     }

@@ -402,7 +402,10 @@ private final class BlockingResult<Value>: @unchecked Sendable {
 /// few ranges per signed URL (~5) before 403, so the URL is refreshed
 /// proactively and on 403/410/429.
 actor SegmentedCDNFetcher {
-    typealias Refresh = @Sendable () async throws -> URL
+    /// Returns a fresh signed URL. `rejecting` is the URL the CDN refused with
+    /// 403/410: an IOS-client URL is cut off ~70 s into the media however often
+    /// it is re-signed, so the resolver must move to another source.
+    typealias Refresh = @Sendable (_ rejecting: URL?) async throws -> URL
 
     private var request: URLRequest
     private var rangesOnCurrentURL = 0
@@ -419,14 +422,14 @@ actor SegmentedCDNFetcher {
 
     func fetch(_ range: Range<Int64>) async throws -> Data {
         if rangesOnCurrentURL >= 5 {
-            try await refreshURL()
+            try await refreshURL(rejecting: nil)
         }
         for attempt in 0..<2 {
             let ranged = try YouTubeCDNRangeRequest.applying(range, to: request)
             let (data, response) = try await session.data(for: ranged)
             if let http = response as? HTTPURLResponse,
                [403, 410, 429].contains(http.statusCode), attempt == 0 {
-                try await refreshURL()
+                try await refreshURL(rejecting: http.statusCode == 429 ? nil : request.url)
                 continue
             }
             _ = try AudioTransferIntegrity.validate(
@@ -439,8 +442,8 @@ actor SegmentedCDNFetcher {
         throw AudioTransferIntegrityError.incompleteResource
     }
 
-    private func refreshURL() async throws {
-        request.url = try await refresh()
+    private func refreshURL(rejecting: URL?) async throws {
+        request.url = try await refresh(rejecting)
         rangesOnCurrentURL = 0
     }
 }

@@ -120,6 +120,37 @@ final class SegmentedAudioStreamTests: XCTestCase {
         XCTAssertEqual((missing as? HTTPURLResponse)?.statusCode, 404)
     }
 
+    func testFetcherRejectsRefusedURLAndOnlyRefreshesProactivelyAfterFiveRanges() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SegmentedCDNStub.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let refused = URL(string: "https://cdn.segmented.test/refused")!
+        let working = URL(string: "https://cdn.segmented.test/working")!
+        let rejections = RejectionLog()
+        let fetcher = SegmentedCDNFetcher(
+            request: URLRequest(url: refused), totalBytes: 80, session: session,
+            refresh: { rejecting in
+                await rejections.append(rejecting)
+                return working
+            }
+        )
+
+        let first = try await fetcher.fetch(0..<8)
+        XCTAssertEqual(first, SegmentedCDNStub.resource.subdata(in: 0..<8))
+        let afterRefusal = await rejections.entries
+        XCTAssertEqual(afterRefusal, [refused], "403 rejects the refused URL's source")
+
+        for start in stride(from: 8, to: 40, by: 8) {
+            _ = try await fetcher.fetch(Int64(start)..<Int64(start + 8))
+        }
+        let beforeProactive = await rejections.entries
+        XCTAssertEqual(beforeProactive.count, 1, "five ranges on the working URL need no refresh")
+        _ = try await fetcher.fetch(40..<48)
+        let afterProactive = await rejections.entries
+        XCTAssertEqual(afterProactive, [refused, nil], "proactive refresh rejects nothing")
+    }
+
     func testProxyReportsFetchFailureAsBadGateway() async throws {
         let proxy = try LoopbackSegmentProxy(totalBytes: 80) { _ in
             throw AudioTransferIntegrityError.incompleteResource
@@ -137,4 +168,46 @@ final class SegmentedAudioStreamTests: XCTestCase {
         let (_, response) = try await session.data(for: request)
         XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 502)
     }
+}
+
+private actor RejectionLog {
+    private(set) var entries: [URL?] = []
+    func append(_ url: URL?) { entries.append(url) }
+}
+
+/// CDN double: path "/refused" answers 403; anything else serves byte ranges
+/// of an 80-byte resource with a correct Content-Range.
+final class SegmentedCDNStub: URLProtocol {
+    static let resource = Data((0..<80).map { UInt8($0) })
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "cdn.segmented.test"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let url = request.url else { return }
+        if url.path == "/refused" {
+            let response = HTTPURLResponse(url: url, statusCode: 403, httpVersion: "HTTP/1.1", headerFields: [:])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+        let header = request.value(forHTTPHeaderField: "Range") ?? ""
+        let bounds = header.dropFirst("bytes=".count).split(separator: "-").compactMap { Int($0) }
+        let start = bounds.first ?? 0
+        let end = bounds.count > 1 ? bounds[1] : Self.resource.count - 1
+        let body = Self.resource.subdata(in: start..<(end + 1))
+        let response = HTTPURLResponse(
+            url: url, statusCode: 206, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Range": "bytes \(start)-\(end)/\(Self.resource.count)",
+                           "Content-Length": "\(body.count)"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: body)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
