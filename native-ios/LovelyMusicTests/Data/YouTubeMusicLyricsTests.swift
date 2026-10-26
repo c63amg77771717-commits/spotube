@@ -48,7 +48,7 @@ final class YouTubeMusicLyricsTests: XCTestCase {
 
     func testOfficialTimedLyricsSkipTheFallback() async throws {
         let fallback = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
-        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.timed }, fallback: fallback)
+        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.timed }, fallbacks: [fallback])
         let report = try await repository.lookup(context: context())
         XCTAssertEqual(report.lyrics?.providerID, .youtubeMusic)
         XCTAssertEqual(report.state, .synchronized)
@@ -57,7 +57,7 @@ final class YouTubeMusicLyricsTests: XCTestCase {
 
     func testFallbackTimelineBeatsOfficialPlainText() async throws {
         let fallback = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
-        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.plain }, fallback: fallback)
+        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.plain }, fallbacks: [fallback])
         let report = try await repository.lookup(context: context())
         XCTAssertEqual(report.lyrics?.providerID, .lrclib)
         XCTAssertEqual(fallback.calls, 1)
@@ -65,7 +65,7 @@ final class YouTubeMusicLyricsTests: XCTestCase {
 
     func testOfficialPlainTextBeatsNoFallbackMatch() async throws {
         let fallback = RecordingLyricsRepository(lyrics: nil)
-        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.plain }, fallback: fallback)
+        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in Self.plain }, fallbacks: [fallback])
         let report = try await repository.lookup(context: context())
         XCTAssertEqual(report.lyrics?.providerID, .youtubeMusic)
         XCTAssertEqual(report.state, .confirmedPlain)
@@ -73,13 +73,55 @@ final class YouTubeMusicLyricsTests: XCTestCase {
 
     func testOfficialFailureFallsBackAndNonYouTubeSongsSkipOfficial() async throws {
         let fallback = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
-        let failing = YouTubeMusicFirstLyricsRepository(official: { _ in throw URLError(.timedOut) }, fallback: fallback)
+        let failing = YouTubeMusicFirstLyricsRepository(official: { _ in throw URLError(.timedOut) }, fallbacks: [fallback])
         let report = try await failing.lookup(context: context())
         XCTAssertEqual(report.lyrics?.providerID, .lrclib)
 
         let neverCalled = YouTubeMusicFirstLyricsRepository(
-            official: { _ in XCTFail("official lookup needs a YouTube video ID"); return nil }, fallback: fallback)
+            official: { _ in XCTFail("official lookup needs a YouTube video ID"); return nil }, fallbacks: [fallback])
         _ = try await neverCalled.lookup(context: LyricsLookupContext(title: "Song", artist: "Artist"))
+    }
+
+    func testLaterFallbackTimelineIsUsedWhenEarlierOnlyHasPlainText() async throws {
+        let netease = RecordingLyricsRepository(lyrics: Self.plain)
+        let lrclib = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
+        let repository = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [netease, lrclib])
+        let report = try await repository.lookup(context: context())
+        XCTAssertEqual(report.lyrics?.providerID, .lrclib)
+        XCTAssertEqual(report.state, .synchronized)
+
+        let noTimeline = YouTubeMusicFirstLyricsRepository(
+            official: { _ in nil }, fallbacks: [RecordingLyricsRepository(lyrics: nil), netease])
+        let firstWithContent = try await noTimeline.lookup(context: context())
+        XCTAssertEqual(firstWithContent.state, .confirmedPlain)
+    }
+
+    func testRemoteClientVersionIsValidatedAndCached() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "YouTubeMusicLyricsTests.\(UUID().uuidString)"))
+        XCTAssertEqual(YouTubeMusicLyricsClientConfig.androidMusicVersion(defaults: defaults), "7.27.52")
+        XCTAssertFalse(YouTubeMusicLyricsClientConfig.apply(Data(#"{"androidMusicVersion":"latest; drop"}"#.utf8), defaults: defaults))
+        XCTAssertFalse(YouTubeMusicLyricsClientConfig.apply(Data("not json".utf8), defaults: defaults))
+        XCTAssertEqual(YouTubeMusicLyricsClientConfig.androidMusicVersion(defaults: defaults), "7.27.52")
+        XCTAssertTrue(YouTubeMusicLyricsClientConfig.apply(Data(#"{"androidMusicVersion":" 8.01.3 "}"#.utf8), defaults: defaults))
+        XCTAssertEqual(YouTubeMusicLyricsClientConfig.androidMusicVersion(defaults: defaults), "8.01.3")
+    }
+
+    func testNetEaseSearchAndLyricParsing() throws {
+        let search = Data("""
+        {"result":{"songs":[
+          {"id":29713754,"name":"匆匆那年","artists":[{"name":"王菲"}],"album":{"name":"匆匆那年"},"duration":241000},
+          {"id":1297986663,"name":"FRIENDS","artists":[{"name":"Marshmello"},{"name":"Anne-Marie"}],"duration":203000},
+          {"id":1,"name":"no artist","artists":[]}
+        ]},"code":200}
+        """.utf8)
+        let songs = try NetEaseLyricsService.songs(from: search)
+        XCTAssertEqual(songs.map(\.id), [29713754, 1297986663])
+        XCTAssertEqual(songs[1].artist, "Marshmello/Anne-Marie")
+        XCTAssertEqual(songs[0].duration, 241)
+
+        let lyric = Data(#"{"lrc":{"lyric":"[00:14.17]我已经\n"},"code":200}"#.utf8)
+        XCTAssertEqual(try NetEaseLyricsService.lrc(from: lyric), "[00:14.17]我已经\n")
+        XCTAssertNil(try NetEaseLyricsService.lrc(from: Data(#"{"nolyric":true,"code":200}"#.utf8)))
     }
 }
 

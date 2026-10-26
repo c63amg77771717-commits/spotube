@@ -12,9 +12,10 @@ struct YouTubeMusicLyricsService: Sendable {
     }
 
     private static let webRemixUserAgent = YouTubeClient.userAgentWeb
-    private static let androidMusicVersion = "7.27.52"
-    private static let androidMusicUserAgent =
-        "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14) gzip"
+    private static var androidMusicVersion: String { YouTubeMusicLyricsClientConfig.androidMusicVersion() }
+    private static var androidMusicUserAgent: String {
+        "com.google.android.apps.youtube.music/\(androidMusicVersion) (Linux; U; Android 14) gzip"
+    }
 
     func lyrics(videoID: String) async throws -> SyncedLyrics? {
         let next = try await request("next", body: ["videoId": videoID], android: false)
@@ -112,21 +113,22 @@ struct YouTubeMusicLyricsService: Sendable {
 }
 
 /// YouTube Music's official lyrics come first: timed ones are used as is. Without
-/// timing, LRCLIB/LrcApi may still supply a timeline that matches the recording;
-/// otherwise the official untimed text beats guessing from title matches.
+/// timing, a fallback (NetEase, then LRCLIB/LrcApi) may still supply a timeline
+/// that matches the recording; otherwise the official untimed text beats guessing
+/// from title matches; otherwise the first fallback that found anything.
 struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
     typealias Official = @Sendable (_ videoID: String) async throws -> SyncedLyrics?
 
     let official: Official
-    let fallback: LyricsRepositoryProtocol
+    let fallbacks: [LyricsRepositoryProtocol]
 
-    init(official: @escaping Official, fallback: LyricsRepositoryProtocol) {
+    init(official: @escaping Official, fallbacks: [LyricsRepositoryProtocol]) {
         self.official = official
-        self.fallback = fallback
+        self.fallbacks = fallbacks
     }
 
-    init(service: YouTubeMusicLyricsService = .init(), fallback: LyricsRepositoryProtocol) {
-        self.init(official: { try await service.lyrics(videoID: $0) }, fallback: fallback)
+    init(service: YouTubeMusicLyricsService = .init(), fallbacks: [LyricsRepositoryProtocol]) {
+        self.init(official: { try await service.lyrics(videoID: $0) }, fallbacks: fallbacks)
     }
 
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
@@ -139,14 +141,33 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
         if let officialLyrics, officialLyrics.isTimeSynced {
             return .provider(.youtubeMusic, lyrics: officialLyrics, received: 1, successfulResponses: 1, failures: [])
         }
-        let report = try await fallback.lookup(context: context)
-        if let officialLyrics, report.state != .synchronized {
+        var reports: [LyricsLookupReport] = []
+        for fallback in fallbacks {
+            let report: LyricsLookupReport
+            do { report = try await fallback.lookup(context: context) }
+            catch {
+                // One failing source must not hide the next one or the official text.
+                try LyricsMatchingPolicy.checkCancellation(error)
+                continue
+            }
+            if report.state == .synchronized { return report }
+            reports.append(report)
+        }
+        try Task.checkCancellation()
+        if let officialLyrics {
             return .provider(.youtubeMusic, lyrics: officialLyrics, received: 1, successfulResponses: 1, failures: [])
         }
-        return report
+        return reports.first { report in
+            report.lyrics.map { !$0.lines.isEmpty || !$0.candidates.isEmpty } ?? false
+        } ?? reports.last ?? .legacy(nil)
     }
 
     func getLyrics(title: String, artist: String, duration: Int?) async throws -> SyncedLyrics? {
-        try await fallback.getLyrics(title: title, artist: artist, duration: duration)
+        for fallback in fallbacks {
+            if let lyrics = try? await fallback.getLyrics(title: title, artist: artist, duration: duration),
+               !lyrics.lines.isEmpty { return lyrics }
+            try Task.checkCancellation()
+        }
+        return nil
     }
 }

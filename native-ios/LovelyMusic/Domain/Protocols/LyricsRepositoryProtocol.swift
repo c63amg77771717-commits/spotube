@@ -39,12 +39,13 @@ extension LyricsRepositoryProtocol {
 }
 
 enum LyricsProviderID: String, Codable, Hashable, Sendable {
-    case lrclib, lrcapi, youtubeMusic
+    case lrclib, lrcapi, youtubeMusic, netease
     var displayName: String {
         switch self {
         case .lrclib: return "LRCLib"
         case .lrcapi: return "LrcApi"
         case .youtubeMusic: return "YouTube Music"
+        case .netease: return "網易雲音樂"
         }
     }
 }

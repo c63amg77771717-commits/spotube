@@ -121,6 +121,7 @@ struct LovelyMusicApp: App {
                 GoogleDrivePlaylistSync.shared.startForeground()
             }
             await flagManager.fetchFlags()
+            await YouTubeMusicLyricsClientConfig.refresh()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {

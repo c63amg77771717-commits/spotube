@@ -126,11 +126,11 @@ final class DIContainer {
             lyricsRepo = ReviewLyricsFixtureRepository()
         } else {
             lyricsRepo = YouTubeMusicFirstLyricsRepository(
-                fallback: CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService()))
+                fallbacks: [NetEaseLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())])
         }
         #else
         lyricsRepo = YouTubeMusicFirstLyricsRepository(
-                fallback: CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService()))
+                fallbacks: [NetEaseLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())])
         #endif
         let favoritesRepo = LocalFavoritesRepository()
 
