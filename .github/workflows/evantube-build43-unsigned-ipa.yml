@@ -43,6 +43,7 @@ jobs:
               '      - path: LovelyMusicTests/Core/Audio/Streaming/SegmentedAudioStreamTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Domain/StreamingDataTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/YouTubeMusicLyricsTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Data/YouTubeTitleParserTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/PlayerRepositorySingleFlightTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/KeylessOnlineSearchTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Data/AnonymousPlaybackFallbackTests.swift' + chr(10) +
@@ -80,6 +81,7 @@ jobs:
             -only-testing:LovelyMusicTests/SegmentedAudioStreamTests \
             -only-testing:LovelyMusicTests/StreamingDataTests \
             -only-testing:LovelyMusicTests/YouTubeMusicLyricsTests \
+            -only-testing:LovelyMusicTests/YouTubeTitleParserTests \
             -only-testing:LovelyMusicTests/KeylessOnlineSearchTests \
             -only-testing:LovelyMusicTests/AnonymousPlaybackFallbackTests \
             -only-testing:LovelyMusicTests/Build37AnonymousSourceSelectionTests \

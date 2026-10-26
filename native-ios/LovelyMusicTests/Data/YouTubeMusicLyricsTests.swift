@@ -114,14 +114,14 @@ final class YouTubeMusicLyricsTests: XCTestCase {
           {"id":1,"name":"no artist","artists":[]}
         ]},"code":200}
         """.utf8)
-        let songs = try NetEaseLyricsService.songs(from: search)
+        let songs = try TitleMatchedLyricsService.neteaseSongs(from: search)
         XCTAssertEqual(songs.map(\.id), [29713754, 1297986663])
-        XCTAssertEqual(songs[1].artist, "Marshmello/Anne-Marie")
-        XCTAssertEqual(songs[0].duration, 241)
+        XCTAssertEqual(songs[1].record.artist, "Marshmello/Anne-Marie")
+        XCTAssertEqual(songs[0].record.duration, 241)
 
         let lyric = Data(#"{"lrc":{"lyric":"[00:14.17]我已经\n"},"code":200}"#.utf8)
-        XCTAssertEqual(try NetEaseLyricsService.lrc(from: lyric), "[00:14.17]我已经\n")
-        XCTAssertNil(try NetEaseLyricsService.lrc(from: Data(#"{"nolyric":true,"code":200}"#.utf8)))
+        XCTAssertEqual(try TitleMatchedLyricsService.neteaseLRC(from: lyric), "[00:14.17]我已经\n")
+        XCTAssertNil(try TitleMatchedLyricsService.neteaseLRC(from: Data(#"{"nolyric":true,"code":200}"#.utf8)))
     }
 }
 
