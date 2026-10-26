@@ -125,10 +125,12 @@ final class DIContainer {
             // Layout previews must not send demo metadata to production lyric APIs.
             lyricsRepo = ReviewLyricsFixtureRepository()
         } else {
-            lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())
+            lyricsRepo = YouTubeMusicFirstLyricsRepository(
+                fallback: CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService()))
         }
         #else
-        lyricsRepo = CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())
+        lyricsRepo = YouTubeMusicFirstLyricsRepository(
+                fallback: CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService()))
         #endif
         let favoritesRepo = LocalFavoritesRepository()
 

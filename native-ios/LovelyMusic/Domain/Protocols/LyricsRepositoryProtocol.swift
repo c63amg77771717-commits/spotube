@@ -39,8 +39,14 @@ extension LyricsRepositoryProtocol {
 }
 
 enum LyricsProviderID: String, Codable, Hashable, Sendable {
-    case lrclib, lrcapi
-    var displayName: String { self == .lrclib ? "LRCLib" : "LrcApi" }
+    case lrclib, lrcapi, youtubeMusic
+    var displayName: String {
+        switch self {
+        case .lrclib: return "LRCLib"
+        case .lrcapi: return "LrcApi"
+        case .youtubeMusic: return "YouTube Music"
+        }
+    }
 }
 
 /// The provider namespace is part of equality: two providers may return the same ID.
