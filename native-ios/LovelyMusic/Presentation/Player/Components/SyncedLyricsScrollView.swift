@@ -85,19 +85,13 @@ struct SyncedLyricsScrollView: View {
                         }
                     )
                     .onChange(of: playbackProgress.currentTime) { _, newTime in
-                        guard displayLyrics.isTimeSynced else { return }
-                        let newId = displayLyrics.lines.last { $0.time <= newTime }?.id
-                        guard newId != currentLineId else { return }
-                        currentLineId = newId
-                        if let newId, !isUserScrolling {
-                            if reduceMotion {
-                                proxy.scrollTo(newId, anchor: .center)
-                            } else {
-                                withAnimation(.easeInOut(duration: 0.5)) {
-                                    proxy.scrollTo(newId, anchor: .center)
-                                }
-                            }
-                        }
+                        followLyricLine(playerTime: newTime, proxy: proxy)
+                    }
+                    .onChange(of: playbackProgress.lyricTimelineOffset) { _, _ in
+                        followLyricLine(playerTime: playbackProgress.currentTime, proxy: proxy)
+                    }
+                    .onChange(of: playbackProgress.playingSourceID) { _, _ in
+                        followLyricLine(playerTime: playbackProgress.currentTime, proxy: proxy)
                     }
                 }
 
@@ -252,6 +246,30 @@ struct SyncedLyricsScrollView: View {
     }
 
     // MARK: - Lyric Line
+
+    private func followLyricLine(playerTime: TimeInterval, proxy: ScrollViewProxy) {
+        guard displayLyrics.isTimeSynced else { return }
+        let anchor = LyricPlaybackClock.Anchor(
+            timelineOffset: playbackProgress.lyricTimelineOffset,
+            timelineDuration: displayLyrics.timelineDuration,
+            playingDuration: playbackProgress.duration,
+            authoredForPlayingSource: displayLyrics.authoredVideoID != nil
+                && displayLyrics.authoredVideoID == playbackProgress.playingSourceID)
+        let lyricTime = LyricPlaybackClock.lyricTime(playerTime: playerTime, anchor: anchor)
+        guard let index = LyricPlaybackClock.activeLineIndex(
+            times: displayLyrics.lines.map(\.time), lyricTime: lyricTime) else { return }
+        let newId = displayLyrics.lines[index].id
+        guard newId != currentLineId else { return }
+        currentLineId = newId
+        guard !isUserScrolling else { return }
+        if reduceMotion {
+            proxy.scrollTo(newId, anchor: .center)
+        } else {
+            withAnimation(.easeInOut(duration: 0.5)) {
+                proxy.scrollTo(newId, anchor: .center)
+            }
+        }
+    }
 
     @ViewBuilder
     private func lyricLine(_ line: LyricLine) -> some View {

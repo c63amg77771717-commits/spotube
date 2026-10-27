@@ -92,6 +92,12 @@ final class AudioEngine {
         }
     }
     private(set) var duration: TimeInterval = 0
+    /// Added to AVPlayer time before choosing a lyric line. Zero for a file
+    /// whose timeline already matches the video; the sidx presentation time
+    /// for progressive AAC; Opus pre-skip when the CAF still contains it.
+    private(set) var lyricTimelineOffset: TimeInterval = 0
+    /// "aac" until a prepared Opus file has taken over playback.
+    private(set) var activeAudioCodec: String = "aac"
     private(set) var currentTime: TimeInterval = 0 {
         didSet {
             PersonalMusicTaste.shared.sample(position: currentTime, playing: isPlaying && !isBuffering)
@@ -192,6 +198,13 @@ final class AudioEngine {
     var contextualStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?))?
     /// Plays YouTube Music's official audio instead of a video in audio mode (nil: never).
     var officialAudio: OfficialAudioCatalog?
+    /// Test double for the background upgrade. Production leaves this nil and
+    /// uses `opusUpgradeLocator` plus the WebM remuxer. Either way AAC has
+    /// already started; a nil result keeps that AAC playing.
+    var highQualityUpgrade: (@MainActor (String) async -> PreparedAudioUpgrade?)?
+    /// Opus URL cached from the same player response that chose the AAC startup.
+    var opusUpgradeLocator: ((String) -> (url: String, contentLength: Int64?)?)?
+    private var upgradeTask: Task<Void, Never>?
     /// The current song waits for the official-audio lookup before loading.
     private var awaitingOfficialAudio = false
     var contextualVideoStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?)?)? {
@@ -2986,7 +2999,8 @@ final class AudioEngine {
                 Log.audio.info(
                     "Segmented streaming: \(index.references.count) fragments, \(totalBytes)B for \(song.id, privacy: .public)"
                 )
-                self.playSegmentedStream(playlistURL, proxy: proxy, song: song, seekTo: initialSeek)
+                self.playSegmentedStream(playlistURL, proxy: proxy, song: song, seekTo: initialSeek,
+                                         timelineOffset: index.earliestPresentationTime)
             } catch {
                 guard !Task.isCancelled, self.loadGeneration == generation else { return }
                 Log.audio.warning(
@@ -2999,11 +3013,14 @@ final class AudioEngine {
     }
 
     private func playSegmentedStream(
-        _ playlistURL: URL, proxy: LoopbackSegmentProxy, song: Song, seekTo initialSeek: TimeInterval?
+        _ playlistURL: URL, proxy: LoopbackSegmentProxy, song: Song, seekTo initialSeek: TimeInterval?,
+        timelineOffset: TimeInterval
     ) {
         segmentedProxy = proxy
         segmentedItemBecameReady = false
         isStreamingMode = false // HLS is seekable
+        lyricTimelineOffset = timelineOffset.isFinite ? timelineOffset : 0
+        activeAudioCodec = "aac"
         let playerItem = AVPlayerItem(asset: AVURLAsset(url: playlistURL))
         configurePlayer(with: playerItem)
         pendingSeekTime = initialSeek
@@ -3016,6 +3033,87 @@ final class AudioEngine {
         resumePlayer()
         applyAudioProcessing()
         recoveryService.startStallDetection()
+        // AAC is already running. Opus preparation must not move this call.
+        scheduleHighQualityUpgrade(song: song, generation: loadGeneration)
+    }
+
+    /// Downloads and remuxes Opus after AAC has started, then switches the
+    /// existing AVPlayer at the current position. A failure leaves AAC playing.
+    private func scheduleHighQualityUpgrade(song: Song, generation: UInt64) {
+        upgradeTask?.cancel()
+        let sourceID = playbackSourceID(for: song)
+        upgradeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let prepared: PreparedAudioUpgrade?
+            if let highQualityUpgrade {
+                prepared = await highQualityUpgrade(sourceID)
+            } else if let remote = self.opusUpgradeLocator?(sourceID), let url = URL(string: remote.url),
+                      url.scheme?.lowercased() == "https" {
+                let headers = self.streamHeaders.isEmpty ? AppConstants.youtubeStreamHeaders : self.streamHeaders
+                prepared = await WebMOpus.downloadAndPrepare(
+                    remote: url, headers: headers, contentLength: remote.contentLength,
+                    session: self.audioTransferSession)
+            } else {
+                prepared = nil
+            }
+            guard let prepared, !Task.isCancelled else { return }
+            await self.adoptUpgrade(prepared, song: song, generation: generation)
+        }
+    }
+
+    private func adoptUpgrade(_ upgrade: PreparedAudioUpgrade, song: Song, generation: UInt64) async {
+        guard loadGeneration == generation, currentTrack?.id == song.id, player?.currentItem != nil else { return }
+        let asset = AVURLAsset(url: upgrade.fileURL)
+        let playable = (try? await asset.load(.isPlayable)) ?? false
+        let tracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        guard playable, !tracks.isEmpty, !Task.isCancelled,
+              loadGeneration == generation, currentTrack?.id == song.id,
+              let activePlayer = player, activePlayer.currentItem != nil else {
+            Log.audio.warning("High-quality upgrade is not playable; staying on AAC")
+            return
+        }
+        let position = activePlayer.currentTime().seconds
+        let handoffTime = position.isFinite ? max(0, position) : currentTime
+        let wasPlaying = isPlaying && !userInitiatedPause
+        if let observer = endOfTrackObserver {
+            NotificationCenter.default.removeObserver(observer)
+            endOfTrackObserver = nil
+        }
+        itemObservations.forEach { $0.invalidate() }
+        itemObservations.removeAll()
+        let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredForwardBufferDuration = 0
+        activePlayer.replaceCurrentItem(with: playerItem)
+        if let audioMix = eqProcessor.createAudioMix(for: playerItem.asset) {
+            playerItem.audioMix = audioMix
+        }
+        setupPlayerItemObserver(playerItem)
+        setupTimeControlObserver()
+        lyricTimelineOffset = upgrade.timelineOffset.isFinite ? upgrade.timelineOffset : 0
+        activeAudioCodec = upgrade.codec
+        localFileURL = upgrade.fileURL
+        segmentedProxy?.stop()
+        segmentedProxy = nil
+        let resumeAt = pendingSeekTime ?? handoffTime
+        pendingSeekTime = nil
+        if resumeAt > 0.35 {
+            let cmTime = CMTime(seconds: resumeAt, preferredTimescale: 600)
+            activePlayer.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+                Task { @MainActor [weak self] in
+                    guard let self, self.loadGeneration == generation, self.player?.currentItem === playerItem else { return }
+                    let landed = self.player?.currentTime().seconds
+                    self.currentTime = (finished ? resumeAt : nil) ?? (landed?.isFinite == true ? landed! : resumeAt)
+                    self.isBuffering = false
+                    if wasPlaying { self.resumePlayer() }
+                }
+            }
+        } else {
+            isBuffering = false
+            currentTime = resumeAt
+            if wasPlaying { resumePlayer() }
+        }
+        nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
+        Log.audio.info("High-quality upgrade adopted codec=\(upgrade.codec, privacy: .public) at \(resumeAt)s")
     }
 
     /// Re-resolves the current song's signed media URL for the segment fetcher.
@@ -4331,6 +4429,10 @@ final class AudioEngine {
         backgroundRemuxTask = nil
         downloadTask?.cancel()
         downloadTask = nil
+        upgradeTask?.cancel()
+        upgradeTask = nil
+        lyricTimelineOffset = 0
+        activeAudioCodec = "aac"
         segmentedProxy?.stop()
         segmentedProxy = nil
         if let observer = endOfTrackObserver {

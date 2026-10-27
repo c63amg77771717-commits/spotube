@@ -11,6 +11,13 @@ final class PlaybackProgress {
 
     var currentTime: TimeInterval { audioEngine.currentTime }
     var duration: TimeInterval { audioEngine.duration }
+    /// Seconds added to player time to reach the lyric timeline. AAC's sidx
+    /// presentation time and an Opus file's container delay differ.
+    var lyricTimelineOffset: TimeInterval { audioEngine.lyricTimelineOffset }
+    var playingSourceID: String? {
+        guard let song = audioEngine.currentTrack else { return nil }
+        return audioEngine.playbackSourceID(for: song)
+    }
 
     init(audioEngine: AudioEngine) {
         self.audioEngine = audioEngine

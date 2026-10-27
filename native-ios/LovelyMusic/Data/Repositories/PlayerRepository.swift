@@ -48,8 +48,15 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         let rejected: Set<AudioCandidateClient>
     }
 
+    private struct OpusUpgradeEntry {
+        let url: String
+        let contentLength: Int64?
+        let expiresAt: Date
+    }
+
     private let candidateLock = NSLock()
     private var candidateStates: [String: CandidateState] = [:]
+    private var opusUpgrades: [String: OpusUpgradeEntry] = [:]
     private var candidateSessionContext: PlayerSessionContext?
     private var candidateVersion: UInt64 = 0
     // Signed-in session whose native IOS player returned HTTP 400. That request
@@ -139,6 +146,16 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         // authenticated URL to a caller after the session has changed.
         guard await api.playerSessionContext() == sessionContext else { throw CancellationError() }
         return base.withRequestHeaders(requestHeaders)
+    }
+
+    /// Opus URL from the player response that already selected AAC. Nil when that
+    /// response had no itag 251. Never triggers its own network request.
+    func cachedOpusUpgrade(videoId: String) -> (url: String, contentLength: Int64?)? {
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        guard let entry = opusUpgrades[videoId], entry.expiresAt > now else { return nil }
+        return (entry.url, entry.contentLength)
     }
 
     func reportPlaybackCandidateFailure(videoId: String, streamURL: String) {
@@ -242,6 +259,20 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         candidateLock.lock()
         defer { candidateLock.unlock() }
         sessionPlayerBadRequestContext = context
+    }
+
+    private func rememberOpusUpgrade(videoId: String, url: String?, contentLength: String?) {
+        guard let url, !url.isEmpty else { return }
+        let now = candidateClock()
+        candidateLock.lock()
+        defer { candidateLock.unlock() }
+        if opusUpgrades.count >= Self.maximumCandidateVideos,
+           let oldest = opusUpgrades.min(by: { $0.value.expiresAt < $1.value.expiresAt })?.key {
+            opusUpgrades.removeValue(forKey: oldest)
+        }
+        opusUpgrades[videoId] = OpusUpgradeEntry(
+            url: url, contentLength: contentLength.flatMap(Int64.init),
+            expiresAt: now.addingTimeInterval(Self.candidateTTL))
     }
 
     private func nextCandidateVersion() -> UInt64 {
@@ -646,6 +677,9 @@ final class PlayerRepository: PlayerRepositoryProtocol, @unchecked Sendable {
         }
 
         let streamingData = StreamingDataMapper.map(response.streamingData)
+        if let opus = streamingData.preferredOpusFormat() {
+            rememberOpusUpgrade(videoId: videoId, url: opus.url, contentLength: opus.contentLength)
+        }
         guard let bestFormat = streamingData.bestAudioFormat(
             quality: quality,
             candidateIsPlayable: { format in

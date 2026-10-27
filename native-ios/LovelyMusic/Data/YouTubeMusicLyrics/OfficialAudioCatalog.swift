@@ -68,7 +68,7 @@ final class OfficialAudioCatalog: @unchecked Sendable {
     /// run of the app (a late answer is saved for next time).
     func prepare(_ song: Song) async {
         guard Self.isEligible(song) else { return }
-        await lookup(id: song.id, title: song.title, duration: song.duration).value
+        await lookup(id: song.id, title: song.title, artist: song.artistName, duration: song.duration).value
     }
 
     /// The version lyrics must follow for `context`, waiting for a running lookup.
@@ -78,7 +78,7 @@ final class OfficialAudioCatalog: @unchecked Sendable {
         let keepsOriginal = self.keepsOriginal
         let keep = await MainActor.run { keepsOriginal(id) }
         guard !keep else { return nil }
-        await lookup(id: id, title: context.title, duration: context.duration).value
+        await lookup(id: id, title: context.title, artist: context.artist, duration: context.duration).value
         return playingMatch(id)
     }
 
@@ -97,45 +97,78 @@ final class OfficialAudioCatalog: @unchecked Sendable {
         }
     }
 
-    private func lookup(id: String, title: String, duration: Int?) -> Task<Void, Never> {
+    private func lookup(id: String, title: String, artist: String, duration: Int?) -> Task<Void, Never> {
         lock.withLock {
             if let running = lookups[id] { return running }
             if decisions[id] != nil { return Task {} }
             let search = self.search
-            let finder = Task { await Self.find(title: title, duration: duration, search: search) }
+            let finder = Task { await Self.findOutcome(title: title, artist: artist, duration: duration, search: search) }
             let timeout = self.timeout
             let task = Task { [weak self] in
                 // Whichever ends first: the search, or the timeout (nil). A task group
                 // would wait for the search either way.
-                let found: Decision? = await withCheckedContinuation { continuation in
+                let found: Immediate? = await withCheckedContinuation { continuation in
                     let once = Once()
                     Task {
-                        let match = await finder.value
-                        if once.claim() { continuation.resume(returning: match.map(Decision.match) ?? Decision.none) }
+                        let outcome = await finder.value
+                        let immediate: Immediate
+                        switch outcome.kind {
+                        case .match:
+                            immediate = outcome.match.map(Immediate.match) ?? .none
+                        case .none:
+                            immediate = .none
+                        case .unavailable:
+                            immediate = .unavailable
+                        }
+                        if once.claim() { continuation.resume(returning: immediate) }
                     }
                     Task {
                         try? await Task.sleep(for: timeout)
                         if once.claim() { continuation.resume(returning: nil) }
                     }
                 }
-                self?.finish(id: id, decision: found, finder: finder)
+                self?.finish(id: id, immediate: found, finder: finder)
             }
             lookups[id] = task
             return task
         }
     }
 
-    private func finish(id: String, decision: Decision?, finder: Task<Match?, Never>) {
+    /// What the search finished with before the playback timeout.
+    /// Nil means the timeout won: this run keeps the original video.
+    private enum Immediate: Sendable {
+        case match(Match)
+        case none
+        case unavailable
+    }
+
+    private func finish(id: String, immediate: Immediate?, finder: Task<FindOutcome, Never>) {
         lock.withLock {
             lookups[id] = nil
-            decisions[id] = decision ?? Decision.none
-            if case .match(let match)? = decision { save(match, for: id) }
+            switch immediate {
+            case .some(.match(let match)):
+                decisions[id] = .match(match)
+                save(match, for: id)
+            case .some(.none), .none:
+                // A real miss, or a timeout, stays a miss for this run.
+                decisions[id] = .none
+            case .some(.unavailable):
+                // The search never answered. Leave the song unset so the next play retries.
+                decisions[id] = nil
+            }
         }
-        guard decision == nil else { return }
-        // Timed out: this run keeps the original; a late match serves the next launch.
+        guard immediate == nil else { return }
+        // Timed out: this run keeps the original. A late match is saved for next
+        // launch. A transport failure is not remembered, so the next play retries.
         Task { [weak self] in
-            guard let match = await finder.value, let self else { return }
-            self.lock.withLock { self.save(match, for: id) }
+            let outcome = await finder.value
+            guard let self else { return }
+            self.lock.withLock {
+                if let match = outcome.match { self.save(match, for: id) }
+                if outcome.kind == .unavailable, case .none? = self.decisions[id] {
+                    self.decisions[id] = nil
+                }
+            }
         }
     }
 
@@ -151,23 +184,38 @@ final class OfficialAudioCatalog: @unchecked Sendable {
         func claim() -> Bool { lock.withLock { defer { claimed = true }; return !claimed } }
     }
 
+    private struct FindOutcome: Sendable {
+        enum Kind: Sendable { case match, none, unavailable }
+        var kind: Kind
+        var match: Match?
+    }
+
     /// First YouTube Music song result that is this song (same title and artist,
     /// not a cover, live take or other version), trying up to three title guesses.
     static func find(title: String, duration: Int?, search: Search) async -> Match? {
+        await findOutcome(title: title, artist: "", duration: duration, search: search).match
+    }
+
+    private static func findOutcome(title: String, artist: String, duration: Int?, search: Search) async -> FindOutcome {
         let titleHasArtist = !(YouTubeTitleParser.guesses(title).first?.artist.isEmpty ?? true)
-        for query in YouTubeTitleParser.queries(title, limit: 3) {
-            guard !Task.isCancelled else { return nil }
+            || YouTubeTitleParser.isUsableArtist(artist)
+        var sawResponse = false
+        for query in YouTubeTitleParser.queries(title: title, artist: artist, limit: 4) {
+            guard !Task.isCancelled else { return FindOutcome(kind: sawResponse ? .none : .unavailable, match: nil) }
             let text = (query.song + " " + query.artist).trimmingCharacters(in: .whitespaces)
-            guard let results = try? await search(text) else { continue }
+            let results: [Match]
+            do { results = try await search(text) }
+            catch { continue }
+            sawResponse = true
             for result in results.prefix(5) {
                 let record = YouTubeTitleParser.Record(title: result.title, artist: result.artist,
                                                        duration: result.duration.map(Double.init))
                 if YouTubeTitleParser.isSameSong(record, guess: query, videoTitle: title, videoDuration: duration,
                                                  titleHasArtist: titleHasArtist) {
-                    return result
+                    return FindOutcome(kind: .match, match: result)
                 }
             }
         }
-        return nil
+        return FindOutcome(kind: sawResponse ? .none : .unavailable, match: nil)
     }
 }

@@ -75,23 +75,25 @@ enum LyricsMatchingPolicy {
     static func parseLRC(_ input: String) -> [LyricLine] { parseLRCResult(input).lines }
 
     /// Preserve invalid/unsupported evidence instead of silently accepting a
-    /// valid subset of a damaged timeline. Offsets are not guessed or applied.
+    /// valid subset of a damaged timeline. A finite `[offset:]` within ±30 s
+    /// is the LRC overall adjustment in milliseconds and is added to every cue
+    /// (positive delays the lyric; this is the adjustment Minilyrics and
+    /// NetEase exports write). Anything else still rejects the timeline.
     static func parseLRCResult(_ input: String) -> LRCParseResult {
         guard let pattern = try? NSRegularExpression(pattern: "\\[(\\d{1,3}):(\\d{2}(?:[.:]\\d+)?)\\]") else {
             return .init(lines: [], invalidTimestampCount: 1, untimedContentCount: 0, unsupportedOffset: false)
         }
+        let offsetSeconds = lrcOffsetSeconds(input)
         var output: [LyricLine] = []
         var invalid = 0, untimed = 0
-        var unsupportedOffset = false
+        let unsupportedOffset = offsetSeconds == nil
+        if unsupportedOffset {
+            return .init(lines: [], invalidTimestampCount: 0, untimedContentCount: 0, unsupportedOffset: true)
+        }
         for original in input.components(separatedBy: .newlines) {
             let line = original.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !line.isEmpty else { continue }
-            if line.lowercased().hasPrefix("[offset:") {
-                if line.hasSuffix("]"), let offset = Double(line.dropFirst(8).dropLast()), offset.isFinite, offset == 0 {
-                    continue
-                }
-                unsupportedOffset = true; continue
-            }
+            if line.lowercased().hasPrefix("[offset:") { continue }
             if line.range(of: "^\\[(?:ar|ti|al|by|length|re|ve):", options: [.regularExpression, .caseInsensitive]) != nil { continue }
             let matches = pattern.matches(in: line, range: NSRange(line.startIndex..., in: line))
             guard let last = matches.last, let tail = Range(last.range, in: line) else {
@@ -111,11 +113,27 @@ enum LyricsMatchingPolicy {
                       let minutes = Double(line[m]),
                       let seconds = Double(line[s].replacingOccurrences(of: ":", with: ".")),
                       minutes.isFinite, seconds.isFinite, (0..<60).contains(seconds) else { invalid += 1; continue }
-                output.append(.init(time: minutes * 60 + seconds, text: text))
+                output.append(.init(time: max(0, minutes * 60 + seconds + (offsetSeconds ?? 0)), text: text))
             }
         }
         return .init(lines: output.sorted { $0.time < $1.time }, invalidTimestampCount: invalid,
                      untimedContentCount: untimed, unsupportedOffset: unsupportedOffset)
+    }
+
+    /// nil when an offset tag is present but not a finite millisecond adjustment.
+    /// Missing offset is 0. Multiple tags combine.
+    static func lrcOffsetSeconds(_ input: String) -> Double? {
+        var total = 0.0
+        for original in input.components(separatedBy: .newlines) {
+            let line = original.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard line.lowercased().hasPrefix("[offset:") else { continue }
+            guard line.hasSuffix("]") else { return nil }
+            let body = line.dropFirst("[offset:".count).dropLast()
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let milliseconds = Double(body), milliseconds.isFinite, abs(milliseconds) <= 30_000 else { return nil }
+            total += milliseconds / 1000
+        }
+        return total
     }
 
 

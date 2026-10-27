@@ -91,6 +91,16 @@ final class OfficialAudioCatalogTests: XCTestCase {
     }
 
     @MainActor
+    func testTransportFailureIsRetriedInsteadOfPinned() async throws {
+        let catalog = OfficialAudioCatalog(search: { _ in throw URLError(.cannotConnectToHost) },
+                                           defaults: try defaults(), timeout: .seconds(2))
+        let video = song("XXXXXXXXXXX", "沒有這首歌 - 不存在")
+        await catalog.prepare(video)
+        XCTAssertTrue(catalog.needsLookup(video), "a transport failure must not be cached as a miss")
+        XCTAssertEqual(catalog.sourceID(for: video.id), video.id)
+    }
+
+    @MainActor
     func testOfficialTracksAndUnknownSongsAreLeftAlone() async throws {
         let catalog = OfficialAudioCatalog(search: { _ in [] }, defaults: try defaults())
         var atv = song("bGRFDm7pW50", "遇見")

@@ -9,9 +9,10 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
     typealias Fetch = @Sendable (URLRequest) async throws -> Data
 
     private let fetch: Fetch
-    // Bounds network use per song: three title guesses, each one NetEase search,
-    // one LRCLIB search and at most one NetEase lyric request.
-    private static let maxQueries = 3
+    // Bounds network use per song. Each guess is one NetEase search (two when
+    // traditional and simplified differ) and the same for LRCLIB, plus at most
+    // one lyric download once a record matches.
+    private static let maxQueries = 5
 
     init(fetch: @escaping Fetch) {
         self.fetch = fetch
@@ -38,14 +39,18 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
 
     func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
         let guesses = context.hasYouTubeOrigin
-            ? YouTubeTitleParser.guesses(context.title)
+            ? YouTubeTitleParser.queries(title: context.title, artist: context.artist, limit: Self.maxQueries)
             : [.init(artist: context.artist, song: context.title)]
         guard let first = guesses.first else { return .metadataRejected(provider: .netease) }
-        let queries = context.hasYouTubeOrigin ? YouTubeTitleParser.queries(context.title, limit: Self.maxQueries) : guesses
+        let queries = guesses
         var plain: SyncedLyrics?
         var failures: [LyricsSourceFailure] = []
         var responses = 0
-        let titleHasArtist = !first.artist.isEmpty
+        // Metadata artist is an extra guess. It must not disable the duration
+        // check used when the YouTube title itself names no performer.
+        let titleHasArtist = context.hasYouTubeOrigin
+            ? !(YouTubeTitleParser.guesses(context.title).first?.artist.isEmpty ?? true)
+            : !first.artist.isEmpty
         for guess in queries.prefix(Self.maxQueries) {
             try Task.checkCancellation()
             // NetEase and LRCLIB are queried at the same time; NetEase wins ties.
@@ -65,8 +70,7 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
                     failures += LyricsSourceFailure.from(error, providerID: provider)
                 }
             }
-            // Text is enough to show; more guesses only chase a timeline.
-            if plain != nil, guess != queries.first { break }
+            // A plain hit must not skip later guesses that still have a timeline.
         }
         return .provider(plain?.providerID ?? .netease, lyrics: plain, received: plain == nil ? 0 : 1,
                          successfulResponses: responses, failures: failures)
@@ -82,7 +86,15 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
                         context: LyricsLookupContext, titleHasArtist: Bool) async throws -> SyncedLyrics? {
         switch provider {
         case .netease:
-            let songs = try Self.neteaseSongs(from: try await fetch(Self.neteaseSearch(guess)))
+            let raw = [guess.song, guess.artist].filter { !$0.isEmpty }.joined(separator: " ")
+            var songs: [NetEaseSong] = []
+            for form in YouTubeTitleParser.searchForms(raw).prefix(2) {
+                songs.append(contentsOf: try Self.neteaseSongs(from: try await fetch(Self.neteaseSearch(query: form))))
+                if YouTubeTitleParser.bestMatch(songs.map(\.record), guess: guess, videoTitle: context.title,
+                                                videoDuration: context.duration, titleHasArtist: titleHasArtist) != nil {
+                    break
+                }
+            }
             guard let match = YouTubeTitleParser.bestMatch(songs.map(\.record), guess: guess, videoTitle: context.title,
                                                            videoDuration: context.duration, titleHasArtist: titleHasArtist),
                   let song = songs.first(where: { $0.record.title == match.title && $0.record.artist == match.artist
@@ -92,7 +104,14 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
             return Self.recorded(Self.lyrics(lrc: lrc, plain: nil, recording: match.duration, context: context, provider: .netease),
                                  context, .netease, match)
         default:
-            let records = try Self.lrclibRecords(from: try await fetch(Self.lrclibSearch(guess)))
+            var records = try Self.lrclibRecords(from: try await fetch(Self.lrclibSearch(guess)))
+            let simplifiedGuess = YouTubeTitleParser.Guess(artist: YouTubeTitleParser.simplified(guess.artist),
+                                                           song: YouTubeTitleParser.simplified(guess.song))
+            if records.isEmpty || YouTubeTitleParser.bestMatch(records.map(\.record), guess: guess, videoTitle: context.title,
+                                                               videoDuration: context.duration, titleHasArtist: titleHasArtist) == nil,
+               simplifiedGuess != guess {
+                records.append(contentsOf: try Self.lrclibRecords(from: try await fetch(Self.lrclibSearch(simplifiedGuess))))
+            }
             guard let match = YouTubeTitleParser.bestMatch(records.map(\.record), guess: guess, videoTitle: context.title,
                                                            videoDuration: context.duration, titleHasArtist: titleHasArtist),
                   let record = records.first(where: { $0.record.title == match.title && $0.record.artist == match.artist
@@ -128,16 +147,28 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
         return nil
     }
 
-    /// Timelines within 2 s of the video count as the same recording: YouTube
-    /// lengths are whole seconds and providers report milliseconds.
+    /// Timelines within 8 s of the video stay timed and start-aligned. YouTube
+    /// lengths are whole seconds; rewriting the recording length onto the video
+    /// used to mark a 2 s-different take as compatible without moving cues.
+    /// Larger gaps stay plain so a different recording is not presented as synced.
     static func lyrics(lrc: String, plain: String?, recording: Double?, context: LyricsLookupContext,
                        provider: LyricsProviderID) -> SyncedLyrics? {
-        var aligned = recording
-        if let recording, let video = context.duration.map(Double.init), abs(recording - video) <= 2 {
-            aligned = video
+        let cleaned = withoutCredits(lrc)
+        let parsed = LyricsMatchingPolicy.parseLRCResult(cleaned)
+        let video = context.duration
+        let delta = recording.flatMap { rec in video.map { abs(rec - Double($0)) } }
+        let cuesFit = parsed.lines.allSatisfy { line in
+            guard let video else { return line.time.isFinite && line.time >= 0 }
+            let slack = (delta ?? 0) + 1
+            return line.time.isFinite && line.time >= 0 && line.time <= Double(video) + slack
         }
-        return LyricsMatchingPolicy.lyrics(syncedLRC: withoutCredits(lrc), plainText: plain.map(withoutCredits),
-                                           recordingDuration: aligned, videoDuration: context.duration, provider: provider)
+        if parsed.invalidTimestampCount == 0, parsed.untimedContentCount == 0, !parsed.unsupportedOffset,
+           !parsed.lines.isEmpty, cuesFit, delta.map({ $0 <= 8 }) == true {
+            return SyncedLyrics(lines: parsed.lines, source: provider.displayName, providerID: provider,
+                                timelineDuration: recording)
+        }
+        return LyricsMatchingPolicy.lyrics(syncedLRC: cleaned, plainText: plain.map(withoutCredits),
+                                           recordingDuration: recording, videoDuration: video, provider: provider)
     }
 
     /// NetEase LRC opens with timed credit lines such as `[00:02.03] 制作人 : 梁翘柏`.
@@ -156,8 +187,12 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
     }
 
     static func neteaseSearch(_ guess: YouTubeTitleParser.Guess) -> URLRequest {
+        let raw = [guess.song, guess.artist].filter { !$0.isEmpty }.joined(separator: " ")
+        return neteaseSearch(query: YouTubeTitleParser.searchForms(raw).first ?? raw)
+    }
+
+    static func neteaseSearch(query: String) -> URLRequest {
         var components = URLComponents(string: "https://music.163.com/api/search/get")!
-        let query = YouTubeTitleParser.simplified([guess.song, guess.artist].filter { !$0.isEmpty }.joined(separator: " "))
         components.queryItems = [.init(name: "s", value: query), .init(name: "type", value: "1"),
                                  .init(name: "limit", value: "10")]
         return request(components.url!, referer: "https://music.163.com/")
@@ -217,7 +252,7 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
     }
 
     private static func request(_ url: URL, referer: String?) -> URLRequest {
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 8)
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
         request.httpShouldHandleCookies = false
         // NetEase expects a browser; LRCLIB asks clients to identify themselves.
         request.setValue(referer != nil ? YouTubeClient.userAgentWeb
