@@ -1011,14 +1011,20 @@ final class AudioEngine {
 
     /// Returning to the app must reconcile the real player, not just its UI flag.
     /// An active interruption still requires a system end notification or explicit play.
+    /// A manual pause stays paused. A dead item is dropped so the next play rebuilds
+    /// it instead of waiting out a stall.
     func applicationDidBecomeActive() {
-        guard isPlaying, !userInitiatedPause, !isInterrupted else { return }
+        guard !isInterrupted else { return }
+        if !isPlaying || userInitiatedPause {
+            parkExpiredPlaybackIfNeeded()
+            return
+        }
         setPlaybackIntent(true)
     }
 
     private func reloadSelectedTrack() {
         guard var song = currentTrack else { return }
-        let position = pendingSeekTime ?? currentTime
+        let position = savedPlaybackPosition()
         // A failed/missing player must not reuse its expired remote URL. Local
         // downloads and cache are still preferred inside loadAndPlay.
         let existingURL = song.streamURL.flatMap { URL(string: $0) }
@@ -1191,14 +1197,19 @@ final class AudioEngine {
             savePlaybackState()
         } else {
             isPlaying = true
-            let localFileMissing = localFileURL.map {
-                !FileManager.default.fileExists(atPath: $0.path)
-            } ?? false
-            if let item = player?.currentItem, item.status != .failed,
-               player?.status != .failed, !localFileMissing {
+            // Bring the audio session back before touching the item. A dead
+            // item must not sit in `.readyToPlay` until the stall timer gives
+            // up; rebuild it at the saved position and let AAC start immediately.
+            guard activateAudioSessionForPlayback() else { return }
+            if installedPlaybackNeedsRebuild() {
+                if resolveTask == nil, backgroundRemuxTask == nil {
+                    Log.audio.warning(
+                        "Resume: rebuilding dead or expired playback at \(self.savedPlaybackPosition())s"
+                    )
+                    reloadSelectedTrack()
+                }
+            } else {
                 resumePlayer()
-            } else if resolveTask == nil, backgroundRemuxTask == nil {
-                reloadSelectedTrack()
             }
         }
         // The `isPlaying` didSet above mirrors playback state onto the
@@ -1554,8 +1565,100 @@ final class AudioEngine {
         savePlaybackState()
     }
 
-    func resumePlayer() {
-        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
+    /// Player clock when it is still meaningful; otherwise the last UI time.
+    /// A failed item often reports 0, which must not wipe a paused position.
+    private func savedPlaybackPosition() -> TimeInterval {
+        if let pending = pendingSeekTime, pending.isFinite, pending >= 0 { return pending }
+        let observed = player?.currentTime().seconds
+        if let observed, observed.isFinite, observed > 0.05 { return observed }
+        return max(0, currentTime.isFinite ? currentTime : 0)
+    }
+
+    private func remoteStreamExpired(now: Date = Date()) -> Bool {
+        guard localFileURL == nil else { return false }
+        guard let raw = currentTrack?.streamURL, let remote = URL(string: raw), remote.isFileURL == false else {
+            return false
+        }
+        if YouTubeStreamExpiry.isExpired(remote, now: now) { return true }
+        if let resolvedAt = streamResolvedAt, now.timeIntervalSince(resolvedAt) > 6 * 3600 { return true }
+        return false
+    }
+
+    private func itemHasTerminalMediaFailure(_ item: AVPlayerItem) -> Bool {
+        guard let code = item.errorLog()?.events.last?.errorStatusCode else { return false }
+        let http = abs(code)
+        if http == 403 || http == 410 { return true }
+        switch code {
+        case NSURLErrorTimedOut,
+             NSURLErrorCannotFindHost,
+             NSURLErrorCannotConnectToHost,
+             NSURLErrorNetworkConnectionLost,
+             NSURLErrorNotConnectedToInternet,
+             NSURLErrorDataNotAllowed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// True when play() would hit an item that can no longer produce audio.
+    /// An inactive audio session is not itself a reason to rebuild.
+    private func installedPlaybackNeedsRebuild() -> Bool {
+        if let local = localFileURL, FileManager.default.fileExists(atPath: local.path) == false {
+            return true
+        }
+        guard let item = player?.currentItem else { return true }
+        if item.status == .failed || player?.status == .failed { return true }
+        if let proxy = segmentedProxy, proxy.isRunning == false { return true }
+        if itemHasTerminalMediaFailure(item) { return true }
+        if remoteStreamExpired() { return true }
+        return false
+    }
+
+    /// Drop a dead item while a manual pause is in effect. Does not start audio
+    /// and does not zero the saved position the way `cleanupPlayer` does.
+    private func parkExpiredPlaybackIfNeeded() {
+        guard currentTrack != nil, resolveTask == nil, backgroundRemuxTask == nil else { return }
+        let hasInstallation = player?.currentItem != nil || segmentedProxy != nil
+        guard hasInstallation || remoteStreamExpired() else { return }
+        guard installedPlaybackNeedsRebuild() else { return }
+        let position = savedPlaybackPosition()
+        itemObservations.forEach { $0.invalidate() }
+        itemObservations.removeAll()
+        if let observer = errorLogObserver {
+            NotificationCenter.default.removeObserver(observer)
+            errorLogObserver = nil
+        }
+        if let observer = accessLogObserver {
+            NotificationCenter.default.removeObserver(observer)
+            accessLogObserver = nil
+        }
+        if let observer = endOfTrackObserver {
+            NotificationCenter.default.removeObserver(observer)
+            endOfTrackObserver = nil
+        }
+        segmentedProxy?.stop()
+        segmentedProxy = nil
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        if var song = currentTrack {
+            let existing = song.streamURL.flatMap { URL(string: $0) }
+            if existing?.isFileURL != true {
+                song.streamURL = nil
+                song.streamContentLength = nil
+                currentTrack = song
+                updateQueuedStream(songID: song.id, streamURL: nil, contentLength: nil)
+            }
+        }
+        currentTime = position
+        pendingSeekTime = position
+        userInitiatedPause = true
+        isPlaying = false
+        isBuffering = false
+        requiresManualPlaybackRecovery = false
+    }
+
+    private func activateAudioSessionForPlayback() -> Bool {
         guard audioSessionActivator() else {
             invalidateCrossfadePreparation(clearReservation: false)
             player?.pause()
@@ -1566,8 +1669,45 @@ final class AudioEngine {
             lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
             nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
             savePlaybackState()
-            return
+            return false
         }
+        return true
+    }
+
+    func suspendSegmentedProxyForResumeProbe() {
+        segmentedProxy?.stop()
+    }
+
+    func rewriteInstalledStreamURLForResumeProbe(_ url: String) {
+        guard var song = currentTrack else { return }
+        song.streamURL = url
+        currentTrack = song
+    }
+
+    func installFailedItemForResumeProbe() {
+        let position = savedPlaybackPosition()
+        pendingSeekTime = position
+        currentTime = position
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("evantube-missing-\(UUID().uuidString).m4a")
+        player?.replaceCurrentItem(with: AVPlayerItem(url: missing))
+    }
+
+    func setLyricTimelineOffsetForResumeProbe(_ offset: TimeInterval) {
+        lyricTimelineOffset = offset
+    }
+
+    var installedPlaybackItemFailed: Bool {
+        player?.currentItem?.status == .failed || player?.status == .failed
+    }
+
+    var hasInstalledPlaybackItem: Bool {
+        player?.currentItem != nil
+    }
+
+    func resumePlayer() {
+        guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
+        guard activateAudioSessionForPlayback() else { return }
         player?.rate = playbackSpeed
         nowPlayingManager.updatePlaybackState(
             isPlaying: isPlaying, currentTime: currentTime,
@@ -1821,14 +1961,16 @@ final class AudioEngine {
         recoveryService.resetRetry()
         crossfadeManager.resetTrigger()
 
-        // Check if existing stream URL is likely expired (YouTube URLs expire ~6 hours)
-        if songToPlay.streamURL != nil, let resolvedAt = streamResolvedAt,
-            Date().timeIntervalSince(resolvedAt) > 6 * 3600
-        {
-            Log.audio.warning("Stream URL likely expired, re-resolving...")
-            songToPlay.streamURL = nil
-            songToPlay.streamContentLength = nil
-            updateQueuedStream(songID: songToPlay.id, streamURL: nil, contentLength: nil)
+        // Drop a signed URL whose `expire=` has passed, or one resolved more
+        // than six hours ago. Resume also checks this before calling play.
+        if let raw = songToPlay.streamURL, let remote = URL(string: raw), remote.isFileURL == false {
+            let agedOut = streamResolvedAt.map { Date().timeIntervalSince($0) > 6 * 3600 } ?? false
+            if agedOut || YouTubeStreamExpiry.isExpired(remote) {
+                Log.audio.warning("Stream URL likely expired, re-resolving...")
+                songToPlay.streamURL = nil
+                songToPlay.streamContentLength = nil
+                updateQueuedStream(songID: songToPlay.id, streamURL: nil, contentLength: nil)
+            }
         }
 
         // S1: Offline-first ordering. Before invoking the network resolver,
