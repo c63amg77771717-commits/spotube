@@ -7,7 +7,7 @@ import Foundation
 /// player response includes it. The AAC fallback prefers itag 141 when the
 /// quality cap allows it, otherwise itag 140.
 enum AudioSourcePlan {
-    struct Selection: Equatable {
+    struct Selection {
         let startup: StreamFormat
         let opusUpgrade: StreamFormat?
         let aacFallback: StreamFormat

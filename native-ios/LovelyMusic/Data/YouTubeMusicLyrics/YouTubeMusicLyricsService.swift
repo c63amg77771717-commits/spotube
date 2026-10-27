@@ -177,11 +177,12 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
                 includeDurationInQuery: original.includeDurationInQuery)
         }
         // YouTube Music and the first (title-matched) fallback run at the same time.
-        async let officialResult = officialLyrics(context)
-        async let firstResult = Self.report(fallbacks.first, context: context)
+        let resolved = context
+        async let officialResult = officialLyrics(resolved)
+        async let firstResult = Self.report(fallbacks.first, context: resolved)
         let officialLyrics = await officialResult
         try Task.checkCancellation()
-        let anchoredOfficial = officialLyrics?.withAnchor(videoID: context.songID, timelineDuration: context.duration.map(Double.init))
+        let anchoredOfficial = officialLyrics?.withAnchor(videoID: resolved.songID, timelineDuration: resolved.duration.map(Double.init))
         if let anchoredOfficial, anchoredOfficial.isTimeSynced { return Self.officialReport(anchoredOfficial) }
         let first = await firstResult
         try Task.checkCancellation()
@@ -190,7 +191,7 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
         // so a synced NetEase/LRCLIB/LrcApi timeline never got a chance.
         var reports = first.map { [$0] } ?? []
         for fallback in fallbacks.dropFirst() {
-            guard let report = await Self.report(fallback, context: context) else { continue }
+            guard let report = await Self.report(fallback, context: resolved) else { continue }
             try Task.checkCancellation()
             if report.state == .synchronized { return report }
             reports.append(report)
