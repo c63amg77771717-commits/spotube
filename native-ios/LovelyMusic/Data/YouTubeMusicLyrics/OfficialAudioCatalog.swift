@@ -151,7 +151,8 @@ final class OfficialAudioCatalog: @unchecked Sendable {
                 save(match, for: id)
             case .some(.none), .none:
                 // A real miss, or a timeout, stays a miss for this run.
-                decisions[id] = .none
+                // `Decision.none` is required: `.none` on this optional value is nil.
+                decisions[id] = Decision.none
             case .some(.unavailable):
                 // The search never answered. Leave the song unset so the next play retries.
                 decisions[id] = nil
@@ -165,7 +166,7 @@ final class OfficialAudioCatalog: @unchecked Sendable {
             guard let self else { return }
             self.lock.withLock {
                 if let match = outcome.match { self.save(match, for: id) }
-                if outcome.kind == .unavailable, case .none? = self.decisions[id] {
+                if outcome.kind == .unavailable, case .some(.none) = self.decisions[id] {
                     self.decisions[id] = nil
                 }
             }
