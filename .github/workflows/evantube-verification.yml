@@ -39,7 +39,8 @@ jobs:
           assert data.count(old) == 1
           new = (
               '      - path: LovelyMusicTests/Core/Audio/ProgressiveStartIntegrationTests.swift' + chr(10) +
-              '      - path: LovelyMusicTests/Data/LiveLyricsEvaluationTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/OfficialAudioPlaybackTests.swift' + chr(10) +
+              '      - path: LovelyMusicTests/Core/Audio/ProgressiveRestartStressTests.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockInnerTubeRepository.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockPlaylistRepository.swift' + chr(10) +
               '      - path: LovelyMusicTests/Mocks/MockFavoritesRepository.swift' + chr(10)
@@ -65,7 +66,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
             -parallel-testing-enabled NO \
             -only-testing:LovelyMusicTests/ProgressiveStartIntegrationTests \
-            -only-testing:LovelyMusicTests/LiveLyricsEvaluationTests \
+            -only-testing:LovelyMusicTests/OfficialAudioPlaybackTests             -only-testing:LovelyMusicTests/ProgressiveRestartStressTests \
             -resultBundlePath "$RUNNER_TEMP/verify.xcresult" \
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- \
             CODE_SIGN_ENTITLEMENTS="$RUNNER_TEMP/verify-simulator.entitlements" test \
@@ -73,7 +74,7 @@ jobs:
       - name: Publish results
         if: always()
         run: |
-          grep -E 'LIVE-LYRICS|error: |Test Case .*(passed|failed)|Executed ' "$RUNNER_TEMP/verify.log" || true
+          grep -E 'STRESS|PROXY|Ready to play|Stall|Segmented|LIVE-LYRICS|error: |Test Case .*(passed|failed)|Executed ' "$RUNNER_TEMP/verify.log" || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

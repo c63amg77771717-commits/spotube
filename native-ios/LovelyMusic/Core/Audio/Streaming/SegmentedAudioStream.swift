@@ -319,7 +319,9 @@ final class LoopbackSegmentProxy: @unchecked Sendable {
         }
         guard let request else { return }
 
+        let started = Date()
         let response = makeResponse(to: request)
+        Log.audio.info("PROXY \(self.port) \(request.method, privacy: .public) \(String(request.path.suffix(12)), privacy: .public) range=\(request.rangeHeader ?? "-", privacy: .public) bytes=\(response.count) in \(Int(Date().timeIntervalSince(started) * 1000))ms")
         response.withUnsafeBytes { raw in
             guard var pointer = raw.baseAddress else { return }
             var remaining = raw.count
@@ -333,7 +335,9 @@ final class LoopbackSegmentProxy: @unchecked Sendable {
         // Half-close, then drain until the client closes so close() cannot
         // turn unread input into a reset that discards the response.
         shutdown(client, SHUT_WR)
+        let draining = Date()
         while recv(client, &chunk, chunk.count, 0) > 0 {}
+        Log.audio.info("PROXY \(self.port) closed after \(Int(Date().timeIntervalSince(draining) * 1000))ms drain")
     }
 
     private func makeResponse(to request: LoopbackHTTPRequest) -> Data {
