@@ -52,14 +52,18 @@ final class OfficialAudioPlaybackTests: XCTestCase {
         try await waitUntil { engine.lastError != nil || engine.currentTime >= 1 }
         XCTAssertNil(engine.lastError)
         XCTAssertGreaterThanOrEqual(engine.currentTime, 1, "the official audio must start playing")
-        XCTAssertEqual(requests.ids, ["OFFICIALATV"])
+        // The progressive stream asks again for a fresh URL every few ranges.
+        XCTAssertEqual(Set(requests.ids), ["OFFICIALATV"])
         XCTAssertEqual(engine.playbackSourceID(for: song), "OFFICIALATV")
 
+        let beforeSwitch = requests.ids.count
         engine.setVideoMode(true)
         XCTAssertEqual(engine.playbackSourceID(for: song), "PROGSTART01")
-        try await waitUntil { engine.lastError != nil || (requests.ids.count == 2 && engine.currentTime >= 2) }
+        try await waitUntil {
+            engine.lastError != nil || (requests.ids.count > beforeSwitch && engine.currentTime >= 2)
+        }
         XCTAssertNil(engine.lastError)
-        XCTAssertEqual(requests.ids, ["OFFICIALATV", "PROGSTART01"], "video mode plays the video's own sound")
+        XCTAssertEqual(Set(requests.ids[beforeSwitch...]), ["PROGSTART01"], "video mode plays the video's own sound")
         XCTAssertGreaterThanOrEqual(engine.currentTime, 2, "the switch keeps the position and keeps playing")
     }
 

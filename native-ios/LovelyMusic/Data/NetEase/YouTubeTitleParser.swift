@@ -242,6 +242,8 @@ enum YouTubeTitleParser {
         let wanted = bareTitle(guess.song)
         guard !wanted.isEmpty, titlesMatch(bareTitle(record.title), wanted) else { return false }
         if matches(versionWords, record.title + " " + record.artist), !matches(versionWords, videoTitle) { return false }
+        // A video is rarely shorter than its song; a much longer record is another version (画心 KTV 268 s vs 433 s).
+        if let videoDuration, let duration = record.duration, duration - Double(videoDuration) > 20 { return false }
         if !guess.artist.isEmpty { return artistsMatch(record.artist, guess.artist) }
         // No artist in the title: only a same-length recording identifies the song.
         guard !titleHasArtist, let videoDuration, let duration = record.duration else { return false }

@@ -105,12 +105,18 @@ final class OfficialAudioCatalog: @unchecked Sendable {
             let finder = Task { await Self.find(title: title, duration: duration, search: search) }
             let timeout = self.timeout
             let task = Task { [weak self] in
-                let found = await withTaskGroup(of: Decision?.self) { group -> Decision? in
-                    group.addTask { await finder.value.map(Decision.match) ?? Decision.none }
-                    group.addTask { try? await Task.sleep(for: timeout); return nil }
-                    let first = await group.next() ?? nil
-                    group.cancelAll()
-                    return first
+                // Whichever ends first: the search, or the timeout (nil). A task group
+                // would wait for the search either way.
+                let found: Decision? = await withCheckedContinuation { continuation in
+                    let once = Once()
+                    Task {
+                        let match = await finder.value
+                        if once.claim() { continuation.resume(returning: match.map(Decision.match) ?? Decision.none) }
+                    }
+                    Task {
+                        try? await Task.sleep(for: timeout)
+                        if once.claim() { continuation.resume(returning: nil) }
+                    }
                 }
                 self?.finish(id: id, decision: found, finder: finder)
             }
@@ -137,6 +143,12 @@ final class OfficialAudioCatalog: @unchecked Sendable {
     private func save(_ match: Match?, for id: String) {
         saved[id] = match
         defaults.set(try? JSONEncoder().encode(saved), forKey: Self.storeKey)
+    }
+
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func claim() -> Bool { lock.withLock { defer { claimed = true }; return !claimed } }
     }
 
     /// First YouTube Music song result that is this song (same title and artist,

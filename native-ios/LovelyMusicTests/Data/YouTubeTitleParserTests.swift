@@ -78,6 +78,14 @@ final class YouTubeTitleParserTests: XCTestCase {
                                                   videoDuration: 267, titleHasArtist: true))
     }
 
+    func testMuchLongerRecordIsAnotherVersion() {
+        let guess = Guess(artist: "张靓颖", song: "画心")
+        XCTAssertNil(YouTubeTitleParser.bestMatch([record("画心", "张靓颖", 433)], guess: guess,
+                                                  videoTitle: "画心 张靓颖KTV版", videoDuration: 268, titleHasArtist: true))
+        XCTAssertNotNil(YouTubeTitleParser.bestMatch([record("画心", "张靓颖", 250)], guess: guess,
+                                                     videoTitle: "画心 张靓颖KTV版", videoDuration: 268, titleHasArtist: true))
+    }
+
     func testSongVariantsDropEnglishTranslation() {
         XCTAssertEqual(YouTubeTitleParser.songVariants("到此為止 From Now On"), ["到此為止 From Now On", "到此為止"])
         XCTAssertEqual(YouTubeTitleParser.songVariants("Perfect"), ["Perfect"])
