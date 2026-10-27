@@ -3080,6 +3080,9 @@ final class AudioEngine {
         let generation = loadGeneration
         backgroundRemuxTask = Task { [weak self] in
             guard let self else { return }
+            // The index load is finished once this task returns. Leaving the
+            // handle set blocked a later resume from rebuilding a dead item.
+            defer { if !Task.isCancelled, self.loadGeneration == generation { self.backgroundRemuxTask = nil } }
             var baseRequest = URLRequest(url: url)
             baseRequest.timeoutInterval = 30
             for (key, value) in headers {

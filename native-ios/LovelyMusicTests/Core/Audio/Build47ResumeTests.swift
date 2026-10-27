@@ -35,14 +35,18 @@ final class Build47ResumeTests: XCTestCase {
         var resolves = 0
         var activations = 0
         let engine = makeEngine(url: fresh, total: total)
-        defer { engine.stop() }
+        let gate = UpgradeGate()
+        defer {
+            gate.release()
+            engine.stop()
+        }
         engine.audioSessionActivator = { activations += 1; return true }
         engine.streamURLResolver = { _ in
             resolves += 1
             return (url: fresh, contentLength: total)
         }
         engine.highQualityUpgrade = { _ in
-            try? await Task.sleep(for: .seconds(30))
+            await gate.wait()
             return nil
         }
 
@@ -53,17 +57,18 @@ final class Build47ResumeTests: XCTestCase {
         engine.play(song: song)
         let startedAt = try await waitUntil(engine, advancesPast: 1.0, limit: 12)
         XCTAssertGreaterThan(startedAt, 0)
-        let resolvesAfterStart = resolves
 
         engine.handleRemotePause()
         let pausedAt = engine.currentTime
         XCTAssertGreaterThan(pausedAt, 1)
         let activationsBeforeResume = activations
+        let generation = engine.playbackSelectionGeneration
         let healthyStarted = Date()
         engine.handleRemotePlay()
         let healthy = try await waitUntil(engine, advancesPast: pausedAt + 0.12, limit: 4)
         print(String(format: "RESUME-LATENCY healthy=%.3f position=%.3f", healthy, engine.currentTime))
-        XCTAssertEqual(resolves, resolvesAfterStart, "A healthy item must resume without resolving again")
+        XCTAssertEqual(engine.playbackSelectionGeneration, generation,
+                       "A healthy item must resume without rebuilding")
         XCTAssertGreaterThan(activations, activationsBeforeResume, "Play re-activates the audio session")
         XCTAssertFalse(engine.requiresManualPlaybackRecovery)
         XCTAssertNil(engine.lastError)
@@ -78,15 +83,17 @@ final class Build47ResumeTests: XCTestCase {
         engine.suspendSegmentedProxyForResumeProbe()
         engine.rewriteInstalledStreamURLForResumeProbe(fresh + "&expire=1")
         let activationsBeforeRebuild = activations
+        let resolvesBeforeForeground = resolves
         engine.applicationDidBecomeActive()
         XCTAssertFalse(engine.isPlaying, "Foreground keeps a manual pause")
         XCTAssertFalse(engine.hasInstalledPlaybackItem, "A dead item is dropped before the user presses play")
         XCTAssertNil(engine.currentTrack?.streamURL)
         XCTAssertEqual(engine.currentTime, rebuildFrom, accuracy: 0.75)
         XCTAssertFalse(engine.requiresManualPlaybackRecovery)
-        XCTAssertEqual(resolves, resolvesAfterStart, "Foreground must not start a resolve while the user is paused")
+        XCTAssertEqual(resolves, resolvesBeforeForeground, "Foreground must not start a resolve while the user is paused")
         let parked = engine.currentTime
 
+        let resolvesBeforeRebuild = resolves
         let rebuildStarted = Date()
         engine.handleRemotePlay()
         let rebuild = try await waitUntil(engine, advancesPast: parked + 0.12, limit: 8)
@@ -96,7 +103,7 @@ final class Build47ResumeTests: XCTestCase {
         XCTAssertEqual(engine.activeAudioCodec, "aac")
         XCTAssertEqual(engine.lyricTimelineOffset, 0, accuracy: 0.000_1,
                        "The rebuilt AAC source re-applies its own timeline offset")
-        XCTAssertGreaterThan(resolves, resolvesAfterStart)
+        XCTAssertGreaterThan(resolves, resolvesBeforeRebuild)
         XCTAssertGreaterThan(activations, activationsBeforeRebuild)
         XCTAssertFalse(engine.requiresManualPlaybackRecovery)
         XCTAssertNil(engine.lastError)
@@ -141,6 +148,27 @@ final class Build47ResumeTests: XCTestCase {
         }
         XCTFail("Did not advance past \(target) (time=\(engine.currentTime), error=\(engine.lastError ?? "nil"), retry=\(engine.requiresManualPlaybackRecovery))")
         throw NSError(domain: "Build47Resume", code: 1)
+    }
+
+    /// Blocks Opus preparation without a throwing sleep, so cancelling the
+    /// upgrade cannot fail the test.
+    private final class UpgradeGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuations: [CheckedContinuation<Void, Never>] = []
+        func wait() async {
+            await withCheckedContinuation { continuation in
+                lock.lock()
+                continuations.append(continuation)
+                lock.unlock()
+            }
+        }
+        func release() {
+            lock.lock()
+            let pending = continuations
+            continuations.removeAll()
+            lock.unlock()
+            pending.forEach { $0.resume() }
+        }
     }
 
     private func makeEngine(url: String, total: Int64) -> AudioEngine {
