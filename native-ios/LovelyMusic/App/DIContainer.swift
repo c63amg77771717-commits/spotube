@@ -126,11 +126,13 @@ final class DIContainer {
             lyricsRepo = ReviewLyricsFixtureRepository()
         } else {
             lyricsRepo = YouTubeMusicFirstLyricsRepository(
-                fallbacks: [TitleMatchedLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())])
+                fallbacks: [TitleMatchedLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())],
+                officialAudio: isReviewMode ? nil : .shared)
         }
         #else
         lyricsRepo = YouTubeMusicFirstLyricsRepository(
-                fallbacks: [TitleMatchedLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())])
+                fallbacks: [TitleMatchedLyricsService(), CompositeLyricsRepository(primary: LrcLibService(), secondary: LrcApiService())],
+                officialAudio: isReviewMode ? nil : .shared)
         #endif
         let favoritesRepo = LocalFavoritesRepository()
 
@@ -223,8 +225,15 @@ final class DIContainer {
             ? [:]
             : AppConstants.youtubeStreamHeaders
         self.audioEngine.playbackSourceIDResolver = { [sourceStore] in sourceStore.sourceID(for: $0) }
+        // Audio mode plays YouTube Music's official audio of a video when one exists.
+        let officialAudio: OfficialAudioCatalog? = isReviewMode ? nil : .shared
+        officialAudio?.keepsOriginal = { [sourceStore, downloadManager = self.downloadManager] id in
+            sourceStore.sourceID(for: id) != id || downloadManager.localFileURL(songId: id) != nil
+        }
+        self.audioEngine.officialAudio = officialAudio
         self.audioEngine.playlistSourceIDResolver = { [sourceStore, scopedSourceStore] song in
-            scopedSourceStore.sourceID(for: song, legacy: { sourceStore.sourceID(for: $0) })
+            let source = scopedSourceStore.sourceID(for: song, legacy: { sourceStore.sourceID(for: $0) })
+            return source == song.id ? officialAudio?.sourceID(for: song.id) ?? source : source
         }
         let basePlaybackResolver = PlaybackQualityWiring.makePlaybackResolver(
             useCase: resolveStreamUseCase,
@@ -233,12 +242,27 @@ final class DIContainer {
             isPremium: { premiumManager.isPremium },
             requestHeaders: playbackHeaders
         )
+        let officialStream = { (official: String, originalID: String) async throws -> (url: String, contentLength: Int64?) in
+            do { return try await basePlaybackResolver(official) }
+            catch {
+                // Unplayable official audio: the next attempt plays the video's own audio.
+                if !(error is CancellationError) { officialAudio?.reject(originalID) }
+                throw error
+            }
+        }
         self.audioEngine.contextualStreamURLResolver = { [sourceStore, scopedSourceStore] song in
-            try await scopedSourceStore.resolve(song: song, legacy: { sourceStore.sourceID(for: $0) },
-                                                using: basePlaybackResolver)
+            if scopedSourceStore.sourceID(for: song, legacy: { sourceStore.sourceID(for: $0) }) == song.id,
+               let official = officialAudio?.sourceID(for: song.id), official != song.id {
+                return try await officialStream(official, song.id)
+            }
+            return try await scopedSourceStore.resolve(song: song, legacy: { sourceStore.sourceID(for: $0) },
+                                                       using: basePlaybackResolver)
         }
         self.audioEngine.streamURLResolver = { [sourceStore] originalID in
-            try await sourceStore.resolve(originalID: originalID, using: basePlaybackResolver)
+            if let official = officialAudio?.sourceID(for: originalID), official != originalID {
+                return try await officialStream(official, originalID)
+            }
+            return try await sourceStore.resolve(originalID: originalID, using: basePlaybackResolver)
         }
         self.audioEngine.onStreamCandidateFailure = { [playerRepo] sourceID, streamURL in
             playerRepo.reportPlaybackCandidateFailure(videoId: sourceID, streamURL: streamURL)

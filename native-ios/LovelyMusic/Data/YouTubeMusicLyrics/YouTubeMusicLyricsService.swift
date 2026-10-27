@@ -36,6 +36,37 @@ struct YouTubeMusicLyricsService: Sendable {
                             isTimeSynced: false, providerID: .youtubeMusic, timingState: .plainOnly)
     }
 
+    /// YouTube Music search limited to songs (official audio tracks).
+    func searchSongs(_ query: String) async throws -> [OfficialAudioCatalog.Match] {
+        Self.songResults(try await request("search", body: ["query": query, "params": Self.songsFilter], android: false))
+    }
+
+    static let songsFilter = "EgWKAQIIAWoKEAkQBRAKEAMQBA=="
+
+    /// Each result row: title in the first column, "artist • album • m:ss" in the second.
+    static func songResults(_ response: Any) -> [OfficialAudioCatalog.Match] {
+        values(forKey: "musicResponsiveListItemRenderer", in: response).compactMap { row in
+            guard let row = row as? [String: Any],
+                  let videoID = strings(forKey: "videoId", in: row["playlistItemData"] ?? [String: Any]()).first
+                    ?? strings(forKey: "videoId", in: row["overlay"] ?? [String: Any]()).first,
+                  let columns = row["flexColumns"] as? [[String: Any]] else { return nil }
+            let texts = columns.map { column -> String in
+                let runs = ((column["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any])?["text"]
+                    as? [String: Any])?["runs"] as? [[String: Any]] ?? []
+                return runs.compactMap { $0["text"] as? String }.joined()
+            }
+            guard let title = texts.first, !title.isEmpty else { return nil }
+            let fields = (texts.count > 1 ? texts[1] : "").components(separatedBy: "•")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            let clock = fields.last.flatMap { field -> Int? in
+                let parts = field.split(separator: ":").compactMap { Int($0) }
+                guard parts.count >= 2, parts.count == field.split(separator: ":").count else { return nil }
+                return parts.reduce(0) { $0 * 60 + $1 }
+            }
+            return .init(videoID: videoID, title: title, artist: fields.first ?? "", duration: clock)
+        }
+    }
+
     /// Lines only count as timed when every one carries a cue; otherwise nil.
     static func timedLines(_ response: Any) -> [LyricLine]? {
         guard let cues = values(forKey: "timedLyricsData", in: response).first as? [[String: Any]],
@@ -121,17 +152,30 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
 
     let official: Official
     let fallbacks: [LyricsRepositoryProtocol]
+    let officialAudio: OfficialAudioCatalog?
 
-    init(official: @escaping Official, fallbacks: [LyricsRepositoryProtocol]) {
+    init(official: @escaping Official, fallbacks: [LyricsRepositoryProtocol], officialAudio: OfficialAudioCatalog? = nil) {
         self.official = official
         self.fallbacks = fallbacks
+        self.officialAudio = officialAudio
     }
 
-    init(service: YouTubeMusicLyricsService = .init(), fallbacks: [LyricsRepositoryProtocol]) {
-        self.init(official: { try await service.lyrics(videoID: $0) }, fallbacks: fallbacks)
+    init(service: YouTubeMusicLyricsService = .init(), fallbacks: [LyricsRepositoryProtocol],
+         officialAudio: OfficialAudioCatalog? = nil) {
+        self.init(official: { try await service.lyrics(videoID: $0) }, fallbacks: fallbacks, officialAudio: officialAudio)
     }
 
-    func lookup(context: LyricsLookupContext) async throws -> LyricsLookupReport {
+    func lookup(context original: LyricsLookupContext) async throws -> LyricsLookupReport {
+        var context = original
+        // The official audio plays instead of the video: follow its ID and length.
+        if let match = await officialAudio?.lyricsMatch(for: original) {
+            context = LyricsLookupContext(
+                songID: match.videoID, title: original.title, artist: original.artist, album: original.album,
+                duration: match.duration ?? original.duration, artistID: original.artistID, albumID: original.albumID,
+                hasYouTubeOrigin: true, musicVideoType: original.musicVideoType,
+                artistNameSource: original.artistNameSource, diagnosticLookupID: original.diagnosticLookupID,
+                includeDurationInQuery: original.includeDurationInQuery)
+        }
         // YouTube Music and the first (title-matched) fallback run at the same time.
         async let officialResult = officialLyrics(context)
         async let firstResult = Self.report(fallbacks.first, context: context)

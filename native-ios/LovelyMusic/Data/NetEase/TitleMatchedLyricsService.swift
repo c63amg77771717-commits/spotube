@@ -41,13 +41,7 @@ final class TitleMatchedLyricsService: LyricsRepositoryProtocol {
             ? YouTubeTitleParser.guesses(context.title)
             : [.init(artist: context.artist, song: context.title)]
         guard let first = guesses.first else { return .metadataRejected(provider: .netease) }
-        var queries: [YouTubeTitleParser.Guess] = []
-        for guess in guesses {
-            for song in YouTubeTitleParser.songVariants(guess.song) {
-                let query = YouTubeTitleParser.Guess(artist: guess.artist, song: song)
-                if !queries.contains(query) { queries.append(query) }
-            }
-        }
+        let queries = context.hasYouTubeOrigin ? YouTubeTitleParser.queries(context.title, limit: Self.maxQueries) : guesses
         var plain: SyncedLyrics?
         var failures: [LyricsSourceFailure] = []
         var responses = 0

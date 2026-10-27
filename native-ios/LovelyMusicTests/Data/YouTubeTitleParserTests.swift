@@ -42,6 +42,42 @@ final class YouTubeTitleParserTests: XCTestCase {
         }
     }
 
+    /// Shapes found in the 3×60-song sample (2026-10-27).
+    func testMoreCreditShapes() {
+        let cases: [(String, Guess)] = [
+            ("A Lin 幸福了 然後呢", .init(artist: "A Lin", song: "幸福了 然後呢")),
+            ("羽泉 / 這一生都只為你【歌詞】", .init(artist: "羽泉", song: "這一生都只為你")),
+            ("Paramore - Stay The Night ft. Hayley Williams", .init(artist: "Paramore", song: "Stay The Night")),
+            ("Kelly Clarkson l Because of You", .init(artist: "Kelly Clarkson", song: "Because of You")),
+            ("柯有倫 - 情歌變的不好聽 動態歌詞版", .init(artist: "柯有倫", song: "情歌變的不好聽")),
+            ("《是你》张靓颖/王赫野", .init(artist: "张靓颖/王赫野", song: "是你")),
+            ("\u{200B}王菲 - 紅豆", .init(artist: "王菲", song: "紅豆")),
+            ("蔡健雅-紅色高跟鞋『你像窝在被子里的舒服』【動態歌詞Lyrics】", .init(artist: "蔡健雅", song: "紅色高跟鞋")),
+            ("李佳薇-大火(Jess Lee - Burn) 完整版MV -華納official HQ官方版MV", .init(artist: "李佳薇", song: "大火")),
+        ]
+        XCTAssertTrue(YouTubeTitleParser.guesses("遇見 ~ 孫燕姿 ( 動態歌詞 )").contains(.init(artist: "孫燕姿", song: "遇見")))
+        XCTAssertTrue(YouTubeTitleParser.artistsMatch("Soo Wincci", "Wincci 蘇盈之"))
+        for (title, expected) in cases {
+            XCTAssertEqual(YouTubeTitleParser.guesses(title).first, expected, title)
+        }
+    }
+
+    func testFuzzyTitleAndArtistMatching() {
+        let key = YouTubeTitleParser.normalized
+        XCTAssertTrue(YouTubeTitleParser.titlesMatch(key("情歌變的不好聽"), key("情歌變得不好聽")))
+        XCTAssertFalse(YouTubeTitleParser.titlesMatch(key("泡沫"), key("泡泡")))
+        XCTAssertTrue(YouTubeTitleParser.artistsMatch("柯有綸", "柯有倫"))
+        XCTAssertTrue(YouTubeTitleParser.artistsMatch("G.E.M. 鄧紫棋", "邓紫棋"))
+        XCTAssertTrue(YouTubeTitleParser.artistsMatch("李毓芬 Tia Lee", "Tia Lee"))
+        XCTAssertFalse(YouTubeTitleParser.artistsMatch("王菲", "王菲菲"))
+    }
+
+    func testFirstTakeIsAnotherVersion() {
+        XCTAssertNil(YouTubeTitleParser.bestMatch([record("如愿 (THE FIRST TAKE)", "王菲", 265)],
+                                                  guess: .init(artist: "王菲", song: "如願"), videoTitle: "王菲 - 如願 MV",
+                                                  videoDuration: 267, titleHasArtist: true))
+    }
+
     func testSongVariantsDropEnglishTranslation() {
         XCTAssertEqual(YouTubeTitleParser.songVariants("到此為止 From Now On"), ["到此為止 From Now On", "到此為止"])
         XCTAssertEqual(YouTubeTitleParser.songVariants("Perfect"), ["Perfect"])

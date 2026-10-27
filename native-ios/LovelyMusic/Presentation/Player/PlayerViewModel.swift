@@ -339,14 +339,14 @@ final class PlayerViewModel {
         // the upcoming initial-set / post-resolve observer fires.
         lastHandledVideoTrackId = nil
         previousObservedTrackId = nil
-        audioEngine.play(song: song, fromQueue: fromQueue)
-
         // Video songs turn video mode on; otherwise the user's mode is kept.
+        // Set before playing: the mode decides which recording plays.
         // The video stream is loaded by observeTrackChanges (T3 gate).
         if song.isVideo {
             isVideoMode = true
             audioEngine.setVideoMode(true)
         }
+        audioEngine.play(song: song, fromQueue: fromQueue)
 
         requestLyrics(for: song)
     }
@@ -614,7 +614,12 @@ final class PlayerViewModel {
     func toggleVideoMode() {
         isLyricsVisible = false
         isVideoMode.toggle()
+        let sourceBefore = currentSong.map { audioEngine.playbackSourceID(for: $0) }
         audioEngine.setVideoMode(isVideoMode)
+        // The sound switched recordings (official audio <-> video): its lyrics too.
+        if let song = currentSong, sourceBefore != audioEngine.playbackSourceID(for: song) {
+            lyricsSourceSettingsChanged()
+        }
         // Mark the song handled so the track observer doesn't load it twice.
         lastHandledVideoTrackId = isVideoMode ? currentSong?.id : nil
         if isVideoMode, let song = currentSong {

@@ -190,6 +190,10 @@ final class AudioEngine {
     var playbackSourceIDResolver: (String) -> String = { $0 }
     var playlistSourceIDResolver: ((Song) -> String)?
     var contextualStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?))?
+    /// Plays YouTube Music's official audio instead of a video in audio mode (nil: never).
+    var officialAudio: OfficialAudioCatalog?
+    /// The current song waits for the official-audio lookup before loading.
+    private var awaitingOfficialAudio = false
     var contextualVideoStreamURLResolver: ((Song) async throws -> (url: String, contentLength: Int64?)?)? {
         didSet { videoManager.contextualVideoStreamURLResolver = contextualVideoStreamURLResolver }
     }
@@ -1767,6 +1771,7 @@ final class AudioEngine {
                              isLoadingRecovery: Bool = false) {
         requiresManualPlaybackRecovery = false
         if !isLoadingRecovery { loadingRecoveryAttemptCount = 0 }
+        awaitingOfficialAudio = false
         noteSourceInteraction()
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -1779,6 +1784,19 @@ final class AudioEngine {
         currentTime = initialSeek ?? 0
         pendingSeekTime = initialSeek
         isPlaying = !isInterrupted
+        // The source (video or its official audio) must be known before any cache lookup.
+        if let officialAudio, officialAudio.needsLookup(song) {
+            currentTrack = song
+            isBuffering = true
+            awaitingOfficialAudio = true
+            resolveTask?.cancel()
+            resolveTask = Task { [weak self] in
+                await officialAudio.prepare(song)
+                guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
+                self.loadAndPlay(song: song, seekTo: initialSeek, isLoadingRecovery: isLoadingRecovery)
+            }
+            return
+        }
         var songToPlay = sourcePreparedSong(song)
         currentTrack = songToPlay
         lastError = nil
@@ -4169,7 +4187,17 @@ final class AudioEngine {
     // MARK: - Video Playback (delegated to VideoPlaybackManager)
 
     func setVideoMode(_ enabled: Bool) {
+        let sourceBefore = currentTrack.map { playbackSourceID(for: $0) }
+        officialAudio?.isEnabled = !enabled
         videoManager.setVideoMode(enabled)
+        // The official audio and the video are different recordings: switch the sound too.
+        // Video mode no longer waits for the lookup either.
+        if let song = currentTrack, let sourceBefore,
+           sourceBefore != playbackSourceID(for: song) || (enabled && awaitingOfficialAudio && resolveTask != nil) {
+            let wasPlaying = isPlaying
+            loadAndPlay(song: song, seekTo: currentTime)
+            if !wasPlaying { pause() }
+        }
     }
 
     func loadVideoStream(for song: Song) {
