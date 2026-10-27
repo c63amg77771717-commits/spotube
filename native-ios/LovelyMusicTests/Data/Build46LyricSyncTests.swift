@@ -92,7 +92,7 @@ final class Build46LyricSyncTests: XCTestCase {
         XCTAssertEqual(lyrics.lines.last?.time ?? -1, 12.003, accuracy: 0.000_1)
     }
 
-    func testOpusPlanDoesNotReplaceTheAACStartup() {
+    func testOpusPlanDoesNotReplaceTheAACStartup() throws {
         func format(_ itag: Int, _ mime: String, _ bitrate: Int) -> StreamFormat {
             StreamFormat(itag: itag, url: "https://audio.example/\(itag)", mimeType: mime, bitrate: bitrate,
                          contentLength: "1000", quality: nil, audioQuality: nil, audioSampleRate: nil,
