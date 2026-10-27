@@ -67,6 +67,7 @@ final class Build47ResumeTests: XCTestCase {
         engine.handleRemotePlay()
         let healthy = try await waitUntil(engine, advancesPast: pausedAt + 0.12, limit: 4)
         print(String(format: "RESUME-LATENCY healthy=%.3f position=%.3f", healthy, engine.currentTime))
+        // A range refresh inside the loopback fetcher is not a new playback selection.
         XCTAssertEqual(engine.playbackSelectionGeneration, generation,
                        "A healthy item must resume without rebuilding")
         XCTAssertGreaterThan(activations, activationsBeforeResume, "Play re-activates the audio session")
