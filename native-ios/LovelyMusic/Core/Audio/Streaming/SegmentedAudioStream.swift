@@ -295,6 +295,13 @@ final class LoopbackSegmentProxy: @unchecked Sendable {
         return url
     }
 
+    /// False after `stop()`, and before `start()` has installed the accept source.
+    var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !stopped && acceptSource != nil
+    }
+
     func stop() {
         lock.lock()
         let source = acceptSource
