@@ -22,6 +22,9 @@ struct SIDXIndex: Equatable {
     let boxStart: Int
     let firstSegmentOffset: Int
     let timescale: UInt32
+    /// Video-timeline position of the first sample, in seconds. The HLS
+    /// playlist starts at player time 0 on that sample, so lyric clocks add this.
+    let earliestPresentationTime: TimeInterval
     let references: [Reference]
 
     var mediaEnd: Int { references.reduce(firstSegmentOffset) { $0 + $1.size } }
@@ -55,14 +58,17 @@ struct SIDXIndex: Equatable {
         let timescale = UInt32(word(bytes, cursor))
         cursor += 4
         let firstOffset: UInt64
+        let earliestTicks: UInt64
         if version == 0 {
             guard cursor + 8 <= boxEnd else { return nil }
-            cursor += 4 // earliest presentation time
+            earliestTicks = word(bytes, cursor)
+            cursor += 4
             firstOffset = word(bytes, cursor)
             cursor += 4
         } else {
             guard cursor + 16 <= boxEnd else { return nil }
-            cursor += 8 // earliest presentation time
+            earliestTicks = (word(bytes, cursor) << 32) | word(bytes, cursor + 4)
+            cursor += 8
             firstOffset = (word(bytes, cursor) << 32) | word(bytes, cursor + 4)
             cursor += 8
         }
@@ -87,6 +93,7 @@ struct SIDXIndex: Equatable {
             boxStart: boxStart,
             firstSegmentOffset: boxEnd + Int(firstOffset),
             timescale: timescale,
+            earliestPresentationTime: timescale > 0 ? Double(earliestTicks) / Double(timescale) : 0,
             references: references
         )
     }

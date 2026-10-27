@@ -81,13 +81,14 @@ final class YouTubeMusicLyricsTests: XCTestCase {
         _ = try await neverCalled.lookup(context: LyricsLookupContext(title: "Song", artist: "Artist"))
     }
 
-    func testSlowLegacyFallbackRunsOnlyWhenNothingElseFoundText() async throws {
+    func testLaterSyncedFallbackBeatsAnEarlierPlainHit() async throws {
         let titleMatched = RecordingLyricsRepository(lyrics: Self.plain)
         let legacy = RecordingLyricsRepository(lyrics: Self.lrclibTimed)
         let repository = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [titleMatched, legacy])
         let report = try await repository.lookup(context: context())
-        XCTAssertEqual(report.state, .confirmedPlain)
-        XCTAssertEqual(legacy.calls, 0, "text was already found")
+        XCTAssertEqual(report.state, .synchronized)
+        XCTAssertEqual(report.lyrics?.providerID, .lrclib)
+        XCTAssertEqual(legacy.calls, 1, "plain text must not hide a later timeline")
 
         let empty = RecordingLyricsRepository(lyrics: nil)
         let rescued = YouTubeMusicFirstLyricsRepository(official: { _ in nil }, fallbacks: [empty, legacy])

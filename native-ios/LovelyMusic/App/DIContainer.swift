@@ -231,6 +231,11 @@ final class DIContainer {
             sourceStore.sourceID(for: id) != id || downloadManager.localFileURL(songId: id) != nil
         }
         self.audioEngine.officialAudio = officialAudio
+        if let repository = playerRepo as? PlayerRepository {
+            self.audioEngine.opusUpgradeLocator = { videoID in
+                repository.cachedOpusUpgrade(videoId: videoID)
+            }
+        }
         self.audioEngine.playlistSourceIDResolver = { [sourceStore, scopedSourceStore] song in
             let source = scopedSourceStore.sourceID(for: song, legacy: { sourceStore.sourceID(for: $0) })
             return source == song.id ? officialAudio?.sourceID(for: song.id) ?? source : source

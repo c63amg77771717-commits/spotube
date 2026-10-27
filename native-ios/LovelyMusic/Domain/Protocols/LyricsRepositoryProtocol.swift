@@ -124,11 +124,16 @@ struct SyncedLyrics {
     let selectionKey: String?
     let sourceFailures: [LyricsSourceFailure]
     let timingState: LyricsTimingState
+    /// Provider recording length. Nil when the source did not report one.
+    let timelineDuration: TimeInterval?
+    /// Video whose own timed lyrics these cues were fetched for.
+    let authoredVideoID: String?
 
     init(lines: [LyricLine], source: String, isTimeSynced: Bool = true,
          candidates: [LyricsCandidate] = [], selectionKey: String? = nil,
          providerID: LyricsProviderID? = nil, sourceFailures: [LyricsSourceFailure] = [],
-         timingState: LyricsTimingState? = nil, selectedRecordID: LyricsRecordID? = nil, selectionMargin: Int? = nil, selectionMethod: String? = nil) {
+         timingState: LyricsTimingState? = nil, selectedRecordID: LyricsRecordID? = nil, selectionMargin: Int? = nil, selectionMethod: String? = nil,
+         timelineDuration: TimeInterval? = nil, authoredVideoID: String? = nil) {
         self.selectedRecordID = selectedRecordID; self.selectionMargin = selectionMargin; self.selectionMethod = selectionMethod
         self.lines = lines
         self.source = source
@@ -139,6 +144,17 @@ struct SyncedLyrics {
         self.candidates = candidates
         self.selectionKey = selectionKey
         self.sourceFailures = sourceFailures
+        self.timelineDuration = timelineDuration
+        self.authoredVideoID = authoredVideoID
+    }
+
+    func withAnchor(videoID: String?, timelineDuration: TimeInterval?) -> SyncedLyrics {
+        SyncedLyrics(lines: lines, source: source, isTimeSynced: isTimeSynced, candidates: candidates,
+                     selectionKey: selectionKey, providerID: providerID, sourceFailures: sourceFailures,
+                     timingState: timingState, selectedRecordID: selectedRecordID, selectionMargin: selectionMargin,
+                     selectionMethod: selectionMethod,
+                     timelineDuration: timelineDuration ?? self.timelineDuration,
+                     authoredVideoID: videoID ?? authoredVideoID)
     }
 }
 

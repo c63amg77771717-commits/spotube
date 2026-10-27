@@ -117,13 +117,18 @@ final class CommonLyricsLogicTests: XCTestCase {
             XCTAssertEqual(lyrics.timingState, difference <= 1 ? .structurallyCompatible : .durationMismatch)
         }
         for (body, state) in [("[00:01.00]Synthetic good\n[00:99.00]Synthetic invalid", LyricsTimingState.invalidTimestamp),
-                              ("[offset:2000]\n[00:01.00]Synthetic line", .unsupportedTiming),
+                              ("[offset:not-a-number]\n[00:01.00]Synthetic line", .unsupportedTiming),
                               ("[00:01.00]Synthetic line [00:02.00]embedded", .invalidTimestamp)] {
             let lyrics = try XCTUnwrap(LyricsMatchingPolicy.lyrics(syncedLRC: body, plainText: nil,
                 recordingDuration: 200, videoDuration: 200, provider: .lrcapi))
             XCTAssertFalse(lyrics.isTimeSynced); XCTAssertEqual(lyrics.timingState, state)
             XCTAssertTrue(lyrics.lines.allSatisfy { $0.time == 0 })
         }
+        let shifted = try XCTUnwrap(LyricsMatchingPolicy.lyrics(
+            syncedLRC: "[offset:2000]\n[00:01.00]Synthetic line", plainText: nil,
+            recordingDuration: 200, videoDuration: 200, provider: .lrcapi))
+        XCTAssertTrue(shifted.isTimeSynced)
+        XCTAssertEqual(shifted.lines.first?.time ?? -1, 3, accuracy: 0.001)
         XCTAssertEqual(LyricsMatchingPolicy.parseLRCResult("[00:01.00][00:02.00]Synthetic line").lines.count, 2)
         let unknown = try XCTUnwrap(LyricsMatchingPolicy.lyrics(syncedLRC: "[00:01.00]Synthetic line", plainText: nil,
             recordingDuration: nil, videoDuration: 200, provider: .lrcapi))

@@ -12,7 +12,7 @@ enum YouTubeTitleParser {
     }
 
     /// Video packaging words; a bracket containing one is never the song.
-    static let noise = #"(?i)official|music\s*video|lyric|(?<![a-z])mv(?![a-z])|(?<![a-z])hd(?![a-z])|(?<![a-z])4k(?![a-z])|ktv|visuali[sz]er|官方|完整|高音質|高音质|高清|超清|動態|动态|歌詞|歌词|字幕|無損|无损|(?<![a-z])sub(?![a-z])|vietsub|原唱|翻唱|cover|主題曲|主题曲|片尾曲?|片頭曲?|片头曲?|插曲|推廣|推广|主打|(?<![a-z])ost(?![a-z])|電視劇|电视剧|電影|电影|影视剧|影視劇|網游|网游|chapter|remaster|\.f4v|sdpmusic|純享|纯享|原版|live\s+from|(?<![a-z])hq(?![a-z])"#
+    static let noise = #"(?i)official|music\s*video|lyric|(?<![a-z])mv(?![a-z])|(?<![a-z])hd(?![a-z])|(?<![a-z])4k(?![a-z])|ktv|visuali[sz]er|官方|完整|高音質|高音质|高清|超清|動態|动态|歌詞|歌词|字幕|無損|无损|(?<![a-z])sub(?![a-z])|vietsub|原唱|翻唱|cover|主題曲|主题曲|片尾曲?|片頭曲?|片头曲?|插曲|推廣|推广|主打|(?<![a-z])ost(?![a-z])|電視劇|电视剧|電影|电影|影视剧|影視劇|網游|网游|chapter|remaster|\.f4v|sdpmusic|純享|纯享|原版|live\s+from|(?<![a-z])hq(?![a-z])|公式|フル|歌詞付き"#
     static let extraNoise = #"(?i)正式版|完整放映|放映|飯制|饭制|特別演出\S*|特别演出\S*|新專輯\S*|新专辑\S*|已上市|\b\d{3,4}p\b|手遊|手游|主打歌|youtube"#
     /// 《劇名》 followed by one of these names a drama, not the song.
     static let workSuffix = #"^\s*(?:主題曲|主题曲|片尾曲|片頭曲|片头曲|插曲|主題推廣曲|主题推广曲|片頭主題曲|片头主题曲)"#
@@ -111,6 +111,11 @@ enum YouTubeTitleParser {
             if "『「".contains(opener), isLyricQuote(body) || (body.count >= 8 && !keptText.isEmpty) {
                 continue                                                           // quoted lyric line
             }
+            // YOASOBI「アイドル」: a short corner-bracket title, not a quoted line.
+            if "『「".contains(opener), bracketSong == nil, body.count <= 20 {
+                bracketSong = (body, kept.joined(separator: " "))
+                continue
+            }
             if "(（".contains(opener), matches("[A-Za-z]", body), !matches(#"\p{Han}"#, body), matches(#"\p{Han}"#, keptText) {
                 continue                                                           // 大火(Jess Lee - Burn): English translation
             }
@@ -168,7 +173,28 @@ enum YouTubeTitleParser {
     // MARK: Matching
 
     static func simplified(_ text: String) -> String {
-        text.applyingTransform(StringTransform("Simplified-Traditional"), reverse: true) ?? text
+        // The Chinese transform rewrites Japanese shinjitai (師→师, 楽→乐).
+        // Kana marks a Japanese string; leave it unchanged.
+        if text.range(of: #"\p{Hiragana}|\p{Katakana}"#, options: .regularExpression) != nil { return text }
+        return text.applyingTransform(StringTransform("Simplified-Traditional"), reverse: true) ?? text
+    }
+
+    /// Original text plus the simplified Chinese form when they differ.
+    /// NetEase is indexed in simplified Chinese; LRCLIB and Japanese catalogs
+    /// often keep the original. Callers try both instead of replacing one.
+    static func searchForms(_ text: String) -> [String] {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let simple = simplified(trimmed)
+        return simple == trimmed ? [trimmed] : [simple, trimmed]
+    }
+
+    /// Channel and auto-generated uploader names are not performers.
+    static func isUsableArtist(_ artist: String) -> Bool {
+        let key = normalized(artist)
+        guard !key.isEmpty else { return false }
+        if ["topic", "official", "vevo", "variousartists", "youtube", "lyrics"].contains(key) { return false }
+        return !key.hasSuffix("topic") && !key.hasSuffix("vevo")
     }
 
     static func normalized(_ text: String) -> String {
@@ -243,11 +269,12 @@ enum YouTubeTitleParser {
         guard !wanted.isEmpty, titlesMatch(bareTitle(record.title), wanted) else { return false }
         if matches(versionWords, record.title + " " + record.artist), !matches(versionWords, videoTitle) { return false }
         // A video is rarely shorter than its song; a much longer record is another version (画心 KTV 268 s vs 433 s).
-        if let videoDuration, let duration = record.duration, duration - Double(videoDuration) > 20 { return false }
+        if let videoDuration, let duration = record.duration, duration - Double(videoDuration) > 30 { return false }
         if !guess.artist.isEmpty { return artistsMatch(record.artist, guess.artist) }
         // No artist in the title: only a same-length recording identifies the song.
+        // Whole-second YouTube lengths and a short title card used to miss at 3 s.
         guard !titleHasArtist, let videoDuration, let duration = record.duration else { return false }
-        return abs(duration - Double(videoDuration)) <= 3
+        return abs(duration - Double(videoDuration)) <= 8
     }
 
     /// The record for this song, preferring the closest length; nil if none is the same song.
@@ -264,13 +291,37 @@ enum YouTubeTitleParser {
 
     /// Guess × song-variant queries in order, at most `limit`.
     static func queries(_ title: String, limit: Int = 3) -> [Guess] {
+        queries(title: title, artist: "", limit: limit)
+    }
+
+    /// Title guesses, then the library artist when the title itself has none.
+    /// A simplified-Chinese twin of the first guess is included so NetEase and
+    /// LRCLIB are not stuck on one script.
+    static func queries(title: String, artist metadataArtist: String, limit: Int = 3) -> [Guess] {
         var result: [Guess] = []
+        func add(_ guess: Guess) {
+            guard !guess.song.isEmpty, !result.contains(guess) else { return }
+            result.append(guess)
+        }
         for guess in guesses(title) {
             for song in songVariants(guess.song) {
-                let query = Guess(artist: guess.artist, song: song)
-                if !result.contains(query) { result.append(query) }
+                add(Guess(artist: guess.artist, song: song))
             }
         }
-        return Array(result.prefix(limit))
+        if result.allSatisfy(\.artist.isEmpty), isUsableArtist(metadataArtist) {
+            let songs = result.map(\.song).filter { !$0.isEmpty }
+            let chosen = songs.isEmpty ? [tidy(metadataArtist)] : Array(songs.prefix(2))
+            for song in chosen {
+                result.insert(Guess(artist: cjkLead(tidy(metadataArtist)), song: song), at: 0)
+            }
+        }
+        if let first = result.first {
+            let song = simplified(first.song)
+            let artist = simplified(first.artist)
+            if song != first.song || artist != first.artist {
+                add(Guess(artist: artist, song: song))
+            }
+        }
+        return Array(result.prefix(max(1, limit)))
     }
 }

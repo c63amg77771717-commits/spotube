@@ -177,25 +177,28 @@ struct YouTubeMusicFirstLyricsRepository: LyricsRepositoryProtocol {
                 includeDurationInQuery: original.includeDurationInQuery)
         }
         // YouTube Music and the first (title-matched) fallback run at the same time.
-        async let officialResult = officialLyrics(context)
-        async let firstResult = Self.report(fallbacks.first, context: context)
+        let resolved = context
+        async let officialResult = officialLyrics(resolved)
+        async let firstResult = Self.report(fallbacks.first, context: resolved)
         let officialLyrics = await officialResult
         try Task.checkCancellation()
-        if let officialLyrics, officialLyrics.isTimeSynced { return Self.officialReport(officialLyrics) }
+        let anchoredOfficial = officialLyrics?.withAnchor(videoID: resolved.songID, timelineDuration: resolved.duration.map(Double.init))
+        if let anchoredOfficial, anchoredOfficial.isTimeSynced { return Self.officialReport(anchoredOfficial) }
         let first = await firstResult
         try Task.checkCancellation()
         if let first, first.state == .synchronized { return first }
-        // Any text already found beats waiting on the slow legacy pipeline.
-        if let officialLyrics { return Self.officialReport(officialLyrics) }
-        if let first, Self.hasContent(first) { return first }
+        // Untimed official text used to return before the remaining providers,
+        // so a synced NetEase/LRCLIB/LrcApi timeline never got a chance.
         var reports = first.map { [$0] } ?? []
         for fallback in fallbacks.dropFirst() {
-            // One failing source must not hide the next one.
-            guard let report = await Self.report(fallback, context: context) else { continue }
+            guard let report = await Self.report(fallback, context: resolved) else { continue }
             try Task.checkCancellation()
             if report.state == .synchronized { return report }
             reports.append(report)
         }
+        if let synced = reports.first(where: { $0.state == .synchronized }) { return synced }
+        if let anchoredOfficial { return Self.officialReport(anchoredOfficial) }
+        if let first, Self.hasContent(first) { return first }
         return reports.first(where: Self.hasContent) ?? reports.last ?? .legacy(nil)
     }
 
