@@ -23,6 +23,7 @@ struct SyncedLyricsScrollView: View {
 
     @State private var currentLineId: UUID?
     @State private var containerHeight: CGFloat = 300
+    @Environment(\.scenePhase) private var scenePhase
 
     // User scroll lock state
     @State private var isUserScrolling = false
@@ -48,8 +49,8 @@ struct SyncedLyricsScrollView: View {
                         LazyVStack(spacing: Theme.Spacing.md) {
                             // Small top padding — lyrics align near the top
                             Spacer().frame(height: Theme.Spacing.xl)
-                            ForEach(displayLyrics.lines) { line in
-                                lyricLine(line)
+                            ForEach(Array(displayLyrics.lines.enumerated()), id: \.element.id) { index, line in
+                                lyricLine(line, index: index)
                                     .id(line.id)
                             }
                             // Bottom spacer lets the last line scroll to center.
@@ -92,6 +93,10 @@ struct SyncedLyricsScrollView: View {
                     }
                     .onChange(of: playbackProgress.playingSourceID) { _, _ in
                         followLyricLine(playerTime: playbackProgress.currentTime, proxy: proxy)
+                    }
+                    .onChange(of: scenePhase) { _, phase in
+                        guard phase == .active else { return }
+                        followLyricLine(playerTime: playbackProgress.lyricPlayerTime(), proxy: proxy)
                     }
                 }
 
@@ -261,7 +266,7 @@ struct SyncedLyricsScrollView: View {
         let newId = displayLyrics.lines[index].id
         guard newId != currentLineId else { return }
         currentLineId = newId
-        guard !isUserScrolling else { return }
+        guard scenePhase == .active, !isUserScrolling else { return }
         if reduceMotion {
             proxy.scrollTo(newId, anchor: .center)
         } else {
@@ -271,16 +276,34 @@ struct SyncedLyricsScrollView: View {
         }
     }
 
+    private var lyricAnchor: LyricPlaybackClock.Anchor {
+        LyricPlaybackClock.Anchor(
+            timelineOffset: playbackProgress.lyricTimelineOffset,
+            timelineDuration: displayLyrics.timelineDuration,
+            playingDuration: playbackProgress.duration,
+            authoredForPlayingSource: displayLyrics.authoredVideoID != nil
+                && displayLyrics.authoredVideoID == playbackProgress.playingSourceID)
+    }
+
     @ViewBuilder
-    private func lyricLine(_ line: LyricLine) -> some View {
-        let isCurrent = displayLyrics.isTimeSynced && line.id == currentLineId
+    private func lyricLine(_ line: LyricLine, index: Int) -> some View {
+        let activeIndex = displayLyrics.isTimeSynced
+            ? displayLyrics.lines.firstIndex { $0.id == currentLineId }
+            : nil
+        let role = LyricPlaybackClock.role(
+            lineIndex: index, activeIndex: activeIndex, synced: displayLyrics.isTimeSynced)
+        let lineEnd = index + 1 < displayLyrics.lines.count
+            ? displayLyrics.lines[index + 1].time
+            : line.time + 4
         VStack(spacing: Theme.Spacing.xxs) {
-            Text(line.text)
-                .font(isCurrent ? currentLineFont : lineFont)
-                .foregroundStyle(isCurrent ? AnyShapeStyle(Theme.Colors.brandGradient) : AnyShapeStyle(Theme.Colors.textTertiary.opacity(displayLyrics.isTimeSynced ? 0.6 : 1)))
-                .frame(maxWidth: .infinity, alignment: .center)
-                .multilineTextAlignment(.center)
-                .animation(.easeInOut(duration: 0.3), value: isCurrent)
+            KaraokeLyricText(
+                text: line.text,
+                role: role,
+                lineStart: line.time,
+                lineEnd: lineEnd,
+                anchor: lyricAnchor,
+                font: role == .current ? currentLineFont : lineFont
+            )
 
             if showLyricsTranslationStored, showTranslation, let translated = translatedLines[line.id] {
                 Text(translated)
@@ -352,14 +375,7 @@ struct SyncedLyricsScrollView: View {
     }
 
     private var translationFont: Font {
-        switch lyricsFontSizePreference {
-        case .small:
-            Theme.Typography.caption2
-        case .medium:
-            Theme.Typography.caption
-        case .large:
-            Theme.Typography.subheadline
-        }
+        LyricsTranslationTypography.font(for: lyricsFontSizePreference)
     }
 
     private func triggerTranslation() {
@@ -445,5 +461,87 @@ struct LyricsTranslationModifier: ViewModifier {
                 translationError = LocalizationManager.text("Translation unavailable")
             }
         }
+    }
+}
+
+/// Fills the active line from the player clock. The timeline runs only while
+/// the scene is active so a locked screen does not keep a display link.
+private struct KaraokeLyricText: View {
+    @Environment(PlaybackProgress.self) private var playbackProgress
+    @Environment(\.scenePhase) private var scenePhase
+
+    let text: String
+    let role: LyricPlaybackClock.LineRole
+    let lineStart: TimeInterval
+    let lineEnd: TimeInterval
+    let anchor: LyricPlaybackClock.Anchor
+    let font: Font
+
+    var body: some View {
+        Group {
+            if role == .current, scenePhase == .active, playbackProgress.isPlaying {
+                TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { _ in
+                    Text(styled(playerTime: playbackProgress.lyricPlayerTime()))
+                }
+            } else {
+                Text(styled(playerTime: playbackProgress.currentTime))
+            }
+        }
+        .font(font)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .multilineTextAlignment(.center)
+    }
+
+    private func styled(playerTime: TimeInterval) -> AttributedString {
+        let lyricTime = LyricPlaybackClock.lyricTime(playerTime: playerTime, anchor: anchor)
+        let units = LyricPlaybackClock.sungUnits(
+            text: text, lineStart: lineStart, lineEnd: lineEnd, lyricTime: lyricTime)
+        return Self.attributed(text, units: units, role: role)
+    }
+
+    static func attributed(
+        _ text: String,
+        units: LyricPlaybackClock.SungUnits,
+        role: LyricPlaybackClock.LineRole
+    ) -> AttributedString {
+        var result = AttributedString(text)
+        let count = result.characters.count
+        guard count > 0 else { return result }
+        let filled: Color
+        let rest: Color
+        let sung: Int
+        switch role {
+        case .plain:
+            filled = Theme.Colors.textTertiary
+            rest = Theme.Colors.textTertiary
+            sung = count
+        case .sung:
+            filled = Theme.Colors.brandGradientStart
+            rest = Theme.Colors.brandGradientStart
+            sung = count
+        case .current:
+            filled = Theme.Colors.brandGradientStart
+            rest = Theme.Colors.textTertiary.opacity(0.6)
+            sung = min(max(units.sungCharacters, 0), count)
+        case .upcoming:
+            filled = Theme.Colors.textTertiary.opacity(0.6)
+            rest = Theme.Colors.textTertiary.opacity(0.6)
+            sung = 0
+        }
+        if sung > 0 {
+            let end = result.index(result.startIndex, offsetByCharacters: min(sung, count))
+            result[result.startIndex..<end].mergeAttributes(Self.colorAttributes(filled))
+        }
+        if sung < count {
+            let start = result.index(result.startIndex, offsetByCharacters: max(sung, 0))
+            result[start..<result.endIndex].mergeAttributes(Self.colorAttributes(rest))
+        }
+        return result
+    }
+
+    private static func colorAttributes(_ color: Color) -> AttributeContainer {
+        var attributes = AttributeContainer()
+        attributes.foregroundColor = color
+        return attributes
     }
 }

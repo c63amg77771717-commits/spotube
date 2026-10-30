@@ -18,6 +18,7 @@ struct SeasonalParticleView: View {
     let durationSeconds: Double
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scenePhase) private var scenePhase
     @State private var particles: [SeasonalParticle] = []
     @State private var overallOpacity: Double = 1.0
 
@@ -36,7 +37,7 @@ struct SeasonalParticleView: View {
     var body: some View {
         GeometryReader { geo in
             if overallOpacity > 0.01 {
-                TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { timeline in
                     Canvas { context, size in
                         guard !particles.isEmpty else { return }
                         let now = timeline.date.timeIntervalSinceReferenceDate

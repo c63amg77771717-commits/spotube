@@ -35,44 +35,29 @@ final class RemoteCommandManager {
 
         commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.onPlay?()
-            }
-            return .success
+            MainActorRemoteCommand.run { self?.onPlay?() }
         }
 
         commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.onPause?()
-            }
-            return .success
+            MainActorRemoteCommand.run { self?.onPause?() }
         }
 
         commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.onNext?()
-            }
-            return .success
+            MainActorRemoteCommand.run { self?.onNext?() }
         }
 
         commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            Task { @MainActor in
-                self?.onPrevious?()
-            }
-            return .success
+            MainActorRemoteCommand.run { self?.onPrevious?() }
         }
 
         commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
             let position = event.positionTime
-            Task { @MainActor in
-                self?.onSeek?(position)
-            }
-            return .success
+            return MainActorRemoteCommand.run { self?.onSeek?(position) }
         }
 
         // Track navigation is the lock-screen/control-center transport.
@@ -91,5 +76,22 @@ final class RemoteCommandManager {
         commandCenter.changePlaybackPositionCommand.removeTarget(nil)
         commandCenter.skipForwardCommand.removeTarget(nil)
         commandCenter.skipBackwardCommand.removeTarget(nil)
+    }
+}
+
+/// Headphone and lock-screen commands must change playback before the handler
+/// returns. `Task { @MainActor }` waits behind UI work and feels late in the background.
+enum MainActorRemoteCommand {
+    @discardableResult
+    static func run(_ action: (@MainActor () -> Void)?) -> MPRemoteCommandHandlerStatus {
+        guard let action else { return .commandFailed }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated(action)
+        } else {
+            DispatchQueue.main.sync {
+                MainActor.assumeIsolated(action)
+            }
+        }
+        return .success
     }
 }

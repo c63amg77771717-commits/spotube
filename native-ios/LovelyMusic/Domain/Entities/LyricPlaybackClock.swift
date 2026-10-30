@@ -47,4 +47,104 @@ enum LyricPlaybackClock {
         }
         return active
     }
+
+    struct LineCue: Equatable, Sendable {
+        var time: TimeInterval
+        var text: String
+    }
+
+    /// How a line is painted. Sung lines stay filled; only the active line advances.
+    enum LineRole: Equatable, Sendable {
+        case plain, upcoming, current, sung
+    }
+
+    struct SungUnits: Equatable, Sendable {
+        var sungCharacters: Int
+        var sungWords: Int
+        var characterCount: Int
+        var wordCount: Int
+    }
+
+    struct KaraokeFill: Equatable, Sendable {
+        var activeLineIndex: Int?
+        var units: SungUnits
+    }
+
+    static func role(lineIndex: Int, activeIndex: Int?, synced: Bool) -> LineRole {
+        guard synced, let activeIndex else { return synced ? .upcoming : .plain }
+        if lineIndex < activeIndex { return .sung }
+        if lineIndex == activeIndex { return .current }
+        return .upcoming
+    }
+
+    /// Character-by-character fill inside the active line. A word counts as sung
+    /// once every character of that word has filled, so spaced text advances
+    /// word by word and unspaced text (CJK) advances one character at a time.
+    /// `lyricTime` must already be `lyricTime(playerTime:anchor:)` so Opus and
+    /// AAC share one timeline.
+    static func karaokeFill(
+        lines: [LineCue],
+        lyricTime: TimeInterval,
+        trailingLineDuration: TimeInterval = 4
+    ) -> KaraokeFill {
+        guard let index = activeLineIndex(times: lines.map(\.time), lyricTime: lyricTime) else {
+            return KaraokeFill(activeLineIndex: nil, units: .empty)
+        }
+        let start = lines[index].time
+        let end = index + 1 < lines.count ? lines[index + 1].time : start + trailingLineDuration
+        return KaraokeFill(
+            activeLineIndex: index,
+            units: sungUnits(text: lines[index].text, lineStart: start, lineEnd: end, lyricTime: lyricTime)
+        )
+    }
+
+    static func sungUnits(
+        text: String,
+        lineStart: TimeInterval,
+        lineEnd: TimeInterval,
+        lyricTime: TimeInterval
+    ) -> SungUnits {
+        let characters = Array(text)
+        let words = wordRanges(in: text)
+        let span = max(lineEnd - lineStart, 0.001)
+        let fraction: Double
+        if lyricTime.isFinite {
+            fraction = min(1, max(0, (lyricTime - lineStart) / span))
+        } else {
+            fraction = 0
+        }
+        let sungCharacters = fraction >= 1
+            ? characters.count
+            : min(characters.count, Int((fraction * Double(characters.count)).rounded(.down)))
+        let sungWords = words.filter { $0.upperBound <= sungCharacters }.count
+        return SungUnits(
+            sungCharacters: sungCharacters,
+            sungWords: sungWords,
+            characterCount: characters.count,
+            wordCount: words.count
+        )
+    }
+
+    /// Whitespace-delimited words. Without spaces each character is a word.
+    static func wordRanges(in text: String) -> [Range<Int>] {
+        let characters = Array(text)
+        guard !characters.isEmpty else { return [] }
+        let hasWhitespace = characters.contains { $0.isWhitespace }
+        if !hasWhitespace {
+            return characters.indices.map { $0..<$0 + 1 }
+        }
+        var ranges: [Range<Int>] = []
+        var index = 0
+        while index < characters.count {
+            while index < characters.count, characters[index].isWhitespace { index += 1 }
+            let start = index
+            while index < characters.count, !characters[index].isWhitespace { index += 1 }
+            if start < index { ranges.append(start..<index) }
+        }
+        return ranges
+    }
+}
+
+extension LyricPlaybackClock.SungUnits {
+    static let empty = Self(sungCharacters: 0, sungWords: 0, characterCount: 0, wordCount: 0)
 }

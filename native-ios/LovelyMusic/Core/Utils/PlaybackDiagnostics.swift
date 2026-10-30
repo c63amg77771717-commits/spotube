@@ -168,6 +168,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let playerSourceConfigured: Bool
         let events: [Event]
         let lyricsLookupEvents: [LyricsLookupDiagnostics.Event]?
+        let runtimeDiagnostics: [String]
     }
 
     static let capacity = 100
@@ -251,7 +252,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             bundleID: Bundle.main.bundleIdentifier ?? "unknown",
             systemVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             storageError: snapshot.1, playerSourceConfigured: SecretsProvider.hasPlayerSourceConfiguration,
-            events: snapshot.0, lyricsLookupEvents: LyricsLookupDiagnostics.shared.events)
+            events: snapshot.0, lyricsLookupEvents: LyricsLookupDiagnostics.shared.events,
+            runtimeDiagnostics: RuntimeDiagnosticLog.shared.snapshot())
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

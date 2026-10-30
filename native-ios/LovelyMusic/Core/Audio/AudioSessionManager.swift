@@ -29,8 +29,13 @@ enum AudioSessionManager {
     @discardableResult
     static func setCategory() -> Bool {
         migrateSystemPlayerPolicy()
+        let session = AVAudioSession.sharedInstance()
+        // Reconfiguring an already-correct category is the slow part of waking
+        // a session after standby. Playback start only needs setActive.
+        if session.category == .playback, session.mode == .default, session.categoryOptions.isEmpty {
+            return true
+        }
         do {
-            let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default,
                 options: [])
             PlaybackDiagnostics.shared.record(.init(phase: .audioSessionConfigured,

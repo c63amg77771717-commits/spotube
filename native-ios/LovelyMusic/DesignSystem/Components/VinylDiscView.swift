@@ -10,6 +10,7 @@ struct VinylDiscView: View {
     @State private var baseAngle: Double = 0
     /// Date when the current play session started; nil when paused.
     @State private var playStartDate: Date?
+    @Environment(\.scenePhase) private var scenePhase
 
     private var artworkSize: CGFloat { size * 0.52 }
     private var discSize: CGFloat { size }
@@ -18,7 +19,7 @@ struct VinylDiscView: View {
     static let degreesPerSecond: Double = 45
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying)) { timeline in
+        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying || scenePhase != .active)) { timeline in
             let rotation = currentRotation(at: timeline.date)
             ZStack {
                 vinylDisc
@@ -39,24 +40,27 @@ struct VinylDiscView: View {
         }
         .frame(width: discSize, height: discSize)
         .onAppear {
-            if isPlaying && playStartDate == nil {
-                playStartDate = Date()
-            }
+            syncSpin(playing: isPlaying && scenePhase == .active)
         }
         .onChange(of: isPlaying) { _, playing in
-            if playing {
-                playStartDate = Date()
-            } else {
-                if let start = playStartDate {
-                    baseAngle += Date().timeIntervalSince(start) * Self.degreesPerSecond
-                }
-                playStartDate = nil
-            }
+            syncSpin(playing: playing && scenePhase == .active)
+        }
+        .onChange(of: scenePhase) { _, phase in
+            syncSpin(playing: isPlaying && phase == .active)
         }
         .shadow(color: dominantColor.opacity(0.25), radius: 24, y: 12)
     }
 
     // MARK: - Rotation
+
+    private func syncSpin(playing: Bool) {
+        if playing {
+            if playStartDate == nil { playStartDate = Date() }
+        } else if let start = playStartDate {
+            baseAngle += Date().timeIntervalSince(start) * Self.degreesPerSecond
+            playStartDate = nil
+        }
+    }
 
     /// Pure function — no state mutation, safe to call every frame.
     private func currentRotation(at date: Date) -> Double {

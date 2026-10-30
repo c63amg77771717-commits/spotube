@@ -10,6 +10,10 @@ final class PlaybackProgress {
     }
 
     var currentTime: TimeInterval { audioEngine.currentTime }
+    var isPlaying: Bool { audioEngine.isPlaying }
+    /// Player clock, not the  UI publication interval. Lyric fill maps this
+    /// through `LyricPlaybackClock` so Opus and AAC stay on one timeline.
+    func lyricPlayerTime() -> TimeInterval { audioEngine.lyricPlayerTime() }
     var duration: TimeInterval { audioEngine.duration }
     /// Seconds added to player time to reach the lyric timeline. AAC's sidx
     /// presentation time and an Opus file's container delay differ.

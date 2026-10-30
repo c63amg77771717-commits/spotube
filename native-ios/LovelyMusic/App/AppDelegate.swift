@@ -1,5 +1,6 @@
 import UIKit
 import os
+import Nuke
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -9,7 +10,28 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         TelemetryManager.shared.logBreadcrumb("App finished launching")
 
         configureAudioSession()
+        RuntimeDiagnostics.shared.start()
         return true
+    }
+
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        MainActor.assumeIsolated {
+            PlaybackSceneBridge.shared.didEnterBackground()
+            BackgroundMemoryRelief.trimTransientImages()
+        }
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        MainActor.assumeIsolated {
+            PlaybackSceneBridge.shared.didBecomeActive()
+        }
+    }
+
+    func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+        MainActor.assumeIsolated {
+            BackgroundMemoryRelief.trimTransientImages()
+            PlaybackSceneBridge.shared.didReceiveMemoryWarning()
+        }
     }
 
     func application(

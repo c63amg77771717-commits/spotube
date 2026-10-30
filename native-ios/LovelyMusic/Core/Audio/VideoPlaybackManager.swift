@@ -47,6 +47,9 @@ final class VideoPlaybackManager {
     /// `loadVideoStream(for:)` call so superseded loads do not assign
     /// `videoPlayerItem` or emit success log lines.
     private var currentTask: Task<Void, Never>?
+    /// The video item is released while the screen is locked. Audio uses a
+    /// different player, so dropping these buffers does not stop the song.
+    private var suspendedForBackground = false
 
     #if DEBUG
         /// Test-only audit trail of stream URLs that successfully passed the
@@ -181,7 +184,29 @@ final class VideoPlaybackManager {
         vp.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
+    func suspendForBackground() {
+        let hadWork = videoPlayer?.currentItem != nil || currentTask != nil
+        guard hadWork, !suspendedForBackground else { return }
+        suspendedForBackground = true
+        currentTask?.cancel()
+        currentTask = nil
+        videoPlayer?.pause()
+        videoPlayer?.replaceCurrentItem(with: nil)
+        videoPlayerItem = nil
+        if videoLoadState == .loaded || videoLoadState == .loading {
+            videoLoadState = .idle
+        }
+    }
+
+    func resumeAfterBackground(song: Song?) {
+        guard suspendedForBackground else { return }
+        suspendedForBackground = false
+        guard isVideoMode, let song else { return }
+        loadVideoStream(for: song)
+    }
+
     func cleanupVideoPlayer() {
+        suspendedForBackground = false
         loadToken &+= 1  // invalidate any in-flight load Task
         currentTask?.cancel()
         currentTask = nil
