@@ -305,8 +305,8 @@ struct FullPlayerView: View {
                         }
                     }
                     .frame(maxHeight: .infinity)
-                    .animation(Theme.AnimationPresets.smooth, value: playerVM.isLyricsVisible)
-                    .animation(Theme.AnimationPresets.smooth, value: playerVM.isVideoMode)
+                    .animation(nil, value: playerVM.isLyricsVisible)
+                    .animation(nil, value: playerVM.isVideoMode)
 
                     // Song info
                     HStack {
@@ -391,16 +391,8 @@ struct FullPlayerView: View {
                         isVideoPlaybackEnabled: featureFlags.isVideoPlaybackEnabled,
                         onCycleSpeed: { playerVM.cyclePlaybackSpeed() },
                         onToggleAutoplay: { playerVM.toggleAutoplay() },
-                        onToggleVideo: {
-                            withAnimation(Theme.AnimationPresets.bouncy) {
-                                playerVM.toggleVideoMode()
-                            }
-                        },
-                        onToggleLyrics: {
-                            withAnimation(Theme.AnimationPresets.bouncy) {
-                                playerVM.isLyricsVisible.toggle()
-                            }
-                        },
+                        onToggleVideo: { playerVM.toggleVideoMode() },
+                        onToggleLyrics: { playerVM.isLyricsVisible.toggle() },
                         onShowQueue: { playerVM.isQueuePresented = true }
                     )
                     .padding(

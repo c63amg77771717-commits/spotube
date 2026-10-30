@@ -20,13 +20,15 @@ struct MusicWaveAnimation: View {
     /// timing so the change is imperceptible.
     private let periodSeconds: Double = 0.8
 
+    @Environment(\.scenePhase) private var scenePhase
+
     init(color: Color = Theme.Colors.brandGradientStart, barCount: Int = 3) {
         self.color = color
         self.barCount = barCount
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { context in
             HStack(spacing: 2) {
                 ForEach(0..<barCount, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 1)

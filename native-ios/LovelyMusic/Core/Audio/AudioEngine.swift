@@ -302,6 +302,11 @@ final class AudioEngine {
     private var endOfTrackObserver: NSObjectProtocol?
     private var streamResolvedAt: Date?
     private var userInitiatedPause: Bool = false
+    /// Screen lock. UI sampling slows down and video buffers are released.
+    @ObservationIgnored private var interfaceSuspended = false
+    /// The next resume after standby seeks a drained buffer instead of waiting on it.
+    @ObservationIgnored private var resumeNeedsKick = false
+    @ObservationIgnored private var backgroundExpiryReloadAttempted = false
     private var isInterrupted = false
     private(set) var requiresManualPlaybackRecovery = false
     private var resumeAfterInterruption = false
@@ -527,6 +532,45 @@ final class AudioEngine {
             self.recoveryService.resetRetry()
             self.setPlaybackIntent(true)
         }
+        PlaybackSceneBridge.shared.attach(self)
+    }
+
+    /// Live player clock used by karaoke fill. Mapping it through
+    /// `LyricPlaybackClock` keeps Opus and AAC on the lyric timeline.
+    func lyricPlayerTime() -> TimeInterval {
+        if let seconds = player?.currentTime().seconds, seconds.isFinite, seconds >= 0 {
+            return seconds
+        }
+        return currentTime
+    }
+
+    /// Lock screen: stop UI-rate observation, release the muted video item,
+    /// and do not keep preparing Opus while the screen is off. AAC already
+    /// playing is left alone.
+    func applicationDidEnterBackground() {
+        guard !interfaceSuspended else { return }
+        interfaceSuspended = true
+        resumeNeedsKick = true
+        backgroundExpiryReloadAttempted = false
+        upgradeTask?.cancel()
+        upgradeTask = nil
+        setupTimeObserver()
+        videoManager.suspendForBackground()
+        if !isPlaying || userInitiatedPause {
+            parkExpiredPlaybackIfNeeded()
+        }
+        RuntimeDiagnosticLog.shared.append(
+            "background: ui-sample \(PlaybackInterfaceBudget.backgroundSampleSeconds)s video-suspended=\(videoManager.videoPlayer != nil) playing=\(isPlaying)"
+        )
+    }
+
+    func applicationDidReceiveMemoryWarning() {
+        if interfaceSuspended {
+            videoManager.suspendForBackground()
+            upgradeTask?.cancel()
+            upgradeTask = nil
+        }
+        RuntimeDiagnosticLog.shared.append("memory warning interfaceSuspended=\(interfaceSuspended) playing=\(isPlaying)")
     }
 
     deinit {
@@ -1014,12 +1058,55 @@ final class AudioEngine {
     /// A manual pause stays paused. A dead item is dropped so the next play rebuilds
     /// it instead of waiting out a stall.
     func applicationDidBecomeActive() {
+        let returning = interfaceSuspended
+        if returning {
+            interfaceSuspended = false
+            setupTimeObserver()
+            videoManager.resumeAfterBackground(song: isVideoMode ? currentTrack : nil)
+            if let seconds = player?.currentTime().seconds, seconds.isFinite, seconds >= 0 {
+                currentTime = seconds
+            }
+            warmForForeground()
+            if isPlaying, activeAudioCodec == "aac", localFileURL == nil, let song = currentTrack {
+                scheduleHighQualityUpgrade(song: song, generation: loadGeneration)
+            }
+            RuntimeDiagnosticLog.shared.append("foreground: ui clock resumed playing=\(isPlaying)")
+        }
         guard !isInterrupted else { return }
         if !isPlaying || userInitiatedPause {
             parkExpiredPlaybackIfNeeded()
             return
         }
         setPlaybackIntent(true)
+    }
+
+    /// After standby, a paused song should not pay for a cold audio session or
+    /// a signed URL that has already expired. Opus is not prepared here.
+    private func warmForForeground() {
+        guard currentTrack != nil else { return }
+        let decision = PlaybackInterfaceBudget.foregroundWarmth(
+            returningFromBackground: true,
+            hasTrack: true,
+            isPlaying: isPlaying,
+            userPaused: userInitiatedPause,
+            remoteExpired: remoteStreamExpired(),
+            otherAudioOwnsSession: AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint,
+            itemReady: player?.currentItem?.status == .readyToPlay
+        )
+        if player == nil, decision.keepPlayerGraph {
+            player = AVPlayer()
+            player?.automaticallyWaitsToMinimizeStalling = false
+            setupPlayerObservers()
+        }
+        if decision.dropExpiredItem {
+            parkExpiredPlaybackIfNeeded()
+        }
+        if decision.activateAudioSession {
+            _ = audioSessionActivator()
+        }
+        if decision.prerollReadyItem {
+            player?.preroll(atRate: max(playbackSpeed, Float(0.1)), completionHandler: nil)
+        }
     }
 
     private func reloadSelectedTrack() {
@@ -1708,6 +1795,26 @@ final class AudioEngine {
     func resumePlayer() {
         guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
         guard activateAudioSessionForPlayback() else { return }
+        let needsKick = resumeNeedsKick
+        resumeNeedsKick = false
+        if needsKick, let active = player, active.currentItem?.isPlaybackLikelyToKeepUp == false {
+            let seconds = active.currentTime().seconds
+            if seconds.isFinite {
+                let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+                active.seek(to: target, toleranceBefore: .zero, toleranceAfter: .positiveInfinity) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isPlaying, !self.userInitiatedPause, !self.isInterrupted else { return }
+                        self.player?.rate = self.playbackSpeed
+                        self.nowPlayingManager.updatePlaybackState(
+                            isPlaying: self.isPlaying, currentTime: self.currentTime,
+                            rate: Double(self.player?.rate ?? 0)
+                        )
+                        self.nowPlayingManager.activateForCurrentPlayback()
+                    }
+                }
+                return
+            }
+        }
         player?.rate = playbackSpeed
         nowPlayingManager.updatePlaybackState(
             isPlaying: isPlaying, currentTime: currentTime,
@@ -3185,6 +3292,9 @@ final class AudioEngine {
     /// Downloads and remuxes Opus after AAC has started, then switches the
     /// existing AVPlayer at the current position. A failure leaves AAC playing.
     private func scheduleHighQualityUpgrade(song: Song, generation: UInt64) {
+        // Opus is prepared only while the interface is awake. AAC is already
+        // playing, so deferring this cannot move time-to-first-audio.
+        guard !interfaceSuspended else { return }
         upgradeTask?.cancel()
         let sourceID = playbackSourceID(for: song)
         upgradeTask = Task { @MainActor [weak self] in
@@ -4025,7 +4135,13 @@ final class AudioEngine {
     }
 
     private func setupTimeObserver() {
-        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        guard player != nil else { return }
+        let seconds = PlaybackInterfaceBudget.timeObserverInterval(interfaceActive: !interfaceSuspended)
+        let interval = CMTime(seconds: seconds, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) {
             [weak self] time in
             MainActor.assumeIsolated {
@@ -4034,6 +4150,12 @@ final class AudioEngine {
                 // Suppress updates while a pending seek is queued to prevent
                 // the scrubber from flickering between actual and desired position
                 guard self.pendingSeekTime == nil else { return }
+                if self.interfaceSuspended, self.isPlaying, !self.userInitiatedPause,
+                   !self.backgroundExpiryReloadAttempted, self.remoteStreamExpired() {
+                    self.backgroundExpiryReloadAttempted = true
+                    self.reloadSelectedTrack()
+                    return
+                }
                 self.currentTime = time.seconds
 
                 // Pre-fetch next track when playback reaches 75%

@@ -4,6 +4,7 @@ import UIKit
 struct PlaybackDiagnosticsView: View {
     @State private var showClearConfirmation = false
     @State private var showClearError = false
+    @State private var runtimeLines: [String] = []
 
     var body: some View {
         ScrollView {
@@ -11,7 +12,16 @@ struct PlaybackDiagnosticsView: View {
                 Text("發生無法播放時，請立即匯出診斷；成功播放後也可匯出，方便比對。")
                     .font(Theme.Typography.body)
                     .foregroundStyle(Theme.Colors.textSecondary)
-                SettingsGroup(header: "播放診斷", footer: "最多保留最近 100 筆事件，重新開啟 App 後仍可匯出。") {
+                SettingsGroup(header: "當機與背景紀錄", footer: "鎖屏後若 App 被系統結束，下一次開啟可在這裡看到 MetricKit 的崩潰、CPU 與卡住紀錄。內容留在這台裝置。") {
+                    Text(runtimeLines.isEmpty ? "尚無背景或當機紀錄" : runtimeLines.suffix(40).joined(separator: "\n"))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(Theme.Colors.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(Theme.Spacing.lg)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("runtime_diagnostic_log")
+                }
+                SettingsGroup(header: "播放診斷", footer: "最多保留最近 100 筆事件，重新開啟 App 後仍可匯出。匯出檔包含上方的背景與當機紀錄。") {
                     PlaybackDiagnosticsExportButton()
                     SettingsDivider()
                     Button {
@@ -37,6 +47,7 @@ struct PlaybackDiagnosticsView: View {
         }
         .background(Theme.Colors.backgroundPrimary)
         .dockSafeBottom()
+        .onAppear { runtimeLines = RuntimeDiagnosticLog.shared.snapshot() }
         .navigationTitle("播放診斷")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

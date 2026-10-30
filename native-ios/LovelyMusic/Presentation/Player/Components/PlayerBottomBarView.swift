@@ -81,7 +81,6 @@ struct PlayerBottomBarView: View {
                                 ? AnyShapeStyle(Theme.Colors.brandGradient)
                                 : AnyShapeStyle(Theme.Colors.textTertiary)
                         )
-                        .contentTransition(.symbolEffect(.replace))
                     Text(isVideoMode ? "Audio" : "Video")
                         .font(Theme.Typography.caption2.weight(.medium))
                         .foregroundStyle(
@@ -93,6 +92,7 @@ struct PlayerBottomBarView: View {
             }
             .frame(maxWidth: .infinity, minHeight: 52)
             .contentShape(Rectangle())
+            .buttonStyle(.plain)
             .disabled(!isVideoPlaybackEnabled)
             .opacity(isVideoPlaybackEnabled ? 1.0 : 0.3)
             .accessibilityLabel(isVideoMode ? "Switch to audio" : "Switch to video")
@@ -121,6 +121,8 @@ struct PlayerBottomBarView: View {
                 }
             }
             .frame(minWidth: 56, minHeight: 52)
+            .contentShape(Rectangle())
+            .buttonStyle(.plain)
             .accessibilityLabel(isLyricsVisible ? "Hide lyrics" : "Show lyrics")
             .accessibilityValue(isLyricsVisible ? "Showing" : "Hidden")
             .accessibilityIdentifier("toggle_lyrics")

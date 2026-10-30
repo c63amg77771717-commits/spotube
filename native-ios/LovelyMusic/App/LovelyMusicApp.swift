@@ -1,6 +1,17 @@
 import GoogleSignIn
 import Nuke
 import SwiftUI
+import UIKit
+
+enum BackgroundMemoryRelief {
+    /// Drop decoded images when the screen locks or the system is low on memory.
+    /// Disk caches stay so the next foreground browse is still fast.
+    static func trimTransientImages() {
+        // Memory only. The disk data cache is what makes the next browse fast,
+        // and audio does not live in Nuke's cache.
+        ImagePipeline.shared.cache.removeAll(caches: [.memory])
+    }
+}
 
 @main
 struct LovelyMusicApp: App {
@@ -126,7 +137,9 @@ struct LovelyMusicApp: App {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 GoogleDrivePlaylistSync.shared.stopForeground()
+                diContainer?.audioEngine.applicationDidEnterBackground()
                 diContainer?.audioEngine.savePlaybackState()
+                BackgroundMemoryRelief.trimTransientImages()
 
                 // S2: Reclaim disk on background. Trim the LRU cache to
                 // its size budget and remove orphans / entries superseded
@@ -161,6 +174,10 @@ struct LovelyMusicApp: App {
         }
         .onReceive(NotificationCenter.default.publisher(for: .playlistsChanged)) { _ in
             GoogleDrivePlaylistSync.shared.scheduleSync()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+            BackgroundMemoryRelief.trimTransientImages()
+            diContainer?.audioEngine.applicationDidReceiveMemoryWarning()
         }
     }
 
