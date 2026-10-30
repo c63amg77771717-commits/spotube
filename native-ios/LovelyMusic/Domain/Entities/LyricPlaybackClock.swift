@@ -107,15 +107,8 @@ enum LyricPlaybackClock {
         let characters = Array(text)
         let words = wordRanges(in: text)
         let span = max(lineEnd - lineStart, 0.001)
-        let fraction: Double
-        if lyricTime.isFinite {
-            fraction = min(1, max(0, (lyricTime - lineStart) / span))
-        } else {
-            fraction = 0
-        }
-        let sungCharacters = fraction >= 1
-            ? characters.count
-            : min(characters.count, Int((fraction * Double(characters.count)).rounded(.down)))
+        let sungCharacters = Self.sungCharacterCount(
+            count: characters.count, lineStart: lineStart, span: span, lyricTime: lyricTime)
         let sungWords = words.filter { $0.upperBound <= sungCharacters }.count
         return SungUnits(
             sungCharacters: sungCharacters,
@@ -123,6 +116,28 @@ enum LyricPlaybackClock {
             characterCount: characters.count,
             wordCount: words.count
         )
+    }
+
+    /// How many characters have been reached. Each character owns an equal slice
+    /// of the line. The slice boundary is compared directly so `span * 1 / n`
+    /// does not collapse to the previous character through floating-point floor.
+    private static func sungCharacterCount(
+        count: Int, lineStart: TimeInterval, span: TimeInterval, lyricTime: TimeInterval
+    ) -> Int {
+        guard count > 0, lyricTime.isFinite else { return 0 }
+        let elapsed = lyricTime - lineStart
+        if elapsed >= span { return count }
+        if elapsed <= 0 { return 0 }
+        var sung = 0
+        for index in 1...count {
+            let boundary = lineStart + span * Double(index) / Double(count)
+            if lyricTime + 0.000_5 >= boundary {
+                sung = index
+            } else {
+                break
+            }
+        }
+        return sung
     }
 
     /// Whitespace-delimited words. Without spaces each character is a word.
