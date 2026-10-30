@@ -1797,21 +1797,23 @@ final class AudioEngine {
         guard activateAudioSessionForPlayback() else { return }
         let needsKick = resumeNeedsKick
         resumeNeedsKick = false
-        if needsKick, let active = player, active.currentItem?.isPlaybackLikelyToKeepUp == false,
-           let seconds = active.currentTime().seconds, seconds.isFinite {
-            let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-            active.seek(to: target, toleranceBefore: .zero, toleranceAfter: .positiveInfinity) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.isPlaying, !self.userInitiatedPause, !self.isInterrupted else { return }
-                    self.player?.rate = self.playbackSpeed
-                    self.nowPlayingManager.updatePlaybackState(
-                        isPlaying: self.isPlaying, currentTime: self.currentTime,
-                        rate: Double(self.player?.rate ?? 0)
-                    )
-                    self.nowPlayingManager.activateForCurrentPlayback()
+        if needsKick, let active = player, active.currentItem?.isPlaybackLikelyToKeepUp == false {
+            let seconds = active.currentTime().seconds
+            if seconds.isFinite {
+                let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+                active.seek(to: target, toleranceBefore: .zero, toleranceAfter: .positiveInfinity) { [weak self] _ in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.isPlaying, !self.userInitiatedPause, !self.isInterrupted else { return }
+                        self.player?.rate = self.playbackSpeed
+                        self.nowPlayingManager.updatePlaybackState(
+                            isPlaying: self.isPlaying, currentTime: self.currentTime,
+                            rate: Double(self.player?.rate ?? 0)
+                        )
+                        self.nowPlayingManager.activateForCurrentPlayback()
+                    }
                 }
+                return
             }
-            return
         }
         player?.rate = playbackSpeed
         nowPlayingManager.updatePlaybackState(
