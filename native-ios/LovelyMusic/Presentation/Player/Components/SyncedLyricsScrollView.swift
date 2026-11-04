@@ -464,11 +464,13 @@ struct LyricsTranslationModifier: ViewModifier {
     }
 }
 
-/// Fills the active line from the player clock. The timeline runs only while
-/// the scene is active so a locked screen does not keep a display link.
+/// Sweeps the active line from the live player clock. The display link exists
+/// only while this row is current, playing, and on screen. A locked screen
+/// unmounts it, so background playback does not animate every frame.
 private struct KaraokeLyricText: View {
     @Environment(PlaybackProgress.self) private var playbackProgress
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let text: String
     let role: LyricPlaybackClock.LineRole
@@ -477,71 +479,39 @@ private struct KaraokeLyricText: View {
     let anchor: LyricPlaybackClock.Anchor
     let font: Font
 
+    private var sweepLive: Bool {
+        LyricSweepAnimation.isScheduled(
+            sceneIsActive: scenePhase == .active,
+            isPlaying: playbackProgress.isPlaying,
+            reduceMotion: reduceMotion,
+            isCurrentLine: role == .current
+        )
+    }
+
     var body: some View {
-        Group {
-            if role == .current, scenePhase == .active, playbackProgress.isPlaying {
-                TimelineView(.periodic(from: .now, by: 1.0 / 12.0)) { _ in
-                    Text(styled(playerTime: playbackProgress.lyricPlayerTime()))
-                }
-            } else {
-                Text(styled(playerTime: playbackProgress.currentTime))
+        timeline
+            .font(font)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder
+    private var timeline: some View {
+        if sweepLive {
+            TimelineView(.animation(minimumInterval: nil, paused: false)) { _ in
+                painted(playerTime: playbackProgress.lyricPlayerTime())
             }
+        } else if role == .current {
+            painted(playerTime: playbackProgress.currentTime)
+        } else {
+            painted(playerTime: lineStart)
         }
-        .font(font)
-        .frame(maxWidth: .infinity, alignment: .center)
-        .multilineTextAlignment(.center)
     }
 
-    private func styled(playerTime: TimeInterval) -> AttributedString {
+    private func painted(playerTime: TimeInterval) -> some View {
         let lyricTime = LyricPlaybackClock.lyricTime(playerTime: playerTime, anchor: anchor)
-        let units = LyricPlaybackClock.sungUnits(
-            text: text, lineStart: lineStart, lineEnd: lineEnd, lyricTime: lyricTime)
-        return Self.attributed(text, units: units, role: role)
-    }
-
-    static func attributed(
-        _ text: String,
-        units: LyricPlaybackClock.SungUnits,
-        role: LyricPlaybackClock.LineRole
-    ) -> AttributedString {
-        var result = AttributedString(text)
-        let count = result.characters.count
-        guard count > 0 else { return result }
-        let filled: Color
-        let rest: Color
-        let sung: Int
-        switch role {
-        case .plain:
-            filled = Theme.Colors.textTertiary
-            rest = Theme.Colors.textTertiary
-            sung = count
-        case .sung:
-            filled = Theme.Colors.brandGradientStart
-            rest = Theme.Colors.brandGradientStart
-            sung = count
-        case .current:
-            filled = Theme.Colors.brandGradientStart
-            rest = Theme.Colors.textTertiary.opacity(0.6)
-            sung = min(max(units.sungCharacters, 0), count)
-        case .upcoming:
-            filled = Theme.Colors.textTertiary.opacity(0.6)
-            rest = Theme.Colors.textTertiary.opacity(0.6)
-            sung = 0
-        }
-        if sung > 0 {
-            let end = result.index(result.startIndex, offsetByCharacters: min(sung, count))
-            result[result.startIndex..<end].mergeAttributes(Self.colorAttributes(filled))
-        }
-        if sung < count {
-            let start = result.index(result.startIndex, offsetByCharacters: max(sung, 0))
-            result[start..<result.endIndex].mergeAttributes(Self.colorAttributes(rest))
-        }
-        return result
-    }
-
-    private static func colorAttributes(_ color: Color) -> AttributeContainer {
-        var attributes = AttributeContainer()
-        attributes.foregroundColor = color
-        return attributes
+        let sweep = LyricPlaybackClock.presentedSweep(
+            role: role, text: text, lineStart: lineStart, lineEnd: lineEnd, lyricTime: lyricTime)
+        return LyricSweepLabel(text: text, role: role, sweep: sweep)
     }
 }
