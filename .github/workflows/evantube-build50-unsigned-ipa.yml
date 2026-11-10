@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - cursor/build49-lyric-sweep-4b36
+    tags:
+      - build50-ipa-*
   pull_request:
     branches:
       - cursor/build48-karaoke-background-58c9
