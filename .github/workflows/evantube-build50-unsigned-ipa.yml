@@ -1,6 +1,10 @@
 name: EvanTube Build50 unsigned IPA
 
 "on":
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/evantube-build50-unsigned-ipa.yml
   repository_dispatch:
     types: [build50-ipa]
   workflow_dispatch: {}
