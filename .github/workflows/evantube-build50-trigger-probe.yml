@@ -3,7 +3,9 @@ name: EvanTube Build50 Trigger Probe
   push:
     branches:
       - cursor/build50-ci-probe-4b36
-      - cursor/build49-lyric-sweep-4b36
+  pull_request:
+    branches:
+      - cursor/build48-karaoke-background-58c9
 permissions:
   contents: read
 jobs:
@@ -11,5 +13,5 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Show that Actions scheduled this push
+      - name: Show that Actions scheduled this event
         run: echo BUILD50_TRIGGER_PROBE
