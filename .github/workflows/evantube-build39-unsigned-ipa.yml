@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   audio-regression:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
           persist-credentials: false
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16.4'
       - name: Generate isolated synthetic regression target
         working-directory: native-ios
         run: |
@@ -116,7 +116,7 @@ jobs:
 
   unsigned-ipa:
     needs: [audio-regression]
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +124,7 @@ jobs:
           persist-credentials: false
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16.4'
       - name: Prepare clean Build39 device project without credentials
         working-directory: native-ios
         run: |
