@@ -1,0 +1,15 @@
+name: EvanTube Build50 Trigger Probe
+"on":
+  push:
+    branches:
+      - cursor/build50-ci-probe-4b36
+      - cursor/build49-lyric-sweep-4b36
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Show that Actions scheduled this push
+        run: echo BUILD50_TRIGGER_PROBE
