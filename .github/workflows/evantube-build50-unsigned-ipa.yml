@@ -5,6 +5,7 @@ on:
     branches:
       - cursor/build49-lyric-sweep-4b36
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - cursor/build48-karaoke-background-58c9
   workflow_dispatch: {}
