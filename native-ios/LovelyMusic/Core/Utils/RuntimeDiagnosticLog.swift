@@ -42,6 +42,24 @@ final class RuntimeDiagnosticLog: @unchecked Sendable {
         try? Self.write(snapshot, to: destination)
     }
 
+    func noteLifecycle(_ state: String) {
+        guard state == "background" || state == "foreground" else { return }
+        try? Data(state.utf8).write(to: lifecycleURL, options: [.atomic])
+    }
+
+    /// True when the previous process was still in the background and never
+    /// returned. Jetsam and the watchdog usually skip `willTerminate`.
+    func consumeBackgroundExitHint() -> Bool {
+        let state = (try? String(contentsOf: lifecycleURL, encoding: .utf8)) ?? ""
+        guard state == "background" else { return false }
+        try? Data("foreground".utf8).write(to: lifecycleURL, options: [.atomic])
+        return true
+    }
+
+    private var lifecycleURL: URL {
+        fileURL.deletingLastPathComponent().appendingPathComponent("lifecycle.txt")
+    }
+
     func snapshot() -> [String] {
         lock.lock()
         let copy = lines
@@ -104,6 +122,10 @@ final class RuntimeDiagnostics: NSObject, MXMetricManagerSubscriber {
         started = true
         MXMetricManager.shared.add(self)
         RuntimeDiagnosticLog.shared.append("metrickit subscriber started")
+        if RuntimeDiagnosticLog.shared.consumeBackgroundExitHint() {
+            RuntimeDiagnosticLog.shared.append("termination hint relaunch-while-backgrounded")
+            PlaybackDiagnostics.shared.record(.init(phase: .terminationHint))
+        }
     }
 
     func didReceive(_ payloads: [MXMetricPayload]) {

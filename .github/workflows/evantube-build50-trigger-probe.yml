@@ -1,0 +1,18 @@
+name: EvanTube Build50 Trigger Probe
+"on":
+  push:
+    branches:
+      - cursor/build50-ci-probe-4b36
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - cursor/build48-karaoke-background-58c9
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Show that Actions scheduled this event
+        run: echo BUILD50_TRIGGER_PROBE

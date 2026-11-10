@@ -14,8 +14,8 @@ enum PlaybackInterfaceBudget {
         interfaceActive ? foregroundSampleSeconds : backgroundSampleSeconds
     }
 
-    static func animationsPaused(sceneIsActive: Bool) -> Bool {
-        !sceneIsActive
+    static func animationsPaused(sceneIsActive: Bool, interfaceSuspended: Bool = false) -> Bool {
+        !sceneIsActive || interfaceSuspended
     }
 
     struct ForegroundWarmth: Equatable, Sendable {

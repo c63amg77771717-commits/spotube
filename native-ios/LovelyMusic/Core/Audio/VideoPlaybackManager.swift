@@ -51,6 +51,11 @@ final class VideoPlaybackManager {
     /// different player, so dropping these buffers does not stop the song.
     private var suspendedForBackground = false
 
+    /// True only when the muted player, its item, and any load task are gone.
+    var isVideoSuspended: Bool {
+        videoPlayer == nil && videoPlayerItem == nil && currentTask == nil
+    }
+
     #if DEBUG
         /// Test-only audit trail of stream URLs that successfully passed the
         /// cancellation/token guards and reached the `videoPlayerItem`
@@ -185,18 +190,24 @@ final class VideoPlaybackManager {
     }
 
     func suspendForBackground() {
-        let hadWork = videoPlayer?.currentItem != nil || currentTask != nil
-        guard hadWork, !suspendedForBackground else { return }
         suspendedForBackground = true
+        loadToken &+= 1
         currentTask?.cancel()
         currentTask = nil
         videoPlayer?.pause()
         videoPlayer?.replaceCurrentItem(with: nil)
         videoPlayerItem = nil
+        videoPlayer = nil
         if videoLoadState == .loaded || videoLoadState == .loading {
             videoLoadState = .idle
         }
     }
+
+    #if DEBUG
+    func installPlayerForTesting() {
+        videoPlayer = AVPlayer()
+    }
+    #endif
 
     func resumeAfterBackground(song: Song?) {
         guard suspendedForBackground else { return }
