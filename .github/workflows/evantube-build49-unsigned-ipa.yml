@@ -1,12 +1,6 @@
 name: EvanTube Build49 unsigned IPA
 
 on:
-  push:
-    branches:
-      - cursor/build49-lyric-sweep-4b36
-    paths:
-      - native-ios/**
-      - .github/workflows/evantube-build49-unsigned-ipa.yml
   workflow_dispatch: {}
 
 permissions:

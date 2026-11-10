@@ -51,6 +51,24 @@ enum LyricPlaybackClock {
     struct LineCue: Equatable, Sendable {
         var time: TimeInterval
         var text: String
+        /// End times of words or syllables on this line, when the provider sent them.
+        var syllableEnds: [TimeInterval] = []
+    }
+
+    /// A gap this long is an instrumental break, not the time the line is sung.
+    static let interludeGapThreshold: TimeInterval = 4.5
+
+    struct LineWindow: Equatable, Sendable {
+        var start: TimeInterval
+        var end: TimeInterval
+        var nextStart: TimeInterval?
+    }
+
+    struct PlaybackFocus: Equatable, Sendable {
+        var activeLineIndex: Int?
+        /// Highest line that stays fully filled while nothing is sweeping.
+        var sungThroughIndex: Int?
+        var inInterlude: Bool
     }
 
     /// How a line is painted. Sung lines stay filled; only the active line advances.
@@ -70,11 +88,90 @@ enum LyricPlaybackClock {
         var units: SungUnits
     }
 
-    static func role(lineIndex: Int, activeIndex: Int?, synced: Bool) -> LineRole {
-        guard synced, let activeIndex else { return synced ? .upcoming : .plain }
-        if lineIndex < activeIndex { return .sung }
-        if lineIndex == activeIndex { return .current }
+    static func role(
+        lineIndex: Int, activeIndex: Int?, synced: Bool, sungThroughIndex: Int? = nil
+    ) -> LineRole {
+        guard synced else { return .plain }
+        if let activeIndex {
+            if lineIndex < activeIndex { return .sung }
+            if lineIndex == activeIndex { return .current }
+            return .upcoming
+        }
+        if let sungThroughIndex, lineIndex <= sungThroughIndex { return .sung }
         return .upcoming
+    }
+
+    /// Where this line's sweep finishes. Word or syllable ends win. Otherwise
+    /// a short gap still runs to the next cue, and a long gap is capped from
+    /// the surrounding line lengths and this line's text so the fill does not
+    /// smear across an interlude.
+    static func lineWindow(
+        lines: [LineCue], index: Int, trailingLineDuration: TimeInterval = 4
+    ) -> LineWindow {
+        let start = lines[index].time
+        let nextStart = index + 1 < lines.count ? lines[index + 1].time : nil
+        let syllableEnd = lines[index].syllableEnds.filter { $0.isFinite && $0 > start + 0.05 }.max()
+        let end: TimeInterval
+        if let syllableEnd {
+            let bounded = nextStart.map { min(syllableEnd, $0) } ?? syllableEnd
+            end = max(start + 0.05, bounded)
+        } else if let nextStart, nextStart - start > interludeGapThreshold {
+            let estimate = estimatedSingingDuration(
+                lines: lines, index: index, trailingLineDuration: trailingLineDuration)
+            end = min(nextStart, start + estimate)
+        } else if let nextStart {
+            end = nextStart
+        } else {
+            end = start + trailingLineDuration
+        }
+        return LineWindow(start: start, end: end, nextStart: nextStart)
+    }
+
+    /// Active line, or a finished line with nothing sweeping through the gap
+    /// before the next cue. The next line becomes active at its own timestamp.
+    static func playbackFocus(
+        lines: [LineCue], lyricTime: TimeInterval, trailingLineDuration: TimeInterval = 4
+    ) -> PlaybackFocus {
+        guard lyricTime.isFinite, !lines.isEmpty else {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: nil, inInterlude: false)
+        }
+        guard let index = activeLineIndex(times: lines.map(\.time), lyricTime: lyricTime) else {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: nil, inInterlude: false)
+        }
+        let window = lineWindow(lines: lines, index: index, trailingLineDuration: trailingLineDuration)
+        if let next = window.nextStart,
+           next - window.end > interludeGapThreshold,
+           lyricTime + 0.000_5 >= window.end,
+           lyricTime + 0.000_5 < next {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: index, inInterlude: true)
+        }
+        return PlaybackFocus(
+            activeLineIndex: index,
+            sungThroughIndex: index > 0 ? index - 1 : nil,
+            inInterlude: false
+        )
+    }
+
+    private static func estimatedSingingDuration(
+        lines: [LineCue], index: Int, trailingLineDuration: TimeInterval
+    ) -> TimeInterval {
+        var durations: [TimeInterval] = []
+        var characters: [Int] = []
+        for candidate in lines.indices where candidate + 1 < lines.count {
+            let gap = lines[candidate + 1].time - lines[candidate].time
+            guard gap.isFinite, gap > 0.2, gap <= interludeGapThreshold else { continue }
+            durations.append(gap)
+            characters.append(max(lines[candidate].text.count, 1))
+        }
+        let count = max(lines[index].text.count, 1)
+        guard !durations.isEmpty else {
+            let scaled = trailingLineDuration * Double(count) / 12
+            return min(max(scaled, 1.5), interludeGapThreshold)
+        }
+        let averageDuration = durations.reduce(0, +) / Double(durations.count)
+        let averageCharacters = Double(characters.reduce(0, +)) / Double(characters.count)
+        let scaled = averageDuration * Double(count) / max(averageCharacters, 1)
+        return min(max(scaled, 1.2), interludeGapThreshold)
     }
 
     /// Completed-character count inside the active line. A word counts as sung
@@ -88,14 +185,16 @@ enum LyricPlaybackClock {
         lyricTime: TimeInterval,
         trailingLineDuration: TimeInterval = 4
     ) -> KaraokeFill {
-        guard let index = activeLineIndex(times: lines.map(\.time), lyricTime: lyricTime) else {
+        let focus = playbackFocus(
+            lines: lines, lyricTime: lyricTime, trailingLineDuration: trailingLineDuration)
+        guard let index = focus.activeLineIndex else {
             return KaraokeFill(activeLineIndex: nil, units: .empty)
         }
-        let start = lines[index].time
-        let end = index + 1 < lines.count ? lines[index + 1].time : start + trailingLineDuration
+        let window = lineWindow(lines: lines, index: index, trailingLineDuration: trailingLineDuration)
         return KaraokeFill(
             activeLineIndex: index,
-            units: sungUnits(text: lines[index].text, lineStart: start, lineEnd: end, lyricTime: lyricTime)
+            units: sungUnits(
+                text: lines[index].text, lineStart: window.start, lineEnd: window.end, lyricTime: lyricTime)
         )
     }
 
@@ -345,7 +444,7 @@ enum LyricPlaybackClock {
         let elapsed = lyricTime - lineStart
         if elapsed <= 0 { return 0 }
         if elapsed >= span { return 1 }
-        return elapsed / span
+        return min(max(elapsed / span, 0), 1)
     }
 }
 
@@ -357,12 +456,14 @@ enum LyricSweepAnimation {
         sceneIsActive: Bool,
         isPlaying: Bool,
         reduceMotion: Bool,
-        isCurrentLine: Bool
+        isCurrentLine: Bool,
+        interfaceSuspended: Bool = false
     ) -> Bool {
         isCurrentLine
             && isPlaying
             && !reduceMotion
-            && !PlaybackInterfaceBudget.animationsPaused(sceneIsActive: sceneIsActive)
+            && !PlaybackInterfaceBudget.animationsPaused(
+                sceneIsActive: sceneIsActive, interfaceSuspended: interfaceSuspended)
     }
 }
 

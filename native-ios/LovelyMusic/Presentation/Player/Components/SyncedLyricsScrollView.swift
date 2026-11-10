@@ -22,6 +22,8 @@ struct SyncedLyricsScrollView: View {
     }
 
     @State private var currentLineId: UUID?
+    /// Line that stays filled while an interlude has no active cue.
+    @State private var sungThroughLineId: UUID?
     @State private var containerHeight: CGFloat = 300
     @Environment(\.scenePhase) private var scenePhase
 
@@ -128,6 +130,7 @@ struct SyncedLyricsScrollView: View {
             showingCandidates = false
             selectedCandidateID = nil
             currentLineId = nil
+            sungThroughLineId = nil
             translatedLines.removeAll()
             showTranslation = false
         }
@@ -219,6 +222,7 @@ struct SyncedLyricsScrollView: View {
                             LyricsSelectionStore.select(candidate.id, for: selectionKey)
                             selectedCandidateID = candidate.id
                             currentLineId = nil
+                            sungThroughLineId = nil
                             translatedLines.removeAll()
                             showTranslation = false
                             showingCandidates = false
@@ -261,11 +265,22 @@ struct SyncedLyricsScrollView: View {
             authoredForPlayingSource: displayLyrics.authoredVideoID != nil
                 && displayLyrics.authoredVideoID == playbackProgress.playingSourceID)
         let lyricTime = LyricPlaybackClock.lyricTime(playerTime: playerTime, anchor: anchor)
-        guard let index = LyricPlaybackClock.activeLineIndex(
-            times: displayLyrics.lines.map(\.time), lyricTime: lyricTime) else { return }
+        let cues = lyricCues
+        let focus = LyricPlaybackClock.playbackFocus(lines: cues, lyricTime: lyricTime)
+        if focus.inInterlude {
+            let sungId = focus.sungThroughIndex.map { displayLyrics.lines[$0].id }
+            if currentLineId != nil || sungThroughLineId != sungId {
+                currentLineId = nil
+                sungThroughLineId = sungId
+            }
+            return
+        }
+        guard let index = focus.activeLineIndex else { return }
         let newId = displayLyrics.lines[index].id
-        guard newId != currentLineId else { return }
+        let sungId = focus.sungThroughIndex.map { displayLyrics.lines[$0].id }
+        guard newId != currentLineId || sungThroughLineId != sungId else { return }
         currentLineId = newId
+        sungThroughLineId = sungId
         guard scenePhase == .active, !isUserScrolling else { return }
         if reduceMotion {
             proxy.scrollTo(newId, anchor: .center)
@@ -274,6 +289,10 @@ struct SyncedLyricsScrollView: View {
                 proxy.scrollTo(newId, anchor: .center)
             }
         }
+    }
+
+    private var lyricCues: [LyricPlaybackClock.LineCue] {
+        displayLyrics.lines.map { LyricPlaybackClock.LineCue(time: $0.time, text: $0.text) }
     }
 
     private var lyricAnchor: LyricPlaybackClock.Anchor {
@@ -290,11 +309,11 @@ struct SyncedLyricsScrollView: View {
         let activeIndex = displayLyrics.isTimeSynced
             ? displayLyrics.lines.firstIndex { $0.id == currentLineId }
             : nil
+        let sungThroughIndex = displayLyrics.lines.firstIndex { $0.id == sungThroughLineId }
         let role = LyricPlaybackClock.role(
-            lineIndex: index, activeIndex: activeIndex, synced: displayLyrics.isTimeSynced)
-        let lineEnd = index + 1 < displayLyrics.lines.count
-            ? displayLyrics.lines[index + 1].time
-            : line.time + 4
+            lineIndex: index, activeIndex: activeIndex, synced: displayLyrics.isTimeSynced,
+            sungThroughIndex: activeIndex == nil ? sungThroughIndex : nil)
+        let lineEnd = LyricPlaybackClock.lineWindow(lines: lyricCues, index: index).end
         VStack(spacing: Theme.Spacing.xxs) {
             KaraokeLyricText(
                 text: line.text,
@@ -304,6 +323,13 @@ struct SyncedLyricsScrollView: View {
                 anchor: lyricAnchor,
                 font: role == .current ? currentLineFont : lineFont
             )
+            if displayLyrics.isTimeSynced, currentLineId == nil, sungThroughLineId == line.id {
+                Text("···")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Colors.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityLabel("Interlude")
+            }
 
             if showLyricsTranslationStored, showTranslation, let translated = translatedLines[line.id] {
                 Text(translated)
@@ -484,7 +510,8 @@ private struct KaraokeLyricText: View {
             sceneIsActive: scenePhase == .active,
             isPlaying: playbackProgress.isPlaying,
             reduceMotion: reduceMotion,
-            isCurrentLine: role == .current
+            isCurrentLine: role == .current,
+            interfaceSuspended: PlaybackInterfaceGate.shared.suspended
         )
     }
 

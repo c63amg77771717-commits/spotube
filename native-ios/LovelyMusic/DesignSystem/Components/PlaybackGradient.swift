@@ -30,7 +30,9 @@ struct PlaybackGradient: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var phase = PlaybackRingPhase()
 
-    private var animating: Bool { isPlaying && !reduceMotion && scenePhase == .active }
+    private var animating: Bool {
+        isPlaying && !reduceMotion && scenePhase == .active && !PlaybackInterfaceGate.shared.suspended
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animating)) { context in
@@ -41,6 +43,7 @@ struct PlaybackGradient: View {
         .onChange(of: isPlaying) { _, _ in updatePhase() }
         .onChange(of: reduceMotion) { _, _ in updatePhase() }
         .onChange(of: scenePhase) { _, _ in updatePhase() }
+        .onChange(of: PlaybackInterfaceGate.shared.suspended) { _, _ in updatePhase() }
         .onDisappear { phase.setPlaying(false, at: Date.timeIntervalSinceReferenceDate) }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
