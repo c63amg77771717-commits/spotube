@@ -1,6 +1,6 @@
 name: EvanTube Build50 unsigned IPA
 
-on:
+"on":
   repository_dispatch:
     types: [build50-ipa]
   workflow_dispatch: {}
