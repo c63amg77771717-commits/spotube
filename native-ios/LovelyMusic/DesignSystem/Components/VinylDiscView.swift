@@ -19,7 +19,7 @@ struct VinylDiscView: View {
     static let degreesPerSecond: Double = 45
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying || scenePhase != .active)) { timeline in
+        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying || scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { timeline in
             let rotation = currentRotation(at: timeline.date)
             ZStack {
                 vinylDisc
@@ -40,13 +40,16 @@ struct VinylDiscView: View {
         }
         .frame(width: discSize, height: discSize)
         .onAppear {
-            syncSpin(playing: isPlaying && scenePhase == .active)
+            syncSpin(playing: isPlaying && scenePhase == .active && !PlaybackInterfaceGate.shared.suspended)
         }
         .onChange(of: isPlaying) { _, playing in
-            syncSpin(playing: playing && scenePhase == .active)
+            syncSpin(playing: playing && scenePhase == .active && !PlaybackInterfaceGate.shared.suspended)
         }
         .onChange(of: scenePhase) { _, phase in
-            syncSpin(playing: isPlaying && phase == .active)
+            syncSpin(playing: isPlaying && phase == .active && !PlaybackInterfaceGate.shared.suspended)
+        }
+        .onChange(of: PlaybackInterfaceGate.shared.suspended) { _, suspended in
+            syncSpin(playing: isPlaying && scenePhase == .active && !suspended)
         }
         .shadow(color: dominantColor.opacity(0.25), radius: 24, y: 12)
     }

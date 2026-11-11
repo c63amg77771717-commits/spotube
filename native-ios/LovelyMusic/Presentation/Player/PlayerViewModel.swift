@@ -756,6 +756,9 @@ final class PlayerViewModel {
     }
 
     func retryCurrentSong(resetRetryCount: Bool = false) {
+        // The engine already owns backoff for this video. Another play() here
+        // would resolve again immediately and reactivate Now Playing.
+        if audioEngine.isAutomaticRecoveryPending { return }
         autoSkipTask?.cancel()
         if resetRetryCount { retryCount = 0 }
         guard retryCount < maxRetries, var song = currentSong else { return }
@@ -987,6 +990,11 @@ final class PlayerViewModel {
                         self.autoNext()
                     }
                 }
+                return
+            }
+
+            if audioEngine.isAutomaticRecoveryPending {
+                autoSkipTask?.cancel()
                 return
             }
 

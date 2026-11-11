@@ -13,13 +13,13 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16.4'
       - name: Generate test project without online credentials
         working-directory: native-ios
         run: |
