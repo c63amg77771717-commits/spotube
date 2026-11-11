@@ -19,7 +19,7 @@ struct VinylDiscView: View {
     static let degreesPerSecond: Double = 45
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying || scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { timeline in }
+        TimelineView(.animation(minimumInterval: nil, paused: !isPlaying || scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { timeline in
             let rotation = currentRotation(at: timeline.date)
             ZStack {
                 vinylDisc

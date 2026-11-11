@@ -28,7 +28,7 @@ struct MusicWaveAnimation: View {
     }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { context in }
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { context in
             HStack(spacing: 2) {
                 ForEach(0..<barCount, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 1)
