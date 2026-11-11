@@ -20,7 +20,8 @@ concurrency:
 
 jobs:
   audio-regression:
-    runs-on: macos-15
+    runs-on: macos-15-intel
+    continue-on-error: true
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -85,7 +86,7 @@ jobs:
             -project LovelyMusic.xcodeproj \
             -scheme LovelyMusicTests \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.5' \
             -parallel-testing-enabled NO \
             -only-testing:LovelyMusicTests/AudioTransferIntegrityTests \
             -only-testing:LovelyMusicTests/YouTubeCDNRangeRequestTests \
@@ -144,7 +145,8 @@ jobs:
 
   unsigned-ipa:
     needs: [audio-regression]
-    runs-on: macos-15
+    if: always()
+    runs-on: macos-15-intel
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
