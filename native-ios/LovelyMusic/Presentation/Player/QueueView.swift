@@ -10,9 +10,9 @@ struct QueueView: View {
     private var fittedHeight: CGFloat {
         let rowHeight: CGFloat = 64
         let nowPlaying: CGFloat = playerVM.currentSong != nil ? 90 : 0
-        let upNextHeader: CGFloat = !upNextSongs.isEmpty ? 32 : 0
+        let upNextHeader: CGFloat = !upNextEntries.isEmpty ? 32 : 0
         let autoplayHeader: CGFloat = !autoplaySongs.isEmpty ? 32 : 0
-        let visibleUpNext = CGFloat(min(upNextSongs.count, 6))
+        let visibleUpNext = CGFloat(min(upNextEntries.count, 6))
         let visibleAutoplay = CGFloat(min(autoplaySongs.count, 3))
         let chrome: CGFloat = 96
         return chrome + nowPlaying + upNextHeader + visibleUpNext * rowHeight
@@ -23,7 +23,7 @@ struct QueueView: View {
         // MARK: SafeArea — presented inside FullPlayerView (modal); dock not visible. Bottom controls live above this list inside FullPlayerView.
         NavigationStack {
             ScrollViewReader { proxy in
-                if playerVM.currentSong == nil && upNextSongs.isEmpty {
+                if playerVM.currentSong == nil && upNextEntries.isEmpty {
                     EmptyStateView(
                         icon: "list.bullet",
                         title: "Queue is Empty",
@@ -44,17 +44,13 @@ struct QueueView: View {
                         }
                     }
 
-                    if !upNextSongs.isEmpty {
+                    if !upNextEntries.isEmpty {
                         Section {
-                            ForEach(Array(upNextSongs.enumerated()), id: \.element.id) { offset, song in
-                                upNextRow(song: song, offset: offset)
+                            ForEach(Array(upNextEntries.enumerated()), id: \.element.id) { offset, entry in
+                                upNextRow(song: entry.song, queueIndex: entry.index, offset: offset)
                             }
                             .onMove { source, destination in
-                                let base = playerVM.currentIndex + 1
-                                playerVM.moveInQueue(
-                                    from: IndexSet(source.map { $0 + base }),
-                                    to: destination + base
-                                )
+                                playerVM.moveUpcoming(from: source, to: destination)
                             }
                         } header: {
                             Text("Up Next")
@@ -115,11 +111,17 @@ struct QueueView: View {
         .presentationBackground(Theme.Colors.backgroundPrimary)
     }
 
-    private var upNextSongs: [Song] {
-        let queue = playerVM.queue
-        let idx = playerVM.currentIndex
-        guard idx + 1 < queue.count else { return [] }
-        return ContentPreferences.filteredSongs(Array(queue[(idx + 1)...]))
+    private struct UpNextEntry: Identifiable {
+        let index: Int
+        let song: Song
+        var id: String { song.id }
+    }
+
+    private var upNextEntries: [UpNextEntry] {
+        let entries = playerVM.upcomingQueueEntries().filter { entry in
+            !ContentPreferences.hidesExplicitContent || !entry.song.isExplicit
+        }
+        return entries.map { UpNextEntry(index: $0.index, song: $0.song) }
     }
 
     private var autoplaySongs: [Song] {
@@ -169,8 +171,8 @@ struct QueueView: View {
     }
 
     @ViewBuilder
-    private func upNextRow(song: Song, offset: Int) -> some View {
-        let idx = playerVM.currentIndex + 1 + offset
+    private func upNextRow(song: Song, queueIndex: Int, offset: Int) -> some View {
+        let idx = queueIndex
         HStack(spacing: Theme.Spacing.sm) {
             Text("\(offset + 1)")
                 .font(Theme.Typography.caption2)

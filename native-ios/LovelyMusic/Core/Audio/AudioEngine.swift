@@ -157,7 +157,7 @@ final class AudioEngine {
             invalidateCrossfadePreparation(clearReservation: true)
             if shuffleEnabled {
                 generateShuffledOrder()
-                autoplayQueue.shuffle()
+                autoplayQueue = ArtistSeparatedShuffle.spread(autoplayQueue)
             } else {
                 shuffledIndices = []
                 shufflePosition = 0
@@ -1578,13 +1578,13 @@ final class AudioEngine {
     // MARK: - Autoplay Queue Management
 
     func setAutoplayQueue(_ songs: [Song]) {
-        autoplayQueue = shuffleEnabled ? songs.shuffled() : songs
+        autoplayQueue = shuffleEnabled ? ArtistSeparatedShuffle.spread(songs) : songs
         savePlaybackState()
     }
 
     func appendToAutoplayQueue(_ songs: [Song]) {
         autoplayQueue.append(contentsOf: songs)
-        if shuffleEnabled { autoplayQueue.shuffle() }
+        if shuffleEnabled { autoplayQueue = ArtistSeparatedShuffle.spread(autoplayQueue) }
         savePlaybackState()
     }
 
@@ -1916,10 +1916,46 @@ final class AudioEngine {
         }
     }
 
-    // MARK: - Fisher-Yates Shuffle
+    // MARK: - Artist-separated shuffle
 
-    /// Generate a shuffled order of queue indices using Fisher-Yates algorithm.
-    /// Places the current index at position 0 so the current song isn't disrupted.
+    /// Upcoming rows in the order they will actually play.
+    /// Shuffle used to permute hidden indices while Up Next kept walking the
+    /// original, artist-grouped queue. The list now follows the spread order.
+    func upcomingQueueEntries() -> [(index: Int, song: Song)] {
+        if shuffleEnabled, shuffledIndices.count == queue.count, queue.count > 1 {
+            let start = min(max(shufflePosition + 1, 0), shuffledIndices.count)
+            return shuffledIndices[start...].compactMap { index in
+                guard queue.indices.contains(index) else { return nil }
+                return (index, queue[index])
+            }
+        }
+        guard currentIndex + 1 < queue.count else { return [] }
+        return ((currentIndex + 1)..<queue.count).map { ($0, queue[$0]) }
+    }
+
+    /// Reorder the rows shown in Up Next. While shuffle is on, that list is the
+    /// spread order, so the edit has to move those indices rather than the
+    /// underlying playlist.
+    func moveUpcoming(from source: IndexSet, to destination: Int) {
+        if shuffleEnabled, shuffledIndices.count == queue.count, !shuffledIndices.isEmpty {
+            let start = min(max(shufflePosition + 1, 0), shuffledIndices.count)
+            var tail = Array(shuffledIndices[start...])
+            guard !tail.isEmpty, source.allSatisfy({ tail.indices.contains($0) }) else { return }
+            let head = Array(shuffledIndices[..<start])
+            tail.move(fromOffsets: source, toOffset: max(0, min(destination, tail.count)))
+            shuffledIndices = head + tail
+            prefetchManager.cancelPrefetch()
+            playbackPolicyRevision &+= 1
+            invalidateCrossfadePreparation(clearReservation: true)
+            savePlaybackState()
+            return
+        }
+        let base = currentIndex + 1
+        guard source.allSatisfy({ queue.indices.contains($0 + base) }) else { return }
+        moveInQueue(from: IndexSet(source.map { $0 + base }), to: destination + base)
+    }
+
+    /// Build a spread order and keep the current song at position 0.
     private func generateShuffledOrder() {
         guard !queue.isEmpty else {
             shuffledIndices = []
@@ -1933,17 +1969,21 @@ final class AudioEngine {
     }
 
     private func makeShuffledIndices() -> [Int] {
-        var indices = Array(0..<queue.count)
-        guard indices.count > 1 else { return indices }
-        for i in stride(from: indices.count - 1, through: 1, by: -1) {
-            let j = Int.random(in: 0...i)
-            indices.swapAt(i, j)
-        }
-        // Put current index at beginning so we don't immediately change song
-        if let pos = indices.firstIndex(of: currentIndex) {
-            indices.swapAt(0, pos)
-        }
-        return indices
+        guard queue.count > 1 else { return Array(queue.indices) }
+        var generator = SystemRandomNumberGenerator()
+        let pinned = queue.indices.contains(currentIndex) ? currentIndex : nil
+        return ArtistSeparatedShuffle.order(
+            Array(queue.indices),
+            artistKey: { index in
+                ArtistSeparatedShuffle.artistKey(
+                    id: self.queue[index].artistId,
+                    name: self.queue[index].artistName,
+                    fallback: self.queue[index].id
+                )
+            },
+            pinning: pinned,
+            using: &generator
+        )
     }
 
     private func makeNextShuffleSelection() -> (index: Int, progress: ShuffleProgress)? {

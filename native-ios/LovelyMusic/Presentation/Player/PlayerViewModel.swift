@@ -713,6 +713,14 @@ final class PlayerViewModel {
 
     var currentIndex: Int { audioEngine.currentIndex }
 
+    func upcomingQueueEntries() -> [(index: Int, song: Song)] {
+        audioEngine.upcomingQueueEntries()
+    }
+
+    func moveUpcoming(from source: IndexSet, to destination: Int) {
+        audioEngine.moveUpcoming(from: source, to: destination)
+    }
+
     func playFromQueue(at index: Int) {
         autoSkipTask?.cancel()
         guard index < queue.count else { return }

@@ -50,9 +50,10 @@ struct AlbumView: View {
                             }
                         },
                         onShuffle: {
-                            if let random = album.songs.randomElement() {
-                                playerVM.play(song: random, fromQueue: album.songs.shuffled())
-                            }
+                            guard let start = album.songs.indices.randomElement() else { return }
+                            let ordered = ArtistSeparatedShuffle.spread(album.songs, startingAt: start)
+                            guard let first = ordered.first else { return }
+                            playerVM.play(song: first, fromQueue: ordered)
                         }
                     )
 

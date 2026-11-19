@@ -68,9 +68,10 @@ struct ArtistView: View {
                             }
                         },
                         onShuffle: {
-                            if let random = artist.songs.randomElement() {
-                                playerVM.play(song: random, fromQueue: artist.songs.shuffled())
-                            }
+                            guard let start = artist.songs.indices.randomElement() else { return }
+                            let ordered = ArtistSeparatedShuffle.spread(artist.songs, startingAt: start)
+                            guard let first = ordered.first else { return }
+                            playerVM.play(song: first, fromQueue: ordered)
                         }
                     )
 

@@ -646,15 +646,16 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             detailText: LocalizationManager.text("\(songs.count) songs")
         )
         shuffleAll.handler = { [weak self] _, completion in
-            let shuffled = songs.shuffled()
-            guard let first = shuffled.first else {
+            guard let start = songs.indices.randomElement() else {
                 completion()
                 return
             }
-            // Mirror the existing shuffle-all behavior: pass the shuffled
-            // queue verbatim. `AudioEngine.play(song:fromQueue:)` finds the
-            // index of the chosen song and uses the supplied queue order.
-            self?.handleSongTap(first, fromQueue: shuffled, completion: completion)
+            let ordered = ArtistSeparatedShuffle.spread(songs, startingAt: start)
+            guard let first = ordered.first else {
+                completion()
+                return
+            }
+            self?.handleSongTap(first, fromQueue: ordered, completion: completion)
         }
 
         return [playAll, shuffleAll]
