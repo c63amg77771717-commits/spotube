@@ -25,8 +25,19 @@ enum PlaybackInterfaceBudget {
         var prerollReadyItem: Bool
         /// Drop a signed URL that can no longer start, instead of handing it to AVPlayer.
         var dropExpiredItem: Bool
+        /// Resolve a replacement URL while the song stays paused, so the next play
+        /// does not wait on a cold lookup. This does not start audio or Opus.
+        var warmExpiredSource: Bool
         /// Keep an AVPlayer allocated so the next item does not build the graph from scratch.
         var keepPlayerGraph: Bool
+    }
+
+    /// Lock-screen and headphone resume set the rate on the item already installed.
+    /// A precise seek before that rate change is what made the first samples wait
+    /// on the network. Stall recovery still handles an item that never advances.
+    static func seeksBeforeResumeRate(resumeNeedsKick: Bool, playbackLikelyToKeepUp: Bool) -> Bool {
+        _ = (resumeNeedsKick, playbackLikelyToKeepUp)
+        return false
     }
 
     /// What to prepare when the phone leaves standby. Opus preparation is not
@@ -45,15 +56,18 @@ enum PlaybackInterfaceBudget {
                 activateAudioSession: false,
                 prerollReadyItem: false,
                 dropExpiredItem: false,
+                warmExpiredSource: false,
                 keepPlayerGraph: false
             )
         }
         let paused = !isPlaying || userPaused
         let canWarmSession = paused && !otherAudioOwnsSession
+        let dropExpired = paused && remoteExpired
         return ForegroundWarmth(
             activateAudioSession: canWarmSession,
             prerollReadyItem: canWarmSession && itemReady && !remoteExpired,
-            dropExpiredItem: paused && remoteExpired,
+            dropExpiredItem: dropExpired,
+            warmExpiredSource: dropExpired,
             keepPlayerGraph: true
         )
     }

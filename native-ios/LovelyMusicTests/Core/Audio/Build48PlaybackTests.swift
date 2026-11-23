@@ -110,8 +110,11 @@ final class Build48PlaybackTests: XCTestCase {
             returningFromBackground: true, hasTrack: true, isPlaying: false, userPaused: true,
             remoteExpired: true, otherAudioOwnsSession: false, itemReady: true)
         XCTAssertTrue(stale.dropExpiredItem)
+        XCTAssertTrue(stale.warmExpiredSource)
         XCTAssertFalse(stale.prerollReadyItem)
         XCTAssertTrue(stale.activateAudioSession)
+        XCTAssertFalse(ready.warmExpiredSource)
+        XCTAssertFalse(idle.warmExpiredSource)
 
         let playing = PlaybackInterfaceBudget.foregroundWarmth(
             returningFromBackground: true, hasTrack: true, isPlaying: true, userPaused: false,

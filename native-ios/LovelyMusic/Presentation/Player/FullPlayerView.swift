@@ -224,7 +224,7 @@ struct FullPlayerView: View {
                     Group {
                         if playerVM.isLyricsVisible {
                             inlineLyricsView(geo: geo)
-                                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                                .transition(.opacity)
                         } else if featureFlags.isVideoPlaybackEnabled, playerVM.isVideoMode,
                             let vp = playerVM.videoPlayer, !isVideoFullScreen
                         {
@@ -257,7 +257,22 @@ struct FullPlayerView: View {
                                     }
                                 Spacer()
                             }
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                            .transition(.opacity)
+                        } else if featureFlags.isVideoPlaybackEnabled, playerVM.isVideoMode,
+                            playerVM.videoLoadState == .loading
+                                || (playerVM.videoLoadState == .idle && playerVM.videoPlayer == nil)
+                        {
+                            VStack {
+                                Spacer()
+                                RoundedRectangle(
+                                    cornerRadius: Theme.CornerRadius.large, style: .continuous
+                                )
+                                .fill(Theme.Colors.surfaceCard)
+                                .aspectRatio(16 / 9, contentMode: .fit)
+                                .overlay { ProgressView() }
+                                .padding(.horizontal, Theme.Spacing.lg)
+                                Spacer()
+                            }
                         } else if featureFlags.isVideoPlaybackEnabled, playerVM.isVideoMode,
                             playerVM.videoLoadState == .unavailable
                                 || playerVM.videoLoadState != .loading
@@ -391,8 +406,16 @@ struct FullPlayerView: View {
                         isVideoPlaybackEnabled: featureFlags.isVideoPlaybackEnabled,
                         onCycleSpeed: { playerVM.cyclePlaybackSpeed() },
                         onToggleAutoplay: { playerVM.toggleAutoplay() },
-                        onToggleVideo: { playerVM.toggleVideoMode() },
-                        onToggleLyrics: { playerVM.isLyricsVisible.toggle() },
+                        onToggleVideo: {
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { playerVM.toggleVideoMode() }
+                        },
+                        onToggleLyrics: {
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { playerVM.isLyricsVisible.toggle() }
+                        },
                         onShowQueue: { playerVM.isQueuePresented = true }
                     )
                     .padding(

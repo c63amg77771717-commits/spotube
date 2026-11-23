@@ -351,6 +351,15 @@ final class PlayerViewModel {
         requestLyrics(for: song)
     }
 
+    /// A history row has no queue of its own. Continue through the playlist it
+    /// belongs to, or through the history list on screen when that playlist
+    /// is not available.
+    func playFromHistory(_ song: Song, history: [Song], playlists: [Playlist]) {
+        let selection = HistoryPlaybackSelection.selection(
+            song: song, history: history, playlists: playlists)
+        play(song: selection.song, fromQueue: selection.queue)
+    }
+
     // Track observation can repeat after stream resolution; do not reset a
     // listener's manual cover/video choice for the same recording.
     private func requestLyrics(for song: Song) {
@@ -614,16 +623,22 @@ final class PlayerViewModel {
     func toggleVideoMode() {
         isLyricsVisible = false
         isVideoMode.toggle()
-        let sourceBefore = currentSong.map { audioEngine.playbackSourceID(for: $0) }
-        audioEngine.setVideoMode(isVideoMode)
-        // The sound switched recordings (official audio <-> video): its lyrics too.
-        if let song = currentSong, sourceBefore != audioEngine.playbackSourceID(for: song) {
-            lyricsSourceSettingsChanged()
-        }
-        // Mark the song handled so the track observer doesn't load it twice.
-        lastHandledVideoTrackId = isVideoMode ? currentSong?.id : nil
-        if isVideoMode, let song = currentSong {
-            audioEngine.loadVideoStream(for: song)
+        let enabled = isVideoMode
+        let song = currentSong
+        let sourceBefore = song.map { audioEngine.playbackSourceID(for: $0) }
+        // The picture mode flips on this turn. Switching the recording and
+        // starting the video request on the next turn is what lets the button
+        // and the video slot paint before that work.
+        lastHandledVideoTrackId = enabled ? song?.id : nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.audioEngine.setVideoMode(enabled)
+            if let song, sourceBefore != self.audioEngine.playbackSourceID(for: song) {
+                self.lyricsSourceSettingsChanged()
+            }
+            if enabled, let song {
+                self.audioEngine.loadVideoStream(for: song)
+            }
         }
     }
 
@@ -1107,7 +1122,10 @@ final class PlayerViewModel {
 
                     // Video mode is the user's choice: it stays on across song
                     // changes (and stream URL refreshes); only the toggle ends it.
-                    if song.isVideo || self.isVideoMode {
+                    // While the screen is locked the muted player stays detached.
+                    // Recreating it on every recovery pass is the background
+                    // re-resolve that leaves video-suspended=false.
+                    if !PlaybackInterfaceGate.shared.suspended, song.isVideo || self.isVideoMode {
                         self.isVideoMode = true
                         self.audioEngine.setVideoMode(true)
                         if self.lastHandledVideoTrackId != song.id {

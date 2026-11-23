@@ -212,7 +212,10 @@ struct LibraryView: View {
                             id: \.element.id
                         ) { index, song in
                             Button {
-                                playerVM.play(song: song)
+                                playerVM.playFromHistory(
+                                    song,
+                                    history: Array(viewModel.recentlyPlayed.prefix(10)),
+                                    playlists: viewModel.playlists)
                             } label: {
                                 VStack(spacing: Theme.Spacing.sm) {
                                     AsyncThumbnail(

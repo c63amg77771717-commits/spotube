@@ -1124,6 +1124,9 @@ final class AudioEngine {
         if decision.dropExpiredItem {
             parkExpiredPlaybackIfNeeded()
         }
+        if decision.warmExpiredSource {
+            prefetchPausedStream()
+        }
         if decision.activateAudioSession {
             _ = audioSessionActivator()
         }
@@ -1138,8 +1141,12 @@ final class AudioEngine {
         // A failed/missing player must not reuse its expired remote URL. Local
         // downloads and cache are still preferred inside loadAndPlay.
         let existingURL = song.streamURL.flatMap { URL(string: $0) }
-        if existingURL?.isFileURL != true
-            || existingURL.map({ !FileManager.default.fileExists(atPath: $0.path) }) == true {
+        let remoteIsFresh = existingURL?.isFileURL == false
+            && streamResolvedAt.map { Date().timeIntervalSince($0) < 6 * 3600 } == true
+            && existingURL.map { !YouTubeStreamExpiry.isExpired($0) } == true
+        let missingFile = existingURL?.isFileURL == true
+            && FileManager.default.fileExists(atPath: existingURL?.path ?? "") == false
+        if !remoteIsFresh && (existingURL?.isFileURL != true || missingFile) {
             song.streamURL = nil
             song.streamContentLength = nil
             currentTrack = song
@@ -1314,14 +1321,18 @@ final class AudioEngine {
             // Bring the audio session back before touching the item. A dead
             // item must not sit in `.readyToPlay` until the stall timer gives
             // up; rebuild it at the saved position and let AAC start immediately.
+            // A resolve left over from before the pause is not "work in progress":
+            // leaving it running is why play did nothing until Retry appeared.
             guard activateAudioSessionForPlayback() else { return }
             if installedPlaybackNeedsRebuild() {
-                if resolveTask == nil, backgroundRemuxTask == nil {
-                    Log.audio.warning(
-                        "Resume: rebuilding dead or expired playback at \(self.savedPlaybackPosition())s"
-                    )
-                    reloadSelectedTrack()
-                }
+                resolveTask?.cancel()
+                resolveTask = nil
+                backgroundRemuxTask?.cancel()
+                backgroundRemuxTask = nil
+                Log.audio.warning(
+                    "Resume: rebuilding dead or expired playback at \(self.savedPlaybackPosition())s"
+                )
+                reloadSelectedTrack()
             } else {
                 resumePlayback(refreshSession: !self.playbackSessionEngaged)
             }
@@ -1729,6 +1740,39 @@ final class AudioEngine {
         return false
     }
 
+    /// Fill a paused song's stream URL after standby cleared an expired one.
+    /// Playback stays paused. The following play uses this URL instead of
+    /// waiting on another lookup, and Opus is not scheduled from here.
+    private func prefetchPausedStream() {
+        guard userInitiatedPause, !isPlaying, resolveTask == nil, backgroundRemuxTask == nil,
+              let song = currentTrack, song.streamURL == nil,
+              let resolver = streamResolver(for: song) else { return }
+        let generation = loadGeneration
+        let songID = song.id
+        resolveTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if !Task.isCancelled, self.loadGeneration == generation { self.resolveTask = nil }
+            }
+            do {
+                let result = try await resolver(songID)
+                guard !Task.isCancelled, self.loadGeneration == generation,
+                      self.userInitiatedPause, !self.isPlaying,
+                      let current = self.currentTrack, current.id == songID else { return }
+                var updated = current
+                updated.streamURL = result.url
+                updated.streamContentLength = result.contentLength
+                self.streamResolvedAt = Date()
+                self.currentTrack = updated
+                self.updateQueuedStream(
+                    songID: songID, streamURL: result.url, contentLength: result.contentLength)
+                self.rememberAACIfNeeded(updated)
+            } catch {
+                return
+            }
+        }
+    }
+
     /// Drop a dead item while a manual pause is in effect. Does not start audio
     /// and does not zero the saved position the way `cleanupPlayer` does.
     private func parkExpiredPlaybackIfNeeded() {
@@ -1834,28 +1878,13 @@ final class AudioEngine {
         guard activateAudioSessionForPlayback(allowExisting: !activate) else { return }
         let needsKick = resumeNeedsKick
         resumeNeedsKick = false
-        if needsKick, let active = player, active.currentItem?.isPlaybackLikelyToKeepUp == false {
-            let seconds = active.currentTime().seconds
-            if seconds.isFinite {
-                let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-                let publishNowPlaying = refreshSession || !nowPlayingEngaged
-                active.seek(to: target, toleranceBefore: .zero, toleranceAfter: .positiveInfinity) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isPlaying, !self.userInitiatedPause, !self.isInterrupted else { return }
-                        self.player?.rate = self.playbackSpeed
-                        self.nowPlayingManager.updatePlaybackState(
-                            isPlaying: self.isPlaying, currentTime: self.currentTime,
-                            rate: Double(self.player?.rate ?? 0)
-                        )
-                        if publishNowPlaying {
-                            self.nowPlayingManager.activateForCurrentPlayback()
-                            self.nowPlayingEngaged = true
-                        }
-                    }
-                }
-                return
-            }
-        }
+        let likelyToKeepUp = player?.currentItem?.isPlaybackLikelyToKeepUp == true
+        assert(!PlaybackInterfaceBudget.seeksBeforeResumeRate(
+            resumeNeedsKick: needsKick, playbackLikelyToKeepUp: likelyToKeepUp))
+        // The item is already installed. Waiting for a zero-tolerance seek, or for
+        // AVPlayer to fill a stall buffer, is the 2–3s gap on the lock screen and
+        // on headphone play. Stall recovery covers an item that then stays at zero.
+        player?.automaticallyWaitsToMinimizeStalling = false
         player?.rate = playbackSpeed
         nowPlayingManager.updatePlaybackState(
             isPlaying: isPlaying, currentTime: currentTime,
@@ -2206,11 +2235,12 @@ final class AudioEngine {
                     self?.stallRecoveryTask = nil
                     return
                 }
-                if self.player?.timeControlStatus == .playing {
-                    let seconds = self.player?.currentTime().seconds ?? 0
-                    self.stallBudget.noteBackoffCancelled()
+                let seconds = self.player?.currentTime().seconds ?? 0
+                let advanced = seconds.isFinite && seconds > 0.75
+                if self.player?.timeControlStatus == .playing, advanced {
+                    self.stallBudget.noteBackoffCancelled(timeAdvanced: true)
                     self.stallRecoveryTask = nil
-                    if seconds > 0.75 { self.notePlaybackBecameHealthy() }
+                    self.notePlaybackBecameHealthy()
                     self.endBackgroundLease()
                     return
                 }
@@ -2394,7 +2424,14 @@ final class AudioEngine {
                     self.recoveryService.stopStallDetection()
                     let permanent = (error as? InnerTubeError)?.isPermanent == true
                     if permanent {
-                        self.beginStallRecovery(reason: "resolve-permanent", forceSkip: true)
+                        // The view model counts these and stops after three. Skipping
+                        // here wraps a queue of unavailable songs forever, because the
+                        // failure budget never sees the error.
+                        self.isBuffering = false
+                        self.isPlaying = false
+                        self.lastFailedSongId = songToPlay.id
+                        self.lastErrorKind = .permanent
+                        self.lastError = error.localizedDescription
                         return
                     }
                     if !self.userInitiatedPause, self.currentTrack?.id == songToPlay.id {

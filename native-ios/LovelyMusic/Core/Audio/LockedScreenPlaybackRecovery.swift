@@ -46,12 +46,13 @@ struct LockedScreenPlaybackRecovery: Equatable, Sendable {
         resolveInFlight = true
     }
 
-    /// The item started during the wait, so this scheduled resolve is not spent.
-    mutating func noteBackoffCancelled() {
+    /// The item actually advanced during the wait, so this scheduled resolve is not spent.
+    /// A status of `.playing` with the position still at zero is the stuck loop:
+    /// refunding that attempt kept the same video on a one-second resolve forever.
+    mutating func noteBackoffCancelled(timeAdvanced: Bool = true) {
         waitingForBackoff = false
-        if !resolveInFlight, resolveAttempts > 0 {
-            resolveAttempts -= 1
-        }
+        guard timeAdvanced, !resolveInFlight, resolveAttempts > 0 else { return }
+        resolveAttempts -= 1
     }
 
     mutating func noteResolveFinished() {

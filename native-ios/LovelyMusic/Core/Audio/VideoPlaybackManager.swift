@@ -76,7 +76,9 @@ final class VideoPlaybackManager {
     }
 
     func loadVideoStream(for song: Song) {
-        guard isVideoMode else { return }
+        // A muted player created while locked is the buffer that gets the process
+        // killed. The next foreground activation loads the picture again.
+        guard isVideoMode, !suspendedForBackground else { return }
         let resolver: ((String) async throws -> (url: String, contentLength: Int64?)?)?
         if let contextualVideoStreamURLResolver {
             resolver = { _ in try await contextualVideoStreamURLResolver(song) }

@@ -72,7 +72,10 @@ struct LyricFillRenderer: TextRenderer {
                 )
             }
         }
-        for slice in slices where slice.typographicBounds.rect.minX < edgeX + 0.5 {
+        // One mask across the whole line. Drawing only the glyphs that start left
+        // of the edge pops each character in whole; the clip and the feather cut
+        // through the glyph the playhead is on.
+        for slice in slices {
             masked.draw(slice)
         }
     }
