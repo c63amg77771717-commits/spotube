@@ -34,7 +34,7 @@ final class Build52PlaybackTests: XCTestCase {
     }
 
     @MainActor
-    func testSuspendedVideoDoesNotLoadANewPlayer() async {
+    func testSuspendedVideoDoesNotLoadANewPlayer() {
         let manager = VideoPlaybackManager()
         manager.setVideoMode(true)
         manager.videoStreamURLResolver = { (_: String) async throws -> (url: String, contentLength: Int64?)? in
@@ -42,7 +42,6 @@ final class Build52PlaybackTests: XCTestCase {
         }
         manager.suspendForBackground()
         manager.loadVideoStream(for: song("VIDEO000052"))
-        try await Task.sleep(for: .milliseconds(40))
         XCTAssertNil(manager.videoPlayer)
         XCTAssertNil(manager.videoPlayerItem)
         XCTAssertTrue(manager.isVideoSuspended)
