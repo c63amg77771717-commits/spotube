@@ -12,6 +12,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         case engineBuffering, engineStall, engineRecovery, engineLoadingTimeout
         case audioTransferProbe, audioTransferFailure
         case remoteNext, remotePrevious
+        case retryScheduled, retryBackoff, codecFallback, recoverySkip
+        case memoryWarning, terminationHint
     }
     enum TransferStage: String, Codable, Sendable {
         case probe, fullDownload, initializationPrefix, segment, fileComplete, durationCheck
@@ -85,6 +87,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
         let transferFailure: TransferFailure?
         let transferReceivedBytes: Int64?
         let transferExpectedBytes: Int64?
+        let recoveryAttempt: Int?
+        let retryDelaySeconds: TimeInterval?
 
         init(phase: Phase, client: Client? = nil, videoID: String? = nil,
              httpStatus: Int? = nil, playabilityStatus: String? = nil, reason: Reason? = nil,
@@ -98,6 +102,7 @@ final class PlaybackDiagnostics: @unchecked Sendable {
               interruptionShouldResume: Bool? = nil,
               transferStage: TransferStage? = nil, transferFailure: TransferFailure? = nil,
               transferReceivedBytes: Int64? = nil, transferExpectedBytes: Int64? = nil,
+              recoveryAttempt: Int? = nil, retryDelaySeconds: TimeInterval? = nil,
               timestamp: Date = Date()) {
             self.timestamp = timestamp
             self.phase = phase
@@ -139,6 +144,8 @@ final class PlaybackDiagnostics: @unchecked Sendable {
             self.transferExpectedBytes = transferExpectedBytes.flatMap {
                 (0...1_000_000_000).contains($0) ? $0 : nil
             }
+            self.recoveryAttempt = recoveryAttempt.flatMap { (0...20).contains($0) ? $0 : nil }
+            self.retryDelaySeconds = retryDelaySeconds.flatMap { $0.isFinite && (0...120).contains($0) ? $0 : nil }
         }
 
         var sanitized: Self {
@@ -155,7 +162,9 @@ final class PlaybackDiagnostics: @unchecked Sendable {
                 interruptionShouldResume: interruptionShouldResume,
                 transferStage: transferStage, transferFailure: transferFailure,
                 transferReceivedBytes: transferReceivedBytes,
-                transferExpectedBytes: transferExpectedBytes, timestamp: timestamp)
+                transferExpectedBytes: transferExpectedBytes,
+                recoveryAttempt: recoveryAttempt, retryDelaySeconds: retryDelaySeconds,
+                timestamp: timestamp)
         }
     }
     struct Report: Codable {

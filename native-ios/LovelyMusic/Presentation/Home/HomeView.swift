@@ -458,7 +458,8 @@ struct HomeView: View {
 
                     // Play button
                     Button {
-                        playerVM.play(song: lastSong)
+                        playerVM.playFromHistory(
+                            lastSong, history: viewModel.recentlyPlayed, playlists: [])
                     } label: {
                         Image(systemName: "play.fill")
                             .font(.title3)
@@ -509,7 +510,8 @@ struct HomeView: View {
         LazyVGrid(columns: quickPlayColumns, spacing: Theme.Spacing.sm) {
             ForEach(Array(viewModel.recentlyPlayed.prefix(6).enumerated()), id: \.element.id) { index, song in
                 Button {
-                    playerVM.play(song: song)
+                    playerVM.playFromHistory(
+                        song, history: viewModel.recentlyPlayed, playlists: [])
                 } label: {
                     HStack(spacing: Theme.Spacing.sm) {
                         AsyncThumbnail(

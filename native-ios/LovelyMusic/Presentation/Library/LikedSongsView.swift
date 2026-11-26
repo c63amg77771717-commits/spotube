@@ -163,9 +163,10 @@ struct LikedSongsView: View {
                 playerVM.play(song: first, fromQueue: viewModel.favorites)
             },
             onShuffle: {
-                let shuffled = viewModel.favorites.shuffled()
-                guard let first = shuffled.first else { return }
-                playerVM.play(song: first, fromQueue: shuffled)
+                guard let start = viewModel.favorites.indices.randomElement() else { return }
+                let ordered = ArtistSeparatedShuffle.spread(viewModel.favorites, startingAt: start)
+                guard let first = ordered.first else { return }
+                playerVM.play(song: first, fromQueue: ordered)
             }
         )
     }

@@ -912,9 +912,12 @@ actor InnerTubeAPI {
     /// Visits the YouTube watch page to obtain cookies and extract visitorData.
     /// Anonymous VisionOS fallback only borrows the visitor token; it must not
     /// mark an authenticated IOS session as initialized or send saved cookies.
+    private static let desktopWatchUserAgent =
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15"
+
     @discardableResult
     private func initializePlayerSession(
-        for videoId: String, useSavedSession: Bool = true
+        for videoId: String, useSavedSession: Bool = true, userAgent: String? = nil
     ) async throws -> String {
         Log.innerTube.info("Initializing player session for \(videoId, privacy: .public)")
         let generation = playerSessionGeneration
@@ -950,10 +953,7 @@ actor InnerTubeAPI {
         var watchRequest = URLRequest(url: watchURL)
         watchRequest.cachePolicy = .reloadIgnoringLocalCacheData
         watchRequest.httpShouldHandleCookies = useSavedSession
-        watchRequest.setValue(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
-            forHTTPHeaderField: "User-Agent"
-        )
+        watchRequest.setValue(userAgent ?? Self.desktopWatchUserAgent, forHTTPHeaderField: "User-Agent")
         watchRequest.setValue(
             "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             forHTTPHeaderField: "Accept"
@@ -1039,6 +1039,17 @@ actor InnerTubeAPI {
 
     /// Fetches player data with the current session; source restrictions remain authoritative.
     func playerWithSession(videoId: String, playlistId: String? = nil) async throws -> Data {
+        try await sendIOSPlayerRequest(
+            videoId: videoId, playlistId: playlistId,
+            watchUserAgent: nil, canRetryBadRequest: true)
+    }
+
+    /// A desktop Safari `/watch` visitor is rejected by the IOS player with HTTP 400
+    /// immediately after re-authentication. One retry re-reads `/watch` as the IOS
+    /// client and posts again. A second 400 still falls through to the caller.
+    private func sendIOSPlayerRequest(
+        videoId: String, playlistId: String?, watchUserAgent: String?, canRetryBadRequest: Bool
+    ) async throws -> Data {
         let context = playerSessionContext()
         // Auto-refresh session if expired (> 4 hours) or cookies missing
         let sessionAge = sessionInitTime.map { Date().timeIntervalSince($0) } ?? .infinity
@@ -1047,7 +1058,7 @@ actor InnerTubeAPI {
         }
 
         if !hasInitializedSession {
-            try await initializePlayerSession(for: videoId)
+            try await initializePlayerSession(for: videoId, userAgent: watchUserAgent)
         }
         guard !Task.isCancelled, context == playerSessionContext() else {
             throw CancellationError()
@@ -1106,8 +1117,18 @@ actor InnerTubeAPI {
         request.httpBody = try encoder.encode(body)
 
         Log.innerTube.info("Player request for \(videoId, privacy: .public) with IOS")
-        return try await executePlayerRequest(request, videoID: videoId, client: .iosSession,
-            hasAuth: context.isAuthenticated, visitorSource: effectiveVisitorSource)
+        do {
+            return try await executePlayerRequest(request, videoID: videoId, client: .iosSession,
+                hasAuth: context.isAuthenticated, visitorSource: effectiveVisitorSource)
+        } catch let error as InnerTubeError {
+            guard canRetryBadRequest, context.isAuthenticated, case .httpError(let code) = error, code == 400 else {
+                throw error
+            }
+            hasInitializedSession = false
+            return try await sendIOSPlayerRequest(
+                videoId: videoId, playlistId: playlistId,
+                watchUserAgent: YouTubeClient.ios.userAgent, canRetryBadRequest: false)
+        }
     }
 
     /// Fetches player data using VISIONOS client — returns hlsManifestUrl + direct URLs
@@ -1226,6 +1247,17 @@ private struct IOSPlayerBody: Encodable {
     let context: IOSContext
     let videoId: String
     let playlistId: String?
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(context, forKey: .context)
+        try container.encode(videoId, forKey: .videoId)
+        try container.encodeIfPresent(playlistId, forKey: .playlistId)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case context, videoId, playlistId
+    }
 
     struct IOSContext: Encodable {
         let client: IOSClient

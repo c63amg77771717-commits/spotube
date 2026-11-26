@@ -27,6 +27,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
+    func applicationWillTerminate(_ application: UIApplication) {
+        RuntimeDiagnosticLog.shared.append("termination hint willTerminate")
+        PlaybackDiagnostics.shared.record(.init(phase: .terminationHint))
+    }
+
     func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
         MainActor.assumeIsolated {
             BackgroundMemoryRelief.trimTransientImages()

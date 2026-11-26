@@ -51,6 +51,24 @@ enum LyricPlaybackClock {
     struct LineCue: Equatable, Sendable {
         var time: TimeInterval
         var text: String
+        /// End times of words or syllables on this line, when the provider sent them.
+        var syllableEnds: [TimeInterval] = []
+    }
+
+    /// A gap this long is an instrumental break, not the time the line is sung.
+    static let interludeGapThreshold: TimeInterval = 4.5
+
+    struct LineWindow: Equatable, Sendable {
+        var start: TimeInterval
+        var end: TimeInterval
+        var nextStart: TimeInterval?
+    }
+
+    struct PlaybackFocus: Equatable, Sendable {
+        var activeLineIndex: Int?
+        /// Highest line that stays fully filled while nothing is sweeping.
+        var sungThroughIndex: Int?
+        var inInterlude: Bool
     }
 
     /// How a line is painted. Sung lines stay filled; only the active line advances.
@@ -70,31 +88,113 @@ enum LyricPlaybackClock {
         var units: SungUnits
     }
 
-    static func role(lineIndex: Int, activeIndex: Int?, synced: Bool) -> LineRole {
-        guard synced, let activeIndex else { return synced ? .upcoming : .plain }
-        if lineIndex < activeIndex { return .sung }
-        if lineIndex == activeIndex { return .current }
+    static func role(
+        lineIndex: Int, activeIndex: Int?, synced: Bool, sungThroughIndex: Int? = nil
+    ) -> LineRole {
+        guard synced else { return .plain }
+        if let activeIndex {
+            if lineIndex < activeIndex { return .sung }
+            if lineIndex == activeIndex { return .current }
+            return .upcoming
+        }
+        if let sungThroughIndex, lineIndex <= sungThroughIndex { return .sung }
         return .upcoming
     }
 
-    /// Character-by-character fill inside the active line. A word counts as sung
+    /// Where this line's sweep finishes. Word or syllable ends win. Otherwise
+    /// a short gap still runs to the next cue, and a long gap is capped from
+    /// the surrounding line lengths and this line's text so the fill does not
+    /// smear across an interlude.
+    static func lineWindow(
+        lines: [LineCue], index: Int, trailingLineDuration: TimeInterval = 4
+    ) -> LineWindow {
+        let start = lines[index].time
+        let nextStart = index + 1 < lines.count ? lines[index + 1].time : nil
+        let syllableEnd = lines[index].syllableEnds.filter { $0.isFinite && $0 > start + 0.05 }.max()
+        let end: TimeInterval
+        if let syllableEnd {
+            let bounded = nextStart.map { min(syllableEnd, $0) } ?? syllableEnd
+            end = max(start + 0.05, bounded)
+        } else if let nextStart, nextStart - start > interludeGapThreshold {
+            let estimate = estimatedSingingDuration(
+                lines: lines, index: index, trailingLineDuration: trailingLineDuration)
+            end = min(nextStart, start + estimate)
+        } else if let nextStart {
+            end = nextStart
+        } else {
+            end = start + trailingLineDuration
+        }
+        return LineWindow(start: start, end: end, nextStart: nextStart)
+    }
+
+    /// Active line, or a finished line with nothing sweeping through the gap
+    /// before the next cue. The next line becomes active at its own timestamp.
+    static func playbackFocus(
+        lines: [LineCue], lyricTime: TimeInterval, trailingLineDuration: TimeInterval = 4
+    ) -> PlaybackFocus {
+        guard lyricTime.isFinite, !lines.isEmpty else {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: nil, inInterlude: false)
+        }
+        guard let index = activeLineIndex(times: lines.map(\.time), lyricTime: lyricTime) else {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: nil, inInterlude: false)
+        }
+        let window = lineWindow(lines: lines, index: index, trailingLineDuration: trailingLineDuration)
+        if let next = window.nextStart,
+           next - window.end > interludeGapThreshold,
+           lyricTime + 0.000_5 >= window.end,
+           lyricTime + 0.000_5 < next {
+            return PlaybackFocus(activeLineIndex: nil, sungThroughIndex: index, inInterlude: true)
+        }
+        return PlaybackFocus(
+            activeLineIndex: index,
+            sungThroughIndex: index > 0 ? index - 1 : nil,
+            inInterlude: false
+        )
+    }
+
+    private static func estimatedSingingDuration(
+        lines: [LineCue], index: Int, trailingLineDuration: TimeInterval
+    ) -> TimeInterval {
+        var durations: [TimeInterval] = []
+        var characters: [Int] = []
+        for candidate in lines.indices where candidate + 1 < lines.count {
+            let gap = lines[candidate + 1].time - lines[candidate].time
+            guard gap.isFinite, gap > 0.2, gap <= interludeGapThreshold else { continue }
+            durations.append(gap)
+            characters.append(max(lines[candidate].text.count, 1))
+        }
+        let count = max(lines[index].text.count, 1)
+        guard !durations.isEmpty else {
+            let scaled = trailingLineDuration * Double(count) / 12
+            return min(max(scaled, 1.5), interludeGapThreshold)
+        }
+        let averageDuration = durations.reduce(0, +) / Double(durations.count)
+        let averageCharacters = Double(characters.reduce(0, +)) / Double(characters.count)
+        let scaled = averageDuration * Double(count) / max(averageCharacters, 1)
+        return min(max(scaled, 1.2), interludeGapThreshold)
+    }
+
+    /// Completed-character count inside the active line. A word counts as sung
     /// once every character of that word has filled, so spaced text advances
     /// word by word and unspaced text (CJK) advances one character at a time.
-    /// `lyricTime` must already be `lyricTime(playerTime:anchor:)` so Opus and
-    /// AAC share one timeline.
+    /// The on-screen fill does not use this count: `lyricSweep` moves inside a
+    /// character. `lyricTime` must already be `lyricTime(playerTime:anchor:)`
+    /// so Opus and AAC share one timeline.
     static func karaokeFill(
         lines: [LineCue],
         lyricTime: TimeInterval,
         trailingLineDuration: TimeInterval = 4
     ) -> KaraokeFill {
-        guard let index = activeLineIndex(times: lines.map(\.time), lyricTime: lyricTime) else {
+        let focus = playbackFocus(
+            lines: lines, lyricTime: lyricTime, trailingLineDuration: trailingLineDuration)
+        guard let index = focus.activeLineIndex else {
             return KaraokeFill(activeLineIndex: nil, units: .empty)
         }
-        let start = lines[index].time
-        let end = index + 1 < lines.count ? lines[index + 1].time : start + trailingLineDuration
+        let window = lineWindow(lines: lines, index: index, trailingLineDuration: trailingLineDuration)
         return KaraokeFill(
             activeLineIndex: index,
-            units: sungUnits(text: lines[index].text, lineStart: start, lineEnd: end, lyricTime: lyricTime)
+            units: sungUnits(
+                text: lines[index].text, lineStart: window.start, lineEnd: window.end, lyricTime: lyricTime)
         )
     }
 
@@ -157,6 +257,213 @@ enum LyricPlaybackClock {
             if start < index { ranges.append(start..<index) }
         }
         return ranges
+    }
+
+    /// Continuous position of the karaoke leading edge. `fraction` is the
+    /// portion of the line (0...1) and is not rounded to a character.
+    /// `characterPosition` is that edge in character units, so 5.4 means the
+    /// edge is 40% of the way through the sixth character.
+    struct LyricSweep: Equatable, Sendable {
+        var fraction: Double
+        var feather: Double
+        var characterPosition: Double
+
+        static let empty = LyricSweep(fraction: 0, feather: 0, characterPosition: 0)
+    }
+
+    /// Soft falloff behind the leading edge, as a fraction of the line.
+    /// About one glyph wide, clamped so a short line does not dissolve entirely.
+    static let featherGlyphs: Double = 1.35
+    static let featherMinimum: Double = 0.035
+    static let featherMaximum: Double = 0.16
+
+    struct FeatherShoulder: Equatable, Sendable {
+        var position: Double
+        var opacity: Double
+    }
+
+    /// Opacity samples from the solid fill to the clear edge. Shared by the
+    /// mask so the leading edge feathers instead of cutting a glyph in half.
+    static let featherShoulders: [FeatherShoulder] = [
+        .init(position: 0.42, opacity: 0.62),
+        .init(position: 0.75, opacity: 0.22),
+    ]
+
+    struct SweepMaskStop: Equatable, Sendable {
+        var location: Double
+        var opacity: Double
+    }
+
+    struct LineReveal: Equatable, Sendable {
+        var edge: Double
+        var feather: Double
+        var glyphCount: Int
+    }
+
+    /// Sweep for one line of text. Time moves linearly across the line, which
+    /// is sub-character: a 20 ms step is a fraction of a glyph, not a whole one.
+    static func lyricSweep(
+        text: String,
+        lineStart: TimeInterval,
+        lineEnd: TimeInterval,
+        lyricTime: TimeInterval
+    ) -> LyricSweep {
+        let count = text.count
+        let fraction = sweepFraction(lineStart: lineStart, lineEnd: lineEnd, lyricTime: lyricTime)
+        return LyricSweep(
+            fraction: fraction,
+            feather: featherFraction(characterCount: count, fraction: fraction),
+            characterPosition: Double(count) * fraction
+        )
+    }
+
+    /// What the row actually paints. Earlier lines stay full. Later lines stay
+    /// empty. Only the active line tracks the clock.
+    static func presentedSweep(
+        role: LineRole,
+        text: String,
+        lineStart: TimeInterval,
+        lineEnd: TimeInterval,
+        lyricTime: TimeInterval
+    ) -> LyricSweep {
+        switch role {
+        case .sung:
+            return LyricSweep(fraction: 1, feather: 0, characterPosition: Double(text.count))
+        case .upcoming, .plain:
+            return .empty
+        case .current:
+            return lyricSweep(text: text, lineStart: lineStart, lineEnd: lineEnd, lyricTime: lyricTime)
+        }
+    }
+
+    static func featherFraction(characterCount: Int, fraction: Double) -> Double {
+        guard characterCount > 0 else { return 0 }
+        let clamped = min(max(fraction, 0), 1)
+        guard clamped > 0, clamped < 1 else { return 0 }
+        let one = 1 / Double(characterCount)
+        let desired = min(max(one * featherGlyphs, featherMinimum), featherMaximum)
+        return min(desired, clamped)
+    }
+
+    /// 0...1 coverage of each glyph. A value strictly between 0 and 1 is the
+    /// leading edge sitting inside that glyph.
+    static func glyphFill(glyphCount: Int, sweep: LyricSweep) -> [Double] {
+        guard glyphCount > 0 else { return [] }
+        let edge = min(max(sweep.fraction, 0), 1) * Double(glyphCount)
+        return (0..<glyphCount).map { index in
+            let start = Double(index)
+            if edge >= start + 1 { return 1 }
+            if edge <= start { return 0 }
+            return edge - start
+        }
+    }
+
+    /// Split a sweep across wrapped visual lines, in reading order. A line the
+    /// edge has already left stays filled; the feather can still soften its tail.
+    static func lineReveals(glyphCounts: [Int], sweep: LyricSweep) -> [LineReveal] {
+        let total = glyphCounts.reduce(0, +)
+        guard total > 0 else {
+            return glyphCounts.map { LineReveal(edge: 0, feather: 0, glyphCount: $0) }
+        }
+        let edge = min(max(sweep.fraction, 0), 1) * Double(total)
+        let feather = min(max(sweep.feather, 0), sweep.fraction) * Double(total)
+        let featherStart = max(0, edge - feather)
+        var cursor = 0.0
+        return glyphCounts.map { count in
+            let start = cursor
+            let end = cursor + Double(count)
+            cursor = end
+            let localEdge = min(max(edge, start), end) - start
+            let localFeatherStart = min(max(featherStart, start), end) - start
+            return LineReveal(
+                edge: localEdge,
+                feather: max(0, localEdge - localFeatherStart),
+                glyphCount: count
+            )
+        }
+    }
+
+    /// X of the leading edge from per-glyph bounds. `glyphPosition` may be fractional.
+    static func absoluteEdge(minXs: [Double], maxXs: [Double], glyphPosition: Double) -> Double {
+        guard !minXs.isEmpty, minXs.count == maxXs.count else { return 0 }
+        if glyphPosition <= 0 { return minXs[0] }
+        if glyphPosition >= Double(minXs.count) { return maxXs[minXs.count - 1] }
+        let index = min(minXs.count - 1, max(0, Int(glyphPosition)))
+        let partial = min(max(glyphPosition - Double(index), 0), 1)
+        return minXs[index] + (maxXs[index] - minXs[index]) * partial
+    }
+
+    static func sweepMaskStops(_ sweep: LyricSweep) -> [SweepMaskStop] {
+        sweepMaskStops(edge: sweep.fraction, feather: sweep.feather)
+    }
+
+    /// Unit-space mask. Location 0 is the start of the revealed span and
+    /// `edge` is where the fill becomes clear. Shoulders soften that point.
+    static func sweepMaskStops(edge: Double, feather: Double) -> [SweepMaskStop] {
+        let clampedEdge = min(max(edge, 0), 1)
+        if clampedEdge <= 0 {
+            return [
+                SweepMaskStop(location: 0, opacity: 0),
+                SweepMaskStop(location: 1, opacity: 0),
+            ]
+        }
+        let width = min(max(feather, 0), clampedEdge)
+        if clampedEdge >= 1, width <= 0 {
+            return [
+                SweepMaskStop(location: 0, opacity: 1),
+                SweepMaskStop(location: 1, opacity: 1),
+            ]
+        }
+        let solid = clampedEdge - width
+        var stops: [SweepMaskStop] = [
+            SweepMaskStop(location: 0, opacity: 1),
+            SweepMaskStop(location: solid, opacity: 1),
+        ]
+        for shoulder in featherShoulders {
+            stops.append(SweepMaskStop(
+                location: solid + width * shoulder.position,
+                opacity: shoulder.opacity
+            ))
+        }
+        stops.append(SweepMaskStop(location: clampedEdge, opacity: 0))
+        stops.append(SweepMaskStop(location: 1, opacity: 0))
+        var previous = 0.0
+        for index in stops.indices {
+            let location = min(max(stops[index].location, previous), 1)
+            stops[index].location = location
+            previous = location
+        }
+        return stops
+    }
+
+    private static func sweepFraction(
+        lineStart: TimeInterval, lineEnd: TimeInterval, lyricTime: TimeInterval
+    ) -> Double {
+        guard lyricTime.isFinite, lineStart.isFinite, lineEnd.isFinite else { return 0 }
+        let span = max(lineEnd - lineStart, 0.001)
+        let elapsed = lyricTime - lineStart
+        if elapsed <= 0 { return 0 }
+        if elapsed >= span { return 1 }
+        return min(max(elapsed / span, 0), 1)
+    }
+}
+
+/// Whether the current lyric row may run a display-linked sweep.
+/// Locked and background scenes leave this false so the per-frame timeline
+/// is not even mounted.
+enum LyricSweepAnimation {
+    static func isScheduled(
+        sceneIsActive: Bool,
+        isPlaying: Bool,
+        reduceMotion: Bool,
+        isCurrentLine: Bool,
+        interfaceSuspended: Bool = false
+    ) -> Bool {
+        isCurrentLine
+            && isPlaying
+            && !reduceMotion
+            && !PlaybackInterfaceBudget.animationsPaused(
+                sceneIsActive: sceneIsActive, interfaceSuspended: interfaceSuspended)
     }
 }
 

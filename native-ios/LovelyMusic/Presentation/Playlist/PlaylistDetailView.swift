@@ -247,11 +247,11 @@ struct PlaylistDetailView: View {
                                 }
                             },
                             onShuffle: {
-                                if let random = playlist.songs.randomElement() {
-                                    playerVM.play(
-                                        song: random.inPlaylist(playlist.id),
-                                        fromQueue: playlist.songs.shuffled().map { $0.inPlaylist(playlist.id) })
-                                }
+                                let songs = playlist.songs.map { $0.inPlaylist(playlist.id) }
+                                guard let start = songs.indices.randomElement() else { return }
+                                let ordered = ArtistSeparatedShuffle.spread(songs, startingAt: start)
+                                guard let first = ordered.first else { return }
+                                playerVM.play(song: first, fromQueue: ordered)
                             }
                         )
                     }

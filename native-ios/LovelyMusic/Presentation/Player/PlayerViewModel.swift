@@ -55,7 +55,7 @@ enum PlaybackErrorCategory: Equatable {
     }
 
     var permitsReplacementSearch: Bool {
-        self == .regionBlocked || self == .songRemoved || self == .unknown
+        self == .regionBlocked || self == .songRemoved || self == .unknown || self == .authRequired
     }
 
     var icon: String {
@@ -351,6 +351,15 @@ final class PlayerViewModel {
         requestLyrics(for: song)
     }
 
+    /// A history row has no queue of its own. Continue through the playlist it
+    /// belongs to, or through the history list on screen when that playlist
+    /// is not available.
+    func playFromHistory(_ song: Song, history: [Song], playlists: [Playlist]) {
+        let selection = HistoryPlaybackSelection.selection(
+            song: song, history: history, playlists: playlists)
+        play(song: selection.song, fromQueue: selection.queue)
+    }
+
     // Track observation can repeat after stream resolution; do not reset a
     // listener's manual cover/video choice for the same recording.
     private func requestLyrics(for song: Song) {
@@ -614,16 +623,22 @@ final class PlayerViewModel {
     func toggleVideoMode() {
         isLyricsVisible = false
         isVideoMode.toggle()
-        let sourceBefore = currentSong.map { audioEngine.playbackSourceID(for: $0) }
-        audioEngine.setVideoMode(isVideoMode)
-        // The sound switched recordings (official audio <-> video): its lyrics too.
-        if let song = currentSong, sourceBefore != audioEngine.playbackSourceID(for: song) {
-            lyricsSourceSettingsChanged()
-        }
-        // Mark the song handled so the track observer doesn't load it twice.
-        lastHandledVideoTrackId = isVideoMode ? currentSong?.id : nil
-        if isVideoMode, let song = currentSong {
-            audioEngine.loadVideoStream(for: song)
+        let enabled = isVideoMode
+        let song = currentSong
+        let sourceBefore = song.map { audioEngine.playbackSourceID(for: $0) }
+        // The picture mode flips on this turn. Switching the recording and
+        // starting the video request on the next turn is what lets the button
+        // and the video slot paint before that work.
+        lastHandledVideoTrackId = enabled ? song?.id : nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            self.audioEngine.setVideoMode(enabled)
+            if let song, sourceBefore != self.audioEngine.playbackSourceID(for: song) {
+                self.lyricsSourceSettingsChanged()
+            }
+            if enabled, let song {
+                self.audioEngine.loadVideoStream(for: song)
+            }
         }
     }
 
@@ -713,6 +728,14 @@ final class PlayerViewModel {
 
     var currentIndex: Int { audioEngine.currentIndex }
 
+    func upcomingQueueEntries() -> [(index: Int, song: Song)] {
+        audioEngine.upcomingQueueEntries()
+    }
+
+    func moveUpcoming(from source: IndexSet, to destination: Int) {
+        audioEngine.moveUpcoming(from: source, to: destination)
+    }
+
     func playFromQueue(at index: Int) {
         autoSkipTask?.cancel()
         guard index < queue.count else { return }
@@ -756,6 +779,10 @@ final class PlayerViewModel {
     }
 
     func retryCurrentSong(resetRetryCount: Bool = false) {
+        // The engine already owns backoff for this video. Another play() here
+        // would resolve again immediately and reactivate Now Playing.
+        audioEngine.releaseListenerChoice()
+        if audioEngine.isAutomaticRecoveryPending { return }
         autoSkipTask?.cancel()
         if resetRetryCount { retryCount = 0 }
         guard retryCount < maxRetries, var song = currentSong else { return }
@@ -826,20 +853,29 @@ final class PlayerViewModel {
     }
 
     func beginSourceReplacementSearch() {
-        guard canSearchReplacement, let song = currentSong, let searcher = replacementSearcher,
-              sourceReplacementSession == nil else { return }
-        autoSkipTask?.cancel()
-        audioEngine.pause()
+        guard canSearchReplacement, let song = currentSong else { return }
+        beginAlternativeSearch(for: song, queueIndex: nil)
+    }
+
+    /// Other uploads, live performances, and music videos for one queue slot.
+    /// The chosen video id is remembered for that track.
+    func beginAlternativeSearch(for song: Song, queueIndex: Int?) {
+        guard let searcher = replacementSearcher, sourceReplacementSession == nil else { return }
+        let originalID = song.id
         let sessionID = UUID()
-        let selectionGeneration = audioEngine.playbackSelectionGeneration
+        if currentSong?.id == originalID {
+            autoSkipTask?.cancel()
+            audioEngine.pause()
+        }
         sourceReplacementSession = ReplacementSourceSearchModel(
             id: sessionID, original: song,
-            excludedIDs: [sourceReplacementStore.sourceID(for: song.id)],
+            excludedIDs: [sourceReplacementStore.sourceID(for: originalID)],
             contextIsCurrent: { [weak self] in
-                guard let self else { return false }
-                return self.currentSong?.id == song.id
-                    && self.audioEngine.playbackSelectionGeneration == selectionGeneration
-                    && self.sourceReplacementSession?.id == sessionID
+                guard let self, self.sourceReplacementSession?.id == sessionID else { return false }
+                if let queueIndex, self.queue.indices.contains(queueIndex) {
+                    return self.queue[queueIndex].id == originalID
+                }
+                return self.currentSong?.id == originalID
             },
             searcher: searcher)
     }
@@ -851,11 +887,14 @@ final class PlayerViewModel {
 
     func applySourceReplacement(_ candidate: PlaybackSourceCandidate, sessionID: UUID) {
         guard let session = sourceReplacementSession, session.id == sessionID,
-              currentSong?.id == session.original.id, session.contains(candidate) else { return }
+              session.contains(candidate) else { return }
         do {
             try sourceReplacementStore.save(sourceID: candidate.id, for: session.original.id)
         } catch { session.reportSaveFailure(); return }
+        let replacesCurrent = currentSong?.id == session.original.id
         cancelSourceReplacement()
+        guard replacesCurrent else { return }
+        audioEngine.releaseListenerChoice()
         reloadCurrentSource()
     }
 
@@ -990,6 +1029,11 @@ final class PlayerViewModel {
                 return
             }
 
+            if audioEngine.isAutomaticRecoveryPending {
+                autoSkipTask?.cancel()
+                return
+            }
+
             // Transient failure: try once more before giving up on this song.
             if retryCount == 0 {
                 autoSkipTask?.cancel()
@@ -1091,7 +1135,10 @@ final class PlayerViewModel {
 
                     // Video mode is the user's choice: it stays on across song
                     // changes (and stream URL refreshes); only the toggle ends it.
-                    if song.isVideo || self.isVideoMode {
+                    // While the screen is locked the muted player stays detached.
+                    // Recreating it on every recovery pass is the background
+                    // re-resolve that leaves video-suspended=false.
+                    if !PlaybackInterfaceGate.shared.suspended, song.isVideo || self.isVideoMode {
                         self.isVideoMode = true
                         self.audioEngine.setVideoMode(true)
                         if self.lastHandledVideoTrackId != song.id {

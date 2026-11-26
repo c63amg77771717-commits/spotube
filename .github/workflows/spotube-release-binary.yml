@@ -57,12 +57,12 @@ jobs:
             files: |
               dist/Spotube-windows-x86_64.nupkg
               dist/Spotube-windows-x86_64-setup.exe
-          - os: macos-14
+          - os: macos-15
             platform: ios
             arch: all
             files: |
               Spotube-iOS.ipa
-          - os: macos-14
+          - os: macos-15
             platform: macos
             arch: all
             files: |
@@ -104,7 +104,7 @@ jobs:
         if: ${{matrix.platform == 'ios'}}
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "16.2"
+          xcode-version: "16.4"
 
       - name: Install ${{matrix.platform}} dependencies
         run: |

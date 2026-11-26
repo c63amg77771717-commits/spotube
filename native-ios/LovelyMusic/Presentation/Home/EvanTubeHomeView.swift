@@ -282,7 +282,7 @@ struct EvanTubeHomeView: View {
                 emptyCard("播放歌曲後會顯示在這裡")
             } else {
                 ForEach(Array(viewModel.recentlyPlayed.prefix(5))) { song in
-                    songRow(song)
+                    songRow(song, continuesThrough: viewModel.recentlyPlayed)
                 }
             }
         }
@@ -426,8 +426,14 @@ struct EvanTubeHomeView: View {
         .foregroundStyle(Theme.Colors.textSecondary)
     }
 
-    private func songRow(_ song: Song) -> some View {
-        Button { playerVM.play(song: song) } label: {
+    private func songRow(_ song: Song, continuesThrough history: [Song]? = nil) -> some View {
+        Button {
+            if let history {
+                playerVM.playFromHistory(song, history: history, playlists: [])
+            } else {
+                playerVM.play(song: song)
+            }
+        } label: {
             HStack(spacing: 12) {
                 AsyncThumbnail(url: song.thumbnailURL, size: 48, cornerRadius: 8)
                 VStack(alignment: .leading, spacing: 3) {

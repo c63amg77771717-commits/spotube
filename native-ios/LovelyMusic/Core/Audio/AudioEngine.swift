@@ -157,7 +157,7 @@ final class AudioEngine {
             invalidateCrossfadePreparation(clearReservation: true)
             if shuffleEnabled {
                 generateShuffledOrder()
-                autoplayQueue.shuffle()
+                autoplayQueue = ArtistSeparatedShuffle.spread(autoplayQueue)
             } else {
                 shuffledIndices = []
                 shufflePosition = 0
@@ -304,11 +304,35 @@ final class AudioEngine {
     private var userInitiatedPause: Bool = false
     /// Screen lock. UI sampling slows down and video buffers are released.
     @ObservationIgnored private var interfaceSuspended = false
+    /// Avoid `setActive` and Now Playing churn on every stall retry.
+    @ObservationIgnored private var playbackSessionEngaged = false
+    @ObservationIgnored private var nowPlayingEngaged = false
+    /// Set after Opus fails so the upgrade cannot be adopted again this track.
+    @ObservationIgnored private var suppressOpusUpgrade = false
+    @ObservationIgnored private var stallBudget = LockedScreenPlaybackRecovery()
+    @ObservationIgnored private var stallBudgetVideoID: String?
+    @ObservationIgnored private var stallRecoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var quietPauseKicks = 0
+    @ObservationIgnored private var backgroundLease = PlaybackBackgroundLease()
+    private struct RetainedAAC {
+        var url: String
+        var contentLength: Int64?
+    }
+    @ObservationIgnored private var retainedAAC: RetainedAAC?
     /// The next resume after standby seeks a drained buffer instead of waiting on it.
     @ObservationIgnored private var resumeNeedsKick = false
     @ObservationIgnored private var backgroundExpiryReloadAttempted = false
     private var isInterrupted = false
     private(set) var requiresManualPlaybackRecovery = false
+    /// LOGIN_REQUIRED stays paused until the listener picks another upload or skips.
+    private(set) var requiresListenerChoice = false
+    private var unexpectedPause = UnexpectedPauseAdmission()
+    private var automaticResolveGate = AutomaticResolveGate()
+    private var installedItemGeneration: UInt64 = 0
+    /// True while a stall is waiting out backoff or already resolving this video.
+    var isAutomaticRecoveryPending: Bool {
+        stallRecoveryTask != nil || stallBudget.resolveInFlight || stallBudget.waitingForBackoff
+    }
     private var resumeAfterInterruption = false
     private var hasReportedPlaybackStart = false
     private var recoveryPosition: TimeInterval?
@@ -550,17 +574,20 @@ final class AudioEngine {
     func applicationDidEnterBackground() {
         guard !interfaceSuspended else { return }
         interfaceSuspended = true
+        PlaybackInterfaceGate.shared.setSuspended(true)
+        RuntimeDiagnosticLog.shared.noteLifecycle("background")
         resumeNeedsKick = true
         backgroundExpiryReloadAttempted = false
         upgradeTask?.cancel()
         upgradeTask = nil
         setupTimeObserver()
+        player?.automaticallyWaitsToMinimizeStalling = true
         videoManager.suspendForBackground()
         if !isPlaying || userInitiatedPause {
             parkExpiredPlaybackIfNeeded()
         }
         RuntimeDiagnosticLog.shared.append(
-            "background: ui-sample \(PlaybackInterfaceBudget.backgroundSampleSeconds)s video-suspended=\(videoManager.videoPlayer != nil) playing=\(isPlaying)"
+            "background: ui-sample \(PlaybackInterfaceBudget.backgroundSampleSeconds)s video-suspended=\(videoManager.isVideoSuspended) playing=\(isPlaying)"
         )
     }
 
@@ -570,7 +597,10 @@ final class AudioEngine {
             upgradeTask?.cancel()
             upgradeTask = nil
         }
-        RuntimeDiagnosticLog.shared.append("memory warning interfaceSuspended=\(interfaceSuspended) playing=\(isPlaying)")
+        PlaybackDiagnostics.shared.record(.init(
+            phase: .memoryWarning, videoID: currentTrack?.id, isPlaying: isPlaying,
+            playbackRate: Double(player?.rate ?? 0)))
+        RuntimeDiagnosticLog.shared.append("memory warning interfaceSuspended=\(interfaceSuspended) playing=\(isPlaying) video-suspended=\(videoManager.isVideoSuspended)")
     }
 
     deinit {
@@ -971,8 +1001,8 @@ final class AudioEngine {
                 isPlaying = false
                 isBuffering = false
                 coordinator.send(.stop)
-            } else if let song = currentTrack, !recoveryService.hasAttemptedRetry {
-                recoveryService.retryPlayback(for: song)
+            } else if currentTrack != nil {
+                beginStallRecovery(reason: "stall")
             }
         }
     }
@@ -986,13 +1016,8 @@ final class AudioEngine {
             coordinator.send(.stop)
             return
         }
-        guard let song = currentTrack else { return }
-        if !recoveryService.hasAttemptedRetry {
-            recoveryService.retryPlayback(for: song)
-        } else {
-            isBuffering = false
-            lastError = "Playback failed"
-        }
+        guard currentTrack != nil else { return }
+        beginStallRecovery(reason: "item-failed")
     }
 
     func stop() {
@@ -1058,9 +1083,13 @@ final class AudioEngine {
     /// A manual pause stays paused. A dead item is dropped so the next play rebuilds
     /// it instead of waiting out a stall.
     func applicationDidBecomeActive() {
+        reestablishRemotePlaybackSurface()
         let returning = interfaceSuspended
         if returning {
             interfaceSuspended = false
+            PlaybackInterfaceGate.shared.setSuspended(false)
+            RuntimeDiagnosticLog.shared.noteLifecycle("foreground")
+            player?.automaticallyWaitsToMinimizeStalling = false
             setupTimeObserver()
             videoManager.resumeAfterBackground(song: isVideoMode ? currentTrack : nil)
             if let seconds = player?.currentTime().seconds, seconds.isFinite, seconds >= 0 {
@@ -1101,6 +1130,9 @@ final class AudioEngine {
         if decision.dropExpiredItem {
             parkExpiredPlaybackIfNeeded()
         }
+        if decision.warmExpiredSource {
+            prefetchPausedStream()
+        }
         if decision.activateAudioSession {
             _ = audioSessionActivator()
         }
@@ -1115,8 +1147,12 @@ final class AudioEngine {
         // A failed/missing player must not reuse its expired remote URL. Local
         // downloads and cache are still preferred inside loadAndPlay.
         let existingURL = song.streamURL.flatMap { URL(string: $0) }
-        if existingURL?.isFileURL != true
-            || existingURL.map({ !FileManager.default.fileExists(atPath: $0.path) }) == true {
+        let remoteIsFresh = existingURL?.isFileURL == false
+            && streamResolvedAt.map { Date().timeIntervalSince($0) < 6 * 3600 } == true
+            && existingURL.map { !YouTubeStreamExpiry.isExpired($0) } == true
+        let missingFile = existingURL?.isFileURL == true
+            && FileManager.default.fileExists(atPath: existingURL?.path ?? "") == false
+        if !remoteIsFresh && (existingURL?.isFileURL != true || missingFile) {
             song.streamURL = nil
             song.streamContentLength = nil
             currentTrack = song
@@ -1212,7 +1248,7 @@ final class AudioEngine {
             lastError = nil
             lastFailedSongId = nil
             if token.wasPlaying {
-                resumePlayer()
+                resumePlayback(refreshSession: !self.playbackSessionEngaged)
                 guard isPlaying else { throw CancellationError() }
             }
             savePlaybackState()
@@ -1236,9 +1272,20 @@ final class AudioEngine {
         }
     }
 
+    func releaseListenerChoice() {
+        requiresListenerChoice = false
+        userInitiatedPause = false
+    }
+
     private func setPlaybackIntent(_ shouldPlay: Bool, explicitUserAction: Bool = false) {
         noteSourceInteraction()
         guard !shouldPlay || currentTrack != nil else { return }
+        if shouldPlay, requiresListenerChoice {
+            isPlaying = false
+            userInitiatedPause = true
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
+            return
+        }
         // iOS may omit interruption-ended while the process is suspended.
         // Only an explicit play can challenge that stale state; activation failure
         // keeps the interruption intact instead of pretending playback resumed.
@@ -1256,6 +1303,10 @@ final class AudioEngine {
         if shouldPlay { requiresManualPlaybackRecovery = false }
         if !shouldPlay && !isPlaying && userInitiatedPause { return }
         userInitiatedPause = !shouldPlay
+        if !shouldPlay && explicitUserAction {
+            playbackSessionEngaged = false
+            nowPlayingEngaged = false
+        }
         if !shouldPlay { resumeAfterInterruption = false }
         if isInterrupted {
             resumeAfterInterruption = shouldPlay
@@ -1274,7 +1325,7 @@ final class AudioEngine {
                 coordinator.send(.userPlayed)
                 if player?.currentItem != nil {
                     isPlaying = true
-                    resumePlayer()
+                    resumePlayback(refreshSession: !self.playbackSessionEngaged)
                 }
             }
         } else if !shouldPlay {
@@ -1287,16 +1338,20 @@ final class AudioEngine {
             // Bring the audio session back before touching the item. A dead
             // item must not sit in `.readyToPlay` until the stall timer gives
             // up; rebuild it at the saved position and let AAC start immediately.
+            // A resolve left over from before the pause is not "work in progress":
+            // leaving it running is why play did nothing until Retry appeared.
             guard activateAudioSessionForPlayback() else { return }
             if installedPlaybackNeedsRebuild() {
-                if resolveTask == nil, backgroundRemuxTask == nil {
-                    Log.audio.warning(
-                        "Resume: rebuilding dead or expired playback at \(self.savedPlaybackPosition())s"
-                    )
-                    reloadSelectedTrack()
-                }
+                resolveTask?.cancel()
+                resolveTask = nil
+                backgroundRemuxTask?.cancel()
+                backgroundRemuxTask = nil
+                Log.audio.warning(
+                    "Resume: rebuilding dead or expired playback at \(self.savedPlaybackPosition())s"
+                )
+                reloadSelectedTrack()
             } else {
-                resumePlayer()
+                resumePlayback(refreshSession: !self.playbackSessionEngaged)
             }
         }
         // The `isPlaying` didSet above mirrors playback state onto the
@@ -1309,6 +1364,10 @@ final class AudioEngine {
     }
 
     func next(userInitiated: Bool) {
+        guard ListenerPlaybackChoice.allowsAutomaticAdvance(
+            signInRequired: requiresListenerChoice, userInitiated: userInitiated
+        ) else { return }
+        if userInitiated { requiresListenerChoice = false }
         hasReportedPlaybackStart = false
         streamRecoveryTask?.cancel()
         streamRecoveryTask = nil
@@ -1403,7 +1462,7 @@ final class AudioEngine {
             }
             nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
 
-            resumePlayer()
+            resumePlayback(refreshSession: !self.playbackSessionEngaged)
             applyAudioProcessing()
             recoveryService.startStallDetection()
             Log.audio.info("Using pre-fetched item for: \(song.title, privacy: .public)")
@@ -1523,7 +1582,7 @@ final class AudioEngine {
                 self.currentTime = time
                 Log.audio.debug("Seek completed: finished=\(finished, privacy: .public)")
                 if self.isPlaying {
-                    self.resumePlayer()
+                    self.resumePlayback(refreshSession: !self.playbackSessionEngaged)
                 }
                 self.syncVideoToAudioTime(time)
                 if self.isPlaying { self.videoManager.videoPlayer?.play() }
@@ -1551,13 +1610,13 @@ final class AudioEngine {
     // MARK: - Autoplay Queue Management
 
     func setAutoplayQueue(_ songs: [Song]) {
-        autoplayQueue = shuffleEnabled ? songs.shuffled() : songs
+        autoplayQueue = shuffleEnabled ? ArtistSeparatedShuffle.spread(songs) : songs
         savePlaybackState()
     }
 
     func appendToAutoplayQueue(_ songs: [Song]) {
         autoplayQueue.append(contentsOf: songs)
-        if shuffleEnabled { autoplayQueue.shuffle() }
+        if shuffleEnabled { autoplayQueue = ArtistSeparatedShuffle.spread(autoplayQueue) }
         savePlaybackState()
     }
 
@@ -1702,6 +1761,39 @@ final class AudioEngine {
         return false
     }
 
+    /// Fill a paused song's stream URL after standby cleared an expired one.
+    /// Playback stays paused. The following play uses this URL instead of
+    /// waiting on another lookup, and Opus is not scheduled from here.
+    private func prefetchPausedStream() {
+        guard userInitiatedPause, !isPlaying, resolveTask == nil, backgroundRemuxTask == nil,
+              let song = currentTrack, song.streamURL == nil,
+              let resolver = streamResolver(for: song) else { return }
+        let generation = loadGeneration
+        let songID = song.id
+        resolveTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if !Task.isCancelled, self.loadGeneration == generation { self.resolveTask = nil }
+            }
+            do {
+                let result = try await resolver(songID)
+                guard !Task.isCancelled, self.loadGeneration == generation,
+                      self.userInitiatedPause, !self.isPlaying,
+                      let current = self.currentTrack, current.id == songID else { return }
+                var updated = current
+                updated.streamURL = result.url
+                updated.streamContentLength = result.contentLength
+                self.streamResolvedAt = Date()
+                self.currentTrack = updated
+                self.updateQueuedStream(
+                    songID: songID, streamURL: result.url, contentLength: result.contentLength)
+                self.rememberAACIfNeeded(updated)
+            } catch {
+                return
+            }
+        }
+    }
+
     /// Drop a dead item while a manual pause is in effect. Does not start audio
     /// and does not zero the saved position the way `cleanupPlayer` does.
     private func parkExpiredPlaybackIfNeeded() {
@@ -1745,7 +1837,8 @@ final class AudioEngine {
         requiresManualPlaybackRecovery = false
     }
 
-    private func activateAudioSessionForPlayback() -> Bool {
+    private func activateAudioSessionForPlayback(allowExisting: Bool = false) -> Bool {
+        if allowExisting && playbackSessionEngaged { return true }
         guard audioSessionActivator() else {
             invalidateCrossfadePreparation(clearReservation: false)
             player?.pause()
@@ -1756,8 +1849,10 @@ final class AudioEngine {
             lastError = "音訊工作階段暫時無法恢復，請稍後按播放重試。"
             nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
             savePlaybackState()
+            playbackSessionEngaged = false
             return false
         }
+        playbackSessionEngaged = true
         return true
     }
 
@@ -1793,34 +1888,33 @@ final class AudioEngine {
     }
 
     func resumePlayer() {
+        resumePlayback(refreshSession: !self.playbackSessionEngaged)
+    }
+
+    /// `refreshSession` is for the first start of a listening session. Stall
+    /// kicks leave it false so retries do not reactivate audio or Now Playing.
+    private func resumePlayback(refreshSession: Bool) {
         guard isPlaying, !userInitiatedPause, !isInterrupted, player?.currentItem != nil else { return }
-        guard activateAudioSessionForPlayback() else { return }
+        let activate = refreshSession || !self.playbackSessionEngaged
+        guard activateAudioSessionForPlayback(allowExisting: !activate) else { return }
         let needsKick = resumeNeedsKick
         resumeNeedsKick = false
-        if needsKick, let active = player, active.currentItem?.isPlaybackLikelyToKeepUp == false {
-            let seconds = active.currentTime().seconds
-            if seconds.isFinite {
-                let target = CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-                active.seek(to: target, toleranceBefore: .zero, toleranceAfter: .positiveInfinity) { [weak self] _ in
-                    Task { @MainActor [weak self] in
-                        guard let self, self.isPlaying, !self.userInitiatedPause, !self.isInterrupted else { return }
-                        self.player?.rate = self.playbackSpeed
-                        self.nowPlayingManager.updatePlaybackState(
-                            isPlaying: self.isPlaying, currentTime: self.currentTime,
-                            rate: Double(self.player?.rate ?? 0)
-                        )
-                        self.nowPlayingManager.activateForCurrentPlayback()
-                    }
-                }
-                return
-            }
-        }
+        let likelyToKeepUp = player?.currentItem?.isPlaybackLikelyToKeepUp == true
+        assert(!PlaybackInterfaceBudget.seeksBeforeResumeRate(
+            resumeNeedsKick: needsKick, playbackLikelyToKeepUp: likelyToKeepUp))
+        // The item is already installed. Waiting for a zero-tolerance seek, or for
+        // AVPlayer to fill a stall buffer, is the 2–3s gap on the lock screen and
+        // on headphone play. Stall recovery covers an item that then stays at zero.
+        player?.automaticallyWaitsToMinimizeStalling = false
         player?.rate = playbackSpeed
         nowPlayingManager.updatePlaybackState(
             isPlaying: isPlaying, currentTime: currentTime,
             rate: Double(player?.rate ?? 0)
         )
-        nowPlayingManager.activateForCurrentPlayback()
+        if refreshSession || !nowPlayingEngaged {
+            nowPlayingManager.activateForCurrentPlayback()
+            nowPlayingEngaged = true
+        }
     }
 
     /// Persist current playback state (called on significant state changes)
@@ -1870,12 +1964,94 @@ final class AudioEngine {
             nowPlayingManager.updateNowPlayingInfo(song: currentTrack, duration: duration)
             nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
         }
+        reestablishRemotePlaybackSurface()
     }
 
-    // MARK: - Fisher-Yates Shuffle
+    /// After a process killed in the background, the new process can report
+    /// isPlaying with a zero rate and an empty lock screen. Bind the player,
+    /// the remote commands, and the audio session once, then start a single time.
+    private func reestablishRemotePlaybackSurface() {
+        let relaunched = RuntimeDiagnosticLog.shared.claimBackgroundRelaunch()
+        guard relaunched else { return }
+        if player == nil {
+            player = AVPlayer()
+            setupPlayerObservers()
+        }
+        if let player {
+            let session = nowPlayingManager.attachPlayer(player)
+            remoteCommandManager.bind(session: session)
+        }
+        if let song = currentTrack {
+            nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
+        }
+        guard isPlaying, !userInitiatedPause else {
+            nowPlayingManager.updatePlaybackState(isPlaying: false, currentTime: currentTime, rate: 0)
+            return
+        }
+        guard audioSessionActivator() else { return }
+        if player?.currentItem != nil {
+            nowPlayingManager.activateForCurrentPlayback()
+            resumePlayback(refreshSession: true)
+        }
+    }
 
-    /// Generate a shuffled order of queue indices using Fisher-Yates algorithm.
-    /// Places the current index at position 0 so the current song isn't disrupted.
+    /// Title and artwork reach CarPlay as soon as the queue index changes.
+    /// The signed media URL is not required for that screen.
+    private func publishNowPlayingMetadata(_ song: Song) {
+        if let songDuration = song.duration, songDuration > 0 {
+            duration = TimeInterval(songDuration)
+        }
+        if player == nil {
+            player = AVPlayer()
+            setupPlayerObservers()
+        }
+        if let player {
+            let session = nowPlayingManager.attachPlayer(player)
+            remoteCommandManager.bind(session: session)
+        }
+        nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
+    }
+
+    // MARK: - Artist-separated shuffle
+
+    /// Upcoming rows in the order they will actually play.
+    /// Shuffle used to permute hidden indices while Up Next kept walking the
+    /// original, artist-grouped queue. The list now follows the spread order.
+    func upcomingQueueEntries() -> [(index: Int, song: Song)] {
+        if shuffleEnabled, shuffledIndices.count == queue.count, queue.count > 1 {
+            let start = min(max(shufflePosition + 1, 0), shuffledIndices.count)
+            return shuffledIndices[start...].compactMap { index in
+                guard queue.indices.contains(index) else { return nil }
+                return (index, queue[index])
+            }
+        }
+        guard currentIndex + 1 < queue.count else { return [] }
+        return ((currentIndex + 1)..<queue.count).map { ($0, queue[$0]) }
+    }
+
+    /// Reorder the rows shown in Up Next. While shuffle is on, that list is the
+    /// spread order, so the edit has to move those indices rather than the
+    /// underlying playlist.
+    func moveUpcoming(from source: IndexSet, to destination: Int) {
+        if shuffleEnabled, shuffledIndices.count == queue.count, !shuffledIndices.isEmpty {
+            let start = min(max(shufflePosition + 1, 0), shuffledIndices.count)
+            var tail = Array(shuffledIndices[start...])
+            guard !tail.isEmpty, source.allSatisfy({ tail.indices.contains($0) }) else { return }
+            let head = Array(shuffledIndices[..<start])
+            tail.move(fromOffsets: source, toOffset: max(0, min(destination, tail.count)))
+            shuffledIndices = head + tail
+            prefetchManager.cancelPrefetch()
+            playbackPolicyRevision &+= 1
+            invalidateCrossfadePreparation(clearReservation: true)
+            savePlaybackState()
+            return
+        }
+        let base = currentIndex + 1
+        guard source.allSatisfy({ queue.indices.contains($0 + base) }) else { return }
+        moveInQueue(from: IndexSet(source.map { $0 + base }), to: destination + base)
+    }
+
+    /// Build a spread order and keep the current song at position 0.
     private func generateShuffledOrder() {
         guard !queue.isEmpty else {
             shuffledIndices = []
@@ -1889,17 +2065,21 @@ final class AudioEngine {
     }
 
     private func makeShuffledIndices() -> [Int] {
-        var indices = Array(0..<queue.count)
-        guard indices.count > 1 else { return indices }
-        for i in stride(from: indices.count - 1, through: 1, by: -1) {
-            let j = Int.random(in: 0...i)
-            indices.swapAt(i, j)
-        }
-        // Put current index at beginning so we don't immediately change song
-        if let pos = indices.firstIndex(of: currentIndex) {
-            indices.swapAt(0, pos)
-        }
-        return indices
+        guard queue.count > 1 else { return Array(queue.indices) }
+        var generator = SystemRandomNumberGenerator()
+        let pinned = queue.indices.contains(currentIndex) ? currentIndex : nil
+        return ArtistSeparatedShuffle.order(
+            Array(queue.indices),
+            artistKey: { index in
+                ArtistSeparatedShuffle.artistKey(
+                    id: self.queue[index].artistId,
+                    name: self.queue[index].artistName,
+                    fallback: self.queue[index].id
+                )
+            },
+            pinning: pinned,
+            using: &generator
+        )
     }
 
     private func makeNextShuffleSelection() -> (index: Int, progress: ShuffleProgress)? {
@@ -2027,12 +2207,185 @@ final class AudioEngine {
             interruptionShouldResume: interruptionShouldResume))
     }
 
+    private func noteTrackSelection(_ song: Song) {
+        guard stallBudgetVideoID != song.id else { return }
+        stallBudgetVideoID = song.id
+        stallBudget.reset()
+        retainedAAC = nil
+        suppressOpusUpgrade = false
+        quietPauseKicks = 0
+        unexpectedPause.reset()
+        stallRecoveryTask?.cancel()
+        stallRecoveryTask = nil
+        endBackgroundLease()
+    }
+
+    private func rememberAACIfNeeded(_ song: Song) {
+        guard !suppressOpusUpgrade, activeAudioCodec != "opus" else { return }
+        guard let raw = song.streamURL, let url = URL(string: raw) else { return }
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard scheme == "https" || scheme == "http" else { return }
+        retainedAAC = RetainedAAC(url: raw, contentLength: song.streamContentLength)
+    }
+
+    private func noteResolveAttemptFinished() {
+        stallBudget.noteResolveFinished()
+    }
+
+    private func notePlaybackBecameHealthy() {
+        stallBudget.reset()
+        quietPauseKicks = 0
+        unexpectedPause.reset()
+        stallRecoveryTask?.cancel()
+        stallRecoveryTask = nil
+        endBackgroundLease()
+    }
+
+    private func endBackgroundLease() {
+        backgroundLease.end()
+    }
+
+    private func beginBackgroundLeaseIfNeeded() {
+        guard interfaceSuspended else { return }
+        backgroundLease.begin(name: "evantube-stall-recovery") { [weak self] in
+            guard let self else { return }
+            self.stallRecoveryTask?.cancel()
+            self.stallRecoveryTask = nil
+            self.stallBudget.noteResolveFinished()
+            let videoID = self.currentTrack?.id ?? "-"
+            RuntimeDiagnosticLog.shared.append("recovery background task expired video=\(videoID)")
+            self.skipUnplayableTrack(reason: "background-expired")
+        }
+    }
+
+    private func recordRecovery(
+        _ phase: PlaybackDiagnostics.Phase, attempt: Int?, delay: TimeInterval?
+    ) {
+        PlaybackDiagnostics.shared.record(.init(
+            phase: phase, videoID: currentTrack?.id,
+            positionSeconds: currentTime, isPlaying: isPlaying, isBuffering: isBuffering,
+            playbackRate: Double(player?.rate ?? 0),
+            recoveryAttempt: attempt, retryDelaySeconds: delay))
+    }
+
+    /// Opus drops back to the AAC that already started. Later failures wait
+    /// 1s, 2s, then 4s, and then the queue advances. A second resolve for the
+    /// same video does not start while one is in flight.
+    private func beginStallRecovery(reason: String, forceSkip: Bool = false) {
+        guard let song = currentTrack, isPlaying, !userInitiatedPause, !isInterrupted else { return }
+        if forceSkip {
+            skipUnplayableTrack(reason: reason)
+            return
+        }
+        let playingOpus = activeAudioCodec == "opus"
+        let action = stallBudget.action(
+            playingOpus: playingOpus, hasAACFallback: playingOpus && retainedAAC != nil)
+        switch action {
+        case .waitForInFlight:
+            return
+        case .fallBackToAAC:
+            stallBudget.noteFallback()
+            recordRecovery(.codecFallback, attempt: stallBudget.resolveAttempts, delay: nil)
+            RuntimeDiagnosticLog.shared.append("codec fallback opus->aac video=\(song.id)")
+            fallBackToRetainedAAC(song: song)
+        case .retryAfter(let delay):
+            stallBudget.noteRetryScheduled()
+            recordRecovery(.retryBackoff, attempt: stallBudget.resolveAttempts, delay: delay)
+            RuntimeDiagnosticLog.shared.append(
+                "retry backoff \(delay)s attempt \(stallBudget.resolveAttempts) video=\(song.id) reason=\(reason)")
+            beginBackgroundLeaseIfNeeded()
+            let generation = loadGeneration
+            stallRecoveryTask?.cancel()
+            stallRecoveryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self, !Task.isCancelled, self.loadGeneration == generation,
+                      self.currentTrack?.id == song.id, self.isPlaying, !self.userInitiatedPause else {
+                    self?.stallRecoveryTask = nil
+                    return
+                }
+                let seconds = self.player?.currentTime().seconds ?? 0
+                let advanced = seconds.isFinite && seconds > 0.75
+                if self.player?.timeControlStatus == .playing, advanced {
+                    self.stallBudget.noteBackoffCancelled(timeAdvanced: true)
+                    self.stallRecoveryTask = nil
+                    self.notePlaybackBecameHealthy()
+                    self.endBackgroundLease()
+                    return
+                }
+                self.stallRecoveryTask = nil
+                self.resolveCurrentTrackOnce(song: song)
+            }
+        case .skip:
+            skipUnplayableTrack(reason: reason)
+        }
+    }
+
+    private func fallBackToRetainedAAC(song: Song) {
+        guard let retained = retainedAAC else {
+            beginStallRecovery(reason: "aac-missing")
+            return
+        }
+        suppressOpusUpgrade = true
+        upgradeTask?.cancel()
+        upgradeTask = nil
+        activeAudioCodec = "aac"
+        var fallback = song
+        fallback.streamURL = retained.url
+        fallback.streamContentLength = retained.contentLength
+        loadAndPlay(
+            song: fallback, seekTo: max(0, currentTime),
+            isRecoveryReload: true, bypassLocalAudioCache: true)
+    }
+
+    private func resolveCurrentTrackOnce(song: Song) {
+        let now = Date().timeIntervalSinceReferenceDate
+        guard automaticResolveGate.allow(
+            videoID: song.id, now: now, inFlight: resolveTask != nil
+        ) else { return }
+        stallBudget.noteResolveStarted()
+        recordRecovery(.retryScheduled, attempt: stallBudget.resolveAttempts, delay: nil)
+        var fresh = song
+        fresh.streamURL = nil
+        fresh.streamContentLength = nil
+        loadAndPlay(
+            song: fresh, seekTo: max(0, currentTime),
+            isRecoveryReload: true, bypassLocalAudioCache: true)
+    }
+
+    private func skipUnplayableTrack(reason: String) {
+        let before = currentTrack?.id
+        let attempts = stallBudget.resolveAttempts
+        recordRecovery(.recoverySkip, attempt: attempts, delay: nil)
+        RuntimeDiagnosticLog.shared.append(
+            "recovery skip video=\(before ?? "-") reason=\(reason) attempts=\(attempts)")
+        stallRecoveryTask?.cancel()
+        stallRecoveryTask = nil
+        stallBudget.noteResolveFinished()
+        endBackgroundLease()
+        let indexBefore = currentIndex
+        next(userInitiated: false)
+        if currentTrack?.id == before, currentIndex == indexBefore {
+            isPlaying = false
+            isBuffering = false
+            lastFailedSongId = before
+            lastErrorKind = .transient
+            lastError = "Playback failed"
+        }
+    }
+
     private func loadAndPlay(song: Song, seekTo initialSeek: TimeInterval? = nil,
-                             isLoadingRecovery: Bool = false) {
+                             isLoadingRecovery: Bool = false,
+                             isRecoveryReload: Bool = false,
+                             bypassLocalAudioCache: Bool = false) {
         requiresManualPlaybackRecovery = false
         if !isLoadingRecovery { loadingRecoveryAttemptCount = 0 }
         awaitingOfficialAudio = false
         noteSourceInteraction()
+        noteTrackSelection(song)
+        if !isRecoveryReload {
+            stallRecoveryTask?.cancel()
+            stallRecoveryTask = nil
+        }
         loadGeneration &+= 1
         let generation = loadGeneration
         streamRecoveryTask?.cancel()
@@ -2045,20 +2398,26 @@ final class AudioEngine {
         pendingSeekTime = initialSeek
         isPlaying = !isInterrupted
         // The source (video or its official audio) must be known before any cache lookup.
+        if !isLoadingRecovery && !isRecoveryReload {
+            requiresListenerChoice = false
+        }
         if let officialAudio, officialAudio.needsLookup(song) {
             currentTrack = song
+            publishNowPlayingMetadata(song)
             isBuffering = true
             awaitingOfficialAudio = true
             resolveTask?.cancel()
             resolveTask = Task { [weak self] in
                 await officialAudio.prepare(song)
                 guard let self, !Task.isCancelled, self.loadGeneration == generation else { return }
-                self.loadAndPlay(song: song, seekTo: initialSeek, isLoadingRecovery: isLoadingRecovery)
+                self.loadAndPlay(song: song, seekTo: initialSeek, isLoadingRecovery: isLoadingRecovery,
+                                  isRecoveryReload: isRecoveryReload, bypassLocalAudioCache: bypassLocalAudioCache)
             }
             return
         }
         var songToPlay = sourcePreparedSong(song)
         currentTrack = songToPlay
+        publishNowPlayingMetadata(songToPlay)
         lastError = nil
         lastFailedSongId = nil
         lastErrorKind = .transient
@@ -2087,7 +2446,8 @@ final class AudioEngine {
         // This restores playback while offline (no resolver call required).
         let hasDownloadedFile = downloadManager?.localFileURL(songId: playbackSourceID(for: songToPlay)) != nil
         let hasCachedFile =
-            !hasDownloadedFile
+            !bypassLocalAudioCache
+            && !hasDownloadedFile
             && (audioCacheManager?.getFile(for: playbackSourceID(for: songToPlay)) != nil)
         let hasBundledFile =
             !hasDownloadedFile
@@ -2101,7 +2461,9 @@ final class AudioEngine {
             Log.audio.info(
                 "Offline-first: using local file for \(songToPlay.id, privacy: .public) (downloaded=\(hasDownloadedFile), cached=\(hasCachedFile), bundled=\(hasBundledFile))"
             )
-            performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
+            rememberAACIfNeeded(songToPlay)
+            performLoadAndPlay(song: songToPlay, seekTo: initialSeek, bypassLocalAudioCache: bypassLocalAudioCache)
+            noteResolveAttemptFinished()
             return
         }
 
@@ -2129,18 +2491,44 @@ final class AudioEngine {
                     self.currentTrack = songToPlay
                     self.updateQueuedStream(songID: songToPlay.id,
                         streamURL: result.url, contentLength: result.contentLength)
-                    self.performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
+                    self.rememberAACIfNeeded(songToPlay)
+                    self.noteResolveAttemptFinished()
+                    self.performLoadAndPlay(song: songToPlay, seekTo: initialSeek,
+                                            bypassLocalAudioCache: bypassLocalAudioCache)
                 } catch {
                     guard !Task.isCancelled, self.loadGeneration == generation else { return }
+                    self.noteResolveAttemptFinished()
                     self.recoveryService.stopStallDetection()
+                    let permanent = (error as? InnerTubeError)?.isPermanent == true
+                    if permanent {
+                        // The view model counts these and stops after three. Skipping
+                        // here wraps a queue of unavailable songs forever, because the
+                        // failure budget never sees the error.
+                        self.isBuffering = false
+                        self.isPlaying = false
+                        self.lastFailedSongId = songToPlay.id
+                        self.lastErrorKind = .permanent
+                        self.lastError = error.localizedDescription
+                        if ListenerPlaybackChoice.isSignInRequired(error.localizedDescription) {
+                            self.requiresListenerChoice = true
+                            self.userInitiatedPause = true
+                            self.stallRecoveryTask?.cancel()
+                            self.stallRecoveryTask = nil
+                            self.nowPlayingManager.updatePlaybackState(
+                                isPlaying: false, currentTime: self.currentTime, rate: 0)
+                        }
+                        return
+                    }
+                    if !self.userInitiatedPause, self.currentTrack?.id == songToPlay.id {
+                        self.isBuffering = false
+                        self.isPlaying = true
+                        self.beginStallRecovery(reason: "resolve-failed")
+                        return
+                    }
                     self.isBuffering = false
                     self.isPlaying = false
                     self.lastFailedSongId = songToPlay.id
-                    if let innerTubeError = error as? InnerTubeError, innerTubeError.isPermanent {
-                        self.lastErrorKind = .permanent
-                    } else {
-                        self.lastErrorKind = .transient
-                    }
+                    self.lastErrorKind = .transient
                     self.lastError = error.localizedDescription
                     Log.audio.error(
                         "Stream resolution failed, code=\((error as NSError).code)"
@@ -2150,7 +2538,9 @@ final class AudioEngine {
                 }
             }
         } else {
-            performLoadAndPlay(song: songToPlay, seekTo: initialSeek)
+            rememberAACIfNeeded(songToPlay)
+            noteResolveAttemptFinished()
+            performLoadAndPlay(song: songToPlay, seekTo: initialSeek, bypassLocalAudioCache: bypassLocalAudioCache)
         }
     }
 
@@ -3044,7 +3434,7 @@ final class AudioEngine {
     fileprivate func playGuardedHostArtifact() {
         userInitiatedPause = false
         isPlaying = true
-        resumePlayer()
+        resumePlayback(refreshSession: !self.playbackSessionEngaged)
     }
 
     fileprivate func pauseGuardedHostArtifact() {
@@ -3071,7 +3461,7 @@ final class AudioEngine {
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
         if autoplay {
             isPlaying = true
-            resumePlayer()
+            resumePlayback(refreshSession: !self.playbackSessionEngaged)
         } else {
             player?.pause()
             isPlaying = false
@@ -3090,7 +3480,9 @@ final class AudioEngine {
             || snapshot.isConstrained
     }
 
-    func performLoadAndPlay(song: Song, seekTo initialSeek: TimeInterval? = nil) {
+    func performLoadAndPlay(
+        song: Song, seekTo initialSeek: TimeInterval? = nil, bypassLocalAudioCache: Bool = false
+    ) {
         // HLS (m3u8) from VISIONOS client takes priority — bypass local cache.
         // AVPlayer handles HLS natively with full duration and seek.
         if let streamURL = song.streamURL,
@@ -3117,7 +3509,7 @@ final class AudioEngine {
         }
 
         // Check LRU cache for a previously remuxed file (seekable local playback)
-        if let cachedURL = audioCacheManager?.getFile(for: playbackSourceID(for: song)) {
+        if !bypassLocalAudioCache, let cachedURL = audioCacheManager?.getFile(for: playbackSourceID(for: song)) {
             Log.audio.info(
                 "Playing from cached remuxed file: \(cachedURL.lastPathComponent, privacy: .public)"
             )
@@ -3282,7 +3674,7 @@ final class AudioEngine {
             duration = TimeInterval(songDuration)
         }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
-        resumePlayer()
+        resumePlayback(refreshSession: !self.playbackSessionEngaged)
         applyAudioProcessing()
         recoveryService.startStallDetection()
         // AAC is already running. Opus preparation must not move this call.
@@ -3294,7 +3686,7 @@ final class AudioEngine {
     private func scheduleHighQualityUpgrade(song: Song, generation: UInt64) {
         // Opus is prepared only while the interface is awake. AAC is already
         // playing, so deferring this cannot move time-to-first-audio.
-        guard !interfaceSuspended else { return }
+        guard !interfaceSuspended, !suppressOpusUpgrade else { return }
         upgradeTask?.cancel()
         let sourceID = playbackSourceID(for: song)
         upgradeTask = Task { @MainActor [weak self] in
@@ -3359,13 +3751,13 @@ final class AudioEngine {
                     let landed = self.player?.currentTime().seconds
                     self.currentTime = (finished ? resumeAt : nil) ?? (landed?.isFinite == true ? landed! : resumeAt)
                     self.isBuffering = false
-                    if wasPlaying { self.resumePlayer() }
+                    if wasPlaying { self.resumePlayback(refreshSession: false) }
                 }
             }
         } else {
             isBuffering = false
             currentTime = resumeAt
-            if wasPlaying { resumePlayer() }
+            if wasPlaying { resumePlayback(refreshSession: false) }
         }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
         Log.audio.info("High-quality upgrade adopted codec=\(upgrade.codec, privacy: .public) at \(resumeAt)s")
@@ -3438,7 +3830,7 @@ final class AudioEngine {
         self.nowPlayingManager.updateNowPlayingInfo(song: song, duration: self.duration)
 
         // Activate the audio session immediately before playback begins (D-1).
-        self.resumePlayer()
+        self.resumePlayback(refreshSession: !self.playbackSessionEngaged)
         self.applyAudioProcessing()
         self.recoveryService.startStallDetection()
     }
@@ -3554,7 +3946,7 @@ final class AudioEngine {
         setupPlayerItemObserver(playerItem)
         if let d = song.duration, d > 0 { duration = TimeInterval(d) }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
-        resumePlayer()
+        resumePlayback(refreshSession: !self.playbackSessionEngaged)
         applyAudioProcessing()
         recoveryService.startStallDetection()
         Log.audio.info("HLS streaming for: \(song.title, privacy: .public)")
@@ -3941,7 +4333,7 @@ final class AudioEngine {
             duration = TimeInterval(songDuration)
         }
         nowPlayingManager.updateNowPlayingInfo(song: song, duration: duration)
-        resumePlayer()
+        resumePlayback(refreshSession: !self.playbackSessionEngaged)
         applyAudioProcessing()
         recoveryService.startStallDetection()
     }
@@ -4017,7 +4409,7 @@ final class AudioEngine {
                     self.currentTime = targetTime
                     self.isBuffering = false
                     if wasPlaying && self.isPlaying && !self.userInitiatedPause {
-                        self.resumePlayer()
+                        self.resumePlayback(refreshSession: !self.playbackSessionEngaged)
                     }
                     self.syncVideoToAudioTime(targetTime)
                     Log.audio.info(
@@ -4028,7 +4420,7 @@ final class AudioEngine {
         } else {
             isBuffering = false
             if wasPlaying {
-                resumePlayer()
+                resumePlayback(refreshSession: !self.playbackSessionEngaged)
             }
         }
 
@@ -4157,6 +4549,12 @@ final class AudioEngine {
                     return
                 }
                 self.currentTime = time.seconds
+                if time.seconds > 0.75,
+                   self.installedItemGeneration == self.loadGeneration,
+                   self.resolveTask == nil,
+                   self.stallBudget.resolveAttempts > 0 || self.stallRecoveryTask != nil || self.quietPauseKicks > 0 || self.unexpectedPause.kicks > 0 {
+                    self.notePlaybackBecameHealthy()
+                }
 
                 // Pre-fetch next track when playback reaches 75%
                 if self.duration > 0 && self.prefetchManager.isIdle {
@@ -4247,7 +4645,7 @@ final class AudioEngine {
                                     "Deferred seek completed: finished=\(finished, privacy: .public)"
                                 )
                                 if self.isPlaying {
-                                    self.resumePlayer()
+                                    self.resumePlayback(refreshSession: !self.playbackSessionEngaged)
                                 }
                                 self.syncVideoToAudioTime(seekTime)
                                 self.isBuffering = false
@@ -4258,7 +4656,7 @@ final class AudioEngine {
                         // With automaticallyWaitsToMinimizeStalling off, a rate set
                         // before the first bytes arrive stalls to 0 and never resumes;
                         // only a seek used to restart it. Re-apply the user's intent.
-                        if self.isPlaying, self.player?.rate == 0 { self.resumePlayer() }
+                        if self.isPlaying, self.player?.rate == 0 { self.resumePlayback(refreshSession: !self.playbackSessionEngaged) }
                     }
                     // Status and time-control KVO can arrive in either order.
                     // Re-evaluate the installed selection only after the HLS
@@ -4291,29 +4689,7 @@ final class AudioEngine {
                        PlaybackCandidateFailurePolicy.shouldReject(error, httpStatus: mediaStatus) {
                         self.rejectPlaybackCandidate(for: song)
                     }
-                    // Check if failure is due to expired stream URL (HTTP 403/410)
-                    if self.isStreamExpiryError(item.error),
-                        !self.isReconnecting,
-                        let song = self.currentTrack
-                    {
-                        Log.audio.warning(
-                            "Playback failed with stream expiry error, attempting recovery")
-                        self.attemptStreamRecovery(for: song)
-                    } else if !self.recoveryService.hasAttemptedRetry,
-                        let currentSong = self.currentTrack
-                    {
-                        Log.audio.error(
-                            "Playback failed, attempting retry for: \(currentSong.title, privacy: .public)"
-                        )
-                        self.recoveryService.retryPlayback(for: currentSong)
-                    } else {
-                        self.isBuffering = false
-                    self.isPlaying = false
-                        self.lastError = item.error?.localizedDescription ?? "Playback failed"
-                        Log.audio.error(
-                            "AVPlayerItem failed after retry"
-                        )
-                    }
+                    self.beginStallRecovery(reason: "item-failed")
                 default:
                     break
                 }
@@ -4344,7 +4720,7 @@ final class AudioEngine {
                     && (self.isBuffering || (self.isPlaying && !self.isSeeking && self.player?.rate == 0)) {
                     self.isBuffering = false
                     if self.isPlaying {
-                        self.resumePlayer()
+                        self.resumePlayback(refreshSession: !self.playbackSessionEngaged)
                     }
                     Log.audio.info("Buffer recovered, resuming playback")
                 }
@@ -4380,27 +4756,13 @@ final class AudioEngine {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if let log = item.errorLog() {
-                    if let event = log.events.last {
-                        PlaybackDiagnostics.shared.recordMediaFailure(videoID: diagnosticVideoID,
-                            statusCode: event.errorStatusCode)
-                    }
-                    for event in log.events {
-                        Log.audio.error(
-                            "Media request failed, status=\(event.errorStatusCode)"
-                        )
-
-                        // Detect stream URL expiry: HTTP 403 (Forbidden) or 410 (Gone)
-                        let httpCode = abs(event.errorStatusCode)
-                        if httpCode == 403 || httpCode == 410,
-                            self.isPlaying,
-                            !self.isReconnecting,
-                            let song = self.currentTrack
-                        {
-                            Log.audio.warning(
-                                "Stream URL expired (HTTP \(httpCode)), attempting auto-recovery")
-                            self.attemptStreamRecovery(for: song)
-                        }
+                if let event = item.errorLog()?.events.last {
+                    PlaybackDiagnostics.shared.recordMediaFailure(videoID: diagnosticVideoID,
+                        statusCode: event.errorStatusCode)
+                    Log.audio.error("Media request failed, status=\(event.errorStatusCode)")
+                    let httpCode = abs(event.errorStatusCode)
+                    if (httpCode == 403 || httpCode == 410), self.isPlaying, self.currentTrack != nil {
+                        self.beginStallRecovery(reason: "http-\(httpCode)")
                     }
                 }
             }
@@ -4433,7 +4795,7 @@ final class AudioEngine {
         case .one:
             PersonalMusicTaste.shared.begin(currentTrack)
             seek(to: 0)
-            resumePlayer()
+            resumePlayback(refreshSession: !self.playbackSessionEngaged)
         case .all:
             next(userInitiated: false)
         case .off:
@@ -4482,71 +4844,11 @@ final class AudioEngine {
         return false
     }
 
-    /// Attempts to recover from an expired stream URL by re-resolving and
-    /// resuming playback at the saved position. Max 2 auto-retry attempts.
+    /// Expired URLs use the same bounded backoff as a stall. The old per-failure
+    /// resolve reset its counter inside `cleanupPlayer` and retried forever.
     private func attemptStreamRecovery(for song: Song) {
-        guard guardedCoordinator == nil else {
-            reportPlaybackItemFailure()
-            return
-        }
-        guard !isReconnecting else { return }
-        guard streamRecoveryAttemptCount < Self.maxStreamRecoveryAttempts else {
-            Log.audio.error(
-                "Stream recovery: max attempts (\(Self.maxStreamRecoveryAttempts)) reached for \(song.id, privacy: .public)"
-            )
-            lastError = "Stream expired. Please try again."
-            isBuffering = false
-            return
-        }
-        guard let resolver = streamResolver(for: song) else {
-            Log.audio.error("Stream recovery: no resolver available")
-            lastError = "Cannot reconnect — no stream resolver"
-            return
-        }
-
-        isReconnecting = true
-        streamRecoveryAttemptCount += 1
-        let savedPosition = player?.currentTime().seconds ?? currentTime
-
-        Log.audio.info(
-            "Stream recovery: attempt \(self.streamRecoveryAttemptCount)/\(Self.maxStreamRecoveryAttempts) for \(song.id, privacy: .public) at \(savedPosition)s"
-        )
-
-        streamRecoveryTask?.cancel()
-        streamRecoveryTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let result = try await resolver(song.id)
-                guard !Task.isCancelled, self.currentTrack?.id == song.id else { return }
-
-                Log.audio.info("Stream recovery: got fresh URL, resuming at \(savedPosition)s")
-
-                var recoveredSong = song
-                recoveredSong.streamURL = result.url
-                recoveredSong.streamContentLength = result.contentLength
-                self.streamResolvedAt = Date()
-                self.currentTrack = recoveredSong
-                self.updateQueuedStream(songID: song.id,
-                    streamURL: result.url, contentLength: result.contentLength)
-
-                self.isReconnecting = false
-                self.performLoadAndPlay(song: recoveredSong, seekTo: savedPosition)
-            } catch {
-                guard !Task.isCancelled, self.currentTrack?.id == song.id else { return }
-                Log.audio.error(
-                    "Stream recovery attempt \(self.streamRecoveryAttemptCount) failed, code=\((error as NSError).code)"
-                )
-                self.isReconnecting = false
-
-                // Retry if attempts remain
-                if self.streamRecoveryAttemptCount < AudioEngine.maxStreamRecoveryAttempts {
-                    self.attemptStreamRecovery(for: song)
-                } else {
-                    self.lastError = "Stream expired. Please try again."
-                    self.isBuffering = false
-                }
-            }
-        }
+        guard currentTrack?.id == song.id else { return }
+        beginStallRecovery(reason: "stream-expiry")
     }
 
     // MARK: - Video Playback (delegated to VideoPlaybackManager)
@@ -4605,6 +4907,10 @@ final class AudioEngine {
         ) else { return }
 
         isBuffering = false
+        let progressed = observedPlayer.currentTime().seconds
+        if progressed.isFinite, progressed > 0.75 {
+            notePlaybackBecameHealthy()
+        }
         recordPlaybackDiagnostic(.enginePlaying)
         guard !hasReportedPlaybackStart else { return }
         hasReportedPlaybackStart = true
@@ -4643,20 +4949,23 @@ final class AudioEngine {
                     let atEOF = dur.isValid && !dur.isIndefinite &&
                                 CMTimeGetSeconds(ct) >= CMTimeGetSeconds(dur) - 0.5
                     if !self.userInitiatedPause && !self.isSeeking && self.isPlaying && !atEOF
-                        && !self.isBuffering  // suppress during song transitions/initial buffering
+                        && !self.isBuffering
                     {
-                        Log.audio.warning("Unexpected pause detected, attempting recovery...")
-                        try? await Task.sleep(nanoseconds: 500_000_000)
-                        // Re-check after delay: item may have been replaced during sleep
-                        if self.isPlaying && !self.isSeeking
-                            && self.player === player
-                            && player.currentItem === observedItem
-                            && self.loadGeneration == observedGeneration
-                            && self.currentTrack?.id == observedSongID
-                            && player.timeControlStatus == .paused
-                        {
-                            self.resumePlayer()
-                            Log.audio.debug("Recovery: called play()")
+                        if self.interfaceSuspended {
+                            self.player?.automaticallyWaitsToMinimizeStalling = true
+                        }
+                        switch self.unexpectedPause.admit(
+                            now: Date().timeIntervalSinceReferenceDate,
+                            recoveryBusy: self.isAutomaticRecoveryPending
+                        ) {
+                        case .ignore:
+                            return
+                        case .kick:
+                            self.quietPauseKicks += 1
+                            self.resumePlayback(refreshSession: false)
+                        case .recover:
+                            self.quietPauseKicks += 1
+                            self.beginStallRecovery(reason: "unexpected-pause")
                         }
                     }
                 case .waitingToPlayAtSpecifiedRate:
@@ -5272,10 +5581,12 @@ final class AudioEngine {
             player = AVPlayer(playerItem: playerItem)
             setupPlayerObservers()
         }
-        player?.automaticallyWaitsToMinimizeStalling = false
+        player?.automaticallyWaitsToMinimizeStalling = interfaceSuspended
+        installedItemGeneration = loadGeneration
         if let player {
             let session = nowPlayingManager.attachPlayer(player)
             remoteCommandManager.bind(session: session)
+            nowPlayingManager.activateForCurrentPlayback()
         }
 
         // Attach real-time EQ processing tap to the audio pipeline
@@ -5479,6 +5790,8 @@ final class AudioEngine {
         switch type {
         case .began:
             noteSourceInteraction()
+            playbackSessionEngaged = false
+            nowPlayingEngaged = false
             recordPlaybackDiagnostic(.interruptionBegan)
             resumeAfterInterruption = isPlaying && !userInitiatedPause
             isInterrupted = true

@@ -8,7 +8,7 @@ struct ShimmerView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: scenePhase != .active || PlaybackInterfaceGate.shared.suspended)) { context in
             let cycle = 1.2
             let progress = context.date.timeIntervalSinceReferenceDate
                 .truncatingRemainder(dividingBy: cycle) / cycle

@@ -14,13 +14,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   picker:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '16.2'
+          xcode-version: '16.4'
       - name: Prepare original tests without changing assertions or source
         env:
           EVANTUBE_PICKER_EVIDENCE: ${{ runner.temp }}/evantube-picker-evidence

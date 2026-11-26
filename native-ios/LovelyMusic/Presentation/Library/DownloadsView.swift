@@ -227,9 +227,11 @@ struct DownloadsView: View {
             .accessibilityLabel("Play all downloads")
 
             Button {
-                let songs = headerSorted.map(\.song).shuffled()
-                guard let first = songs.first else { return }
-                playerVM.play(song: first, fromQueue: songs)
+                let songs = headerSorted.map(\.song)
+                guard let start = songs.indices.randomElement() else { return }
+                let ordered = ArtistSeparatedShuffle.spread(songs, startingAt: start)
+                guard let first = ordered.first else { return }
+                playerVM.play(song: first, fromQueue: ordered)
             } label: {
                 Label("Shuffle", systemImage: "shuffle")
                     .font(Theme.Typography.subheadline.weight(.semibold))

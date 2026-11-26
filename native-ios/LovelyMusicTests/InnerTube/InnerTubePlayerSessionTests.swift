@@ -166,6 +166,42 @@ final class InnerTubePlayerSessionTests: XCTestCase {
         XCTAssertEqual(try bodyVisitor(player), Self.watchToken)
     }
 
+    func testAuthenticatedIOSPlayerRetriesHTTP400WithIOSWatchVisitor() async throws {
+        let (api, _) = try makeAPI(cookie: Self.authCookie) { request, loader in
+            if request.url?.path == "/watch" {
+                loader.respond(body: Self.visitorHTML(Self.watchToken))
+            } else if request.url?.path == "/youtubei/v1/player" {
+                let playerCount = PlayerSessionHTTPFixture.requests.filter {
+                    $0.url?.path == "/youtubei/v1/player"
+                }.count
+                if playerCount == 1 {
+                    loader.respond(status: 400, body: #"{"error":{"code":400}}"#)
+                } else {
+                    loader.respond(body: #"{"playabilityStatus":{"status":"OK"}}"#)
+                }
+            } else {
+                loader.fail(URLError(.unsupportedURL))
+            }
+        }
+        _ = try await api.playerWithSession(videoId: "AUTHIOS400")
+        let requests = PlayerSessionHTTPFixture.requests
+        XCTAssertEqual(requests.map { $0.url?.path ?? "" }, [
+            "/watch", "/youtubei/v1/player", "/watch", "/youtubei/v1/player"
+        ])
+        let watches = requests.filter { $0.url?.path == "/watch" }
+        XCTAssertEqual(watches.first?.value(forHTTPHeaderField: "User-Agent"),
+                       "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15")
+        XCTAssertEqual(watches.last?.value(forHTTPHeaderField: "User-Agent"), YouTubeClient.userAgentIOS)
+        for player in requests.filter({ $0.url?.path == "/youtubei/v1/player" }) {
+            XCTAssertTrue(player.value(forHTTPHeaderField: "Authorization")?.hasPrefix("SAPISIDHASH ") == true)
+            XCTAssertEqual(player.value(forHTTPHeaderField: "X-Youtube-Client-Name"), "5")
+            XCTAssertEqual(try bodyVisitor(player), Self.watchToken)
+            let body = try XCTUnwrap(player.httpBody)
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            XCTAssertNil(json["playlistId"])
+        }
+    }
+
     func testLogoutDiscardsPendingAuthenticatedWatchBootstrap() async throws {
         let started = expectation(description: "Authenticated watch request is pending")
         let held = HeldPlayerSessionResponse()

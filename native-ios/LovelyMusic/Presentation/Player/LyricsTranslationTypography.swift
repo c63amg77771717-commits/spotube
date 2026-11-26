@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// Translated lyric lines used to sit at caption size under a title-sized
-/// original. Each preference is at least two Dynamic Type steps larger.
+/// original. Each preference is one step larger than the previous translation
+/// size, and at least two Dynamic Type steps above the old caption.
 enum LyricsTranslationTypography {
-    /// caption2 = 0, caption = 1, subheadline = 2, body = 3, title3 = 4, title2 = 5.
+    /// caption2 = 0, caption = 1, subheadline = 2, body = 3, title3 = 4, title2 = 5, title = 6.
     static func rank(for preference: LyricsFontSize) -> Int {
         switch preference {
-        case .small: return 3
-        case .medium: return 4
-        case .large: return 5
+        case .small: return 4
+        case .medium: return 5
+        case .large: return 6
         }
     }
 
@@ -22,9 +23,9 @@ enum LyricsTranslationTypography {
 
     static func font(for preference: LyricsFontSize) -> Font {
         switch preference {
-        case .small: Theme.Typography.body
-        case .medium: Theme.Typography.title3
-        case .large: Theme.Typography.title2
+        case .small: Theme.Typography.title3
+        case .medium: Theme.Typography.title2
+        case .large: Theme.Typography.title
         }
     }
 }
