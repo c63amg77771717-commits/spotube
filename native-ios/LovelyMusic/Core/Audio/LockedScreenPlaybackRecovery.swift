@@ -64,3 +64,66 @@ struct LockedScreenPlaybackRecovery: Equatable, Sendable {
         self = LockedScreenPlaybackRecovery()
     }
 }
+
+/// LOGIN_REQUIRED stays paused until the listener picks another upload or skips.
+enum ListenerPlaybackChoice {
+    static func isSignInRequired(_ message: String) -> Bool {
+        let value = message.lowercased()
+        if value.contains("login_required") || value.contains("signinrequired") { return true }
+        if value.contains("authentication required") || value.contains("confirm your age") { return true }
+        if value.contains("sign in") || value.contains("登入") { return true }
+        return false
+    }
+
+    static func allowsAutomaticAdvance(signInRequired: Bool, userInitiated: Bool) -> Bool {
+        userInitiated || !signInRequired
+    }
+}
+
+/// Unexpected pause observations share one clock. A burst of identical KVO
+/// callbacks must not schedule another retry or write another diagnostic line.
+struct UnexpectedPauseAdmission: Equatable, Sendable {
+    var kicks = 0
+    var lastDecision: TimeInterval = -.greatestFiniteMagnitude
+    var minimumSpacing: TimeInterval = 1
+    var maximumRecoveries = 2
+
+    enum Decision: Equatable, Sendable {
+        case kick
+        case recover
+        case ignore
+    }
+
+    mutating func admit(now: TimeInterval, recoveryBusy: Bool) -> Decision {
+        if recoveryBusy { return .ignore }
+        if kicks == 0 {
+            kicks = 1
+            lastDecision = now
+            return .kick
+        }
+        if now - lastDecision < minimumSpacing { return .ignore }
+        if kicks > maximumRecoveries { return .ignore }
+        kicks += 1
+        lastDecision = now
+        return .recover
+    }
+
+    mutating func reset() {
+        kicks = 0
+        lastDecision = -.greatestFiniteMagnitude
+    }
+}
+
+/// Automatic resolves of one video id stay at least a couple of seconds apart.
+/// An in-flight lookup never starts a second one.
+struct AutomaticResolveGate: Equatable, Sendable {
+    var last: [String: TimeInterval] = [:]
+    var spacing: TimeInterval = 2
+
+    mutating func allow(videoID: String, now: TimeInterval, inFlight: Bool) -> Bool {
+        if inFlight { return false }
+        if let previous = last[videoID], now - previous < spacing { return false }
+        last[videoID] = now
+        return true
+    }
+}

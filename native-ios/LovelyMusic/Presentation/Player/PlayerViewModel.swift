@@ -55,7 +55,7 @@ enum PlaybackErrorCategory: Equatable {
     }
 
     var permitsReplacementSearch: Bool {
-        self == .regionBlocked || self == .songRemoved || self == .unknown
+        self == .regionBlocked || self == .songRemoved || self == .unknown || self == .authRequired
     }
 
     var icon: String {
@@ -781,6 +781,7 @@ final class PlayerViewModel {
     func retryCurrentSong(resetRetryCount: Bool = false) {
         // The engine already owns backoff for this video. Another play() here
         // would resolve again immediately and reactivate Now Playing.
+        audioEngine.releaseListenerChoice()
         if audioEngine.isAutomaticRecoveryPending { return }
         autoSkipTask?.cancel()
         if resetRetryCount { retryCount = 0 }
@@ -852,20 +853,29 @@ final class PlayerViewModel {
     }
 
     func beginSourceReplacementSearch() {
-        guard canSearchReplacement, let song = currentSong, let searcher = replacementSearcher,
-              sourceReplacementSession == nil else { return }
-        autoSkipTask?.cancel()
-        audioEngine.pause()
+        guard canSearchReplacement, let song = currentSong else { return }
+        beginAlternativeSearch(for: song, queueIndex: nil)
+    }
+
+    /// Other uploads, live performances, and music videos for one queue slot.
+    /// The chosen video id is remembered for that track.
+    func beginAlternativeSearch(for song: Song, queueIndex: Int?) {
+        guard let searcher = replacementSearcher, sourceReplacementSession == nil else { return }
+        let originalID = song.id
         let sessionID = UUID()
-        let selectionGeneration = audioEngine.playbackSelectionGeneration
+        if currentSong?.id == originalID {
+            autoSkipTask?.cancel()
+            audioEngine.pause()
+        }
         sourceReplacementSession = ReplacementSourceSearchModel(
             id: sessionID, original: song,
-            excludedIDs: [sourceReplacementStore.sourceID(for: song.id)],
+            excludedIDs: [sourceReplacementStore.sourceID(for: originalID)],
             contextIsCurrent: { [weak self] in
-                guard let self else { return false }
-                return self.currentSong?.id == song.id
-                    && self.audioEngine.playbackSelectionGeneration == selectionGeneration
-                    && self.sourceReplacementSession?.id == sessionID
+                guard let self, self.sourceReplacementSession?.id == sessionID else { return false }
+                if let queueIndex, self.queue.indices.contains(queueIndex) {
+                    return self.queue[queueIndex].id == originalID
+                }
+                return self.currentSong?.id == originalID
             },
             searcher: searcher)
     }
@@ -877,11 +887,14 @@ final class PlayerViewModel {
 
     func applySourceReplacement(_ candidate: PlaybackSourceCandidate, sessionID: UUID) {
         guard let session = sourceReplacementSession, session.id == sessionID,
-              currentSong?.id == session.original.id, session.contains(candidate) else { return }
+              session.contains(candidate) else { return }
         do {
             try sourceReplacementStore.save(sourceID: candidate.id, for: session.original.id)
         } catch { session.reportSaveFailure(); return }
+        let replacesCurrent = currentSong?.id == session.original.id
         cancelSourceReplacement()
+        guard replacesCurrent else { return }
+        audioEngine.releaseListenerChoice()
         reloadCurrentSource()
     }
 

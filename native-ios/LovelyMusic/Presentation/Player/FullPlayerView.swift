@@ -516,7 +516,27 @@ struct FullPlayerView: View {
                             }
                             .buttonStyle(.bouncy)
                         }
-                        if playerVM.canRetry {
+                        if playerVM.streamErrorCategory == .authRequired {
+                            Button { playerVM.beginSourceReplacementSearch() } label: {
+                                Label("Pick an alternative", systemImage: "arrow.triangle.2.circlepath")
+                                    .font(Theme.Typography.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, Theme.Spacing.xl)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .background(Theme.Colors.brandGradient, in: Capsule())
+                            }
+                            .buttonStyle(.bouncy)
+                            Button { playerVM.next() } label: {
+                                Label("Skip", systemImage: "forward.fill")
+                                    .font(Theme.Typography.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, Theme.Spacing.xl)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                                    .background(Theme.Colors.brandGradient, in: Capsule())
+                            }
+                            .buttonStyle(.bouncy)
+                        }
+                        if playerVM.canRetry, playerVM.streamErrorCategory != .authRequired {
                             Button {
                                 playerVM.retryCurrentSong()
                             } label: {
@@ -588,7 +608,7 @@ struct FullPlayerView: View {
                 .environment(playerVM)
         }
         .sheet(item: Binding(
-            get: { playerVM.sourceReplacementSession },
+            get: { playerVM.isQueuePresented ? nil : playerVM.sourceReplacementSession },
             set: { if $0 == nil { playerVM.cancelSourceReplacement() } }
         )) { session in
             ReplacementSourceSearchSheet(model: session) { candidate in
@@ -638,6 +658,12 @@ struct FullPlayerView: View {
             }
         }
         .alert("Sign in required", isPresented: $showYouTubeLoginAlert) {
+            Button("Pick an alternative") {
+                playerVM.beginSourceReplacementSearch()
+            }
+            Button("Skip") {
+                playerVM.next()
+            }
             Button("Sign in") {
                 showYouTubeLogin = true
             }

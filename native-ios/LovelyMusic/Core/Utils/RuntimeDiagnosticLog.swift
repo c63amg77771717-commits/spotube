@@ -11,8 +11,11 @@ final class RuntimeDiagnosticLog: @unchecked Sendable {
     private let lock = NSLock()
     private var lines: [String] = []
     private let fileURL: URL
+    private let capacity: Int
+    private var pendingBackgroundRelaunch = false
 
-    init(fileURL: URL? = nil) {
+    init(fileURL: URL? = nil, capacity: Int = RuntimeDiagnosticLog.capacity) {
+        self.capacity = max(2, capacity)
         if let fileURL {
             self.fileURL = fileURL
         } else {
@@ -23,8 +26,8 @@ final class RuntimeDiagnosticLog: @unchecked Sendable {
         }
         if let stored = try? String(contentsOf: self.fileURL, encoding: .utf8) {
             lines = stored.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            if lines.count > Self.capacity {
-                lines = Array(lines.suffix(Self.capacity))
+            if lines.count > self.capacity {
+                lines = Array(lines.suffix(self.capacity))
             }
         }
     }
@@ -32,14 +35,39 @@ final class RuntimeDiagnosticLog: @unchecked Sendable {
     func append(_ message: String) {
         let line = Self.format(message, at: Date())
         lock.lock()
-        lines.append(line)
-        if lines.count > Self.capacity {
-            lines.removeFirst(lines.count - Self.capacity)
+        if let updated = Self.collapsedRepeat(previous: lines.last, next: line) {
+            lines[lines.count - 1] = updated
+        } else {
+            lines.append(line)
+            let head = min(40, self.capacity / 5)
+            if lines.count > self.capacity, head > 0, self.capacity > head {
+                lines = Array(lines.prefix(head)) + Array(lines.suffix(self.capacity - head))
+            }
         }
         let snapshot = lines.joined(separator: "\n")
         let destination = fileURL
         lock.unlock()
         try? Self.write(snapshot, to: destination)
+    }
+
+    /// Consecutive copies of one line become `message ×N` so a retry storm
+    /// cannot push the launch history out of the ring.
+    static func collapsedRepeat(previous: String?, next: String) -> String? {
+        guard let previous else { return nil }
+        let (previousMessage, previousCount) = messageAndCount(previous)
+        let (nextMessage, _) = messageAndCount(next)
+        guard previousMessage == nextMessage, !previousMessage.isEmpty else { return nil }
+        let stamp = previous.split(separator: " ", maxSplits: 1).first.map(String.init) ?? ""
+        return "\(stamp) \(previousMessage) ×\(previousCount + 1)"
+    }
+
+    static func messageAndCount(_ line: String) -> (String, Int) {
+        let body = line.split(separator: " ", maxSplits: 1).dropFirst().joined(separator: " ")
+        if let marker = body.range(of: " ×", options: .backwards),
+           let count = Int(body[marker.upperBound...]), count > 1 {
+            return (String(body[..<marker.lowerBound]), count)
+        }
+        return (body, 1)
     }
 
     func noteLifecycle(_ state: String) {
@@ -53,6 +81,19 @@ final class RuntimeDiagnosticLog: @unchecked Sendable {
         let state = (try? String(contentsOf: lifecycleURL, encoding: .utf8)) ?? ""
         guard state == "background" else { return false }
         try? Data("foreground".utf8).write(to: lifecycleURL, options: [.atomic])
+        lock.lock()
+        pendingBackgroundRelaunch = true
+        lock.unlock()
+        return true
+    }
+
+    /// The audio engine claims this once and rebinds Now Playing, remote commands,
+    /// and the audio session. Later calls are false so a retry cannot rebind again.
+    func claimBackgroundRelaunch() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard pendingBackgroundRelaunch else { return false }
+        pendingBackgroundRelaunch = false
         return true
     }
 

@@ -38,6 +38,11 @@ struct QueueView: View {
                                 isPlaying: true,
                                 onTap: {}
                             )
+                            .contextMenu {
+                                Button { playerVM.beginAlternativeSearch(for: currentSong, queueIndex: nil) } label: {
+                                    Label("Replace with alternative", systemImage: "arrow.triangle.2.circlepath")
+                                }
+                            }
                             .listRowBackground(Theme.Colors.surfaceSelected)
                         } header: {
                             Text("Now Playing")
@@ -95,6 +100,15 @@ struct QueueView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     CustomCloseButton()
                 }
+            }
+            .sheet(item: Binding(
+                get: { playerVM.sourceReplacementSession },
+                set: { if $0 == nil { playerVM.cancelSourceReplacement() } }
+            )) { session in
+                ReplacementSourceSearchSheet(model: session) { candidate in
+                    playerVM.applySourceReplacement(candidate, sessionID: session.id)
+                }
+                .presentationBackground(Theme.Colors.backgroundPrimary)
             }
             .sheet(item: $songForPlaylist) { song in
                 AddToPlaylistSheet(
@@ -204,6 +218,9 @@ struct QueueView: View {
             }
             Button { songForPlaylist = song } label: {
                 Label("Add to Playlist", systemImage: "text.badge.plus")
+            }
+            Button { playerVM.beginAlternativeSearch(for: song, queueIndex: idx) } label: {
+                Label("Replace with alternative", systemImage: "arrow.triangle.2.circlepath")
             }
         }
         .listRowBackground(Theme.Colors.backgroundSecondary)
